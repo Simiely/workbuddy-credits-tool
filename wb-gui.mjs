@@ -263,8 +263,14 @@ function listen(port, max) {
   server.listen(port, "127.0.0.1", () => {
     const addr = `http://127.0.0.1:${port}`;
     console.log("WorkBuddy 积分仪表盘已启动: " + addr);
-    console.log("关闭本窗口即退出。");
-    try { spawn("cmd", ["/c", "start", "", addr], { detached: true, stdio: "ignore" }).unref(); } catch {}
+    // 仅 Windows 桌面场景自动打开浏览器;Linux/Docker 下不执行(无 cmd 命令,spawn 会崩溃)
+    if (process.platform === "win32") {
+      try {
+        const child = spawn("cmd", ["/c", "start", "", addr], { detached: true, stdio: "ignore" });
+        child.on("error", () => {}); // 吞掉 ENOENT 等,防止未处理 error 崩溃
+        child.unref();
+      } catch {}
+    }
   });
 }
 
