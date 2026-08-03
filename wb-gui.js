@@ -110,10 +110,13 @@ async function doRefresh(manual) {
     $("updated").textContent = "更新于 " + j.fetchedAt;
     if (manual) {
       const rs = j.results || [];
-      const ok = rs.filter((r) => r.summary).length;
-      const ex = rs.filter((r) => r.expired).length;
-      const changed = fpS() !== oldSfp;
-      toast(changed ? `✅ 刷新成功(${ok}/${rs.length} 个账号${ex ? "," + ex + " 个凭证过期" : ""})` : "✅ 已是最新数据(无变化)");
+      if (!rs.length) { toast("⚠️ 暂无账号数据(点「＋ 添加账号」或从 WebDAV 下载)"); }
+      else {
+        const ok = rs.filter((r) => r.summary).length;
+        const ex = rs.filter((r) => r.expired).length;
+        const changed = fpS() !== oldSfp;
+        toast(changed ? `✅ 刷新成功(${ok}/${rs.length} 个账号${ex ? "," + ex + " 个凭证过期" : ""})` : "✅ 已是最新数据(无变化)");
+      }
     }
   } catch (e) {
     showErr("❌ " + e.message + (S && S.results ? "，已显示上次数据" : "，点击刷新重试"));
@@ -206,7 +209,7 @@ function renderCards() {
   const rs = (S && S.results) || [];
   if (!rs.length) {
     $("grid").innerHTML = '<div class="empty"><div class="big">📭</div>账号池为空<br>点「＋ 添加当前账号」或命令行 wb-credits.bat save-current</div>';
-    $("foot").textContent = "";
+    $("foot").textContent = "v1.3.2 · 数据来自 WorkBuddy 网页版接口 · 暂无账号数据(可「添加当前账号」或从 WebDAV 下载)";
     return;
   }
   $("grid").innerHTML = rs.map((r, i) => {
@@ -238,7 +241,7 @@ function renderCards() {
       </div>${foot}</div>`;
   }).join("");
   initDrag();
-  $("foot").textContent = "v1.3.1 · 数据来自 WorkBuddy 网页版接口 · 自动刷新 " + autoMin + " 分钟 · 凭证过期请重新登录后「添加当前账号」 · 卡片可拖动排序";
+  $("foot").textContent = "v1.3.2 · 数据来自 WorkBuddy 网页版接口 · 自动刷新 " + autoMin + " 分钟 · 凭证过期请重新登录后「添加当前账号」 · 卡片可拖动排序";
 }
 
 // ---- 卡片拖拽排序(顺序随账号池持久化,经 /api/reorder 保存) ----
@@ -786,7 +789,7 @@ async function openSync() {
   } catch (e) { setSyncStatus("❌ " + e.message); }
 }
 function closeSync() { closeMask("syncMask"); }
-const SYNC_DEFAULT_URL = atob("aHR0cHM6Ly93MmUwYjFkNmF2LmRkbnN0by5jb20v");
+const SYNC_DEFAULT_URL = "http://192.168.2.1:6086/"; // 默认 WebDAV 地址(留空时使用,可在云同步配置里修改)
 // 云同步配置:URL 为空时用默认(用于操作,不用于保存)
 function syncCfg() {
   const url = ($("syncUrl").value || "").trim();
