@@ -1,4 +1,6 @@
 // wb-gui.js v2 — 极简可靠版:单一状态 S,按钮状态单点控制,统一请求封装
+// 子路径挂载自适应:独立运行 __BASE__="" ;经工具中心 /tool/<id>/ 挂载时 = "/tool/<id>"
+const __BASE__ = window.__BASE__ || "";
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => Math.round((n || 0) * 100) / 100;
 const shortName = (n) => (n || "").replace("CodeBuddy个人版国内运营裂变包", "裂变包").replace("CodeBuddy个人体验版", "体验版");
@@ -63,7 +65,7 @@ async function refreshAll(manual) {
   if (busy) return;
   setBusy(true);
   try {
-    const j = await api("/api/all");
+    const j = await api(__BASE__ + "/api/all");
     S = j;
     showErr("");
     render();
@@ -185,7 +187,7 @@ async function moveCard(fromId, toId) {
   else to.before(from);
   const ids = [...$("grid").querySelectorAll(".acct")].map((c) => c.dataset.id);
   try {
-    const j = await api("/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+    const j = await api(__BASE__ + "/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
     if (!j.ok) throw new Error(j.error || "保存失败");
     // 同步数据顺序(表格/后续渲染保持一致)
     const byId = new Map((S.results || []).map((r) => [r.account.id, r]));
@@ -210,7 +212,7 @@ async function sortByTotal() {
   renderCards();
   const ids = S.results.map((r) => r.account.id);
   try {
-    const j = await api("/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+    const j = await api(__BASE__ + "/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
     if (!j.ok) throw new Error(j.error || "保存失败");
     renderDash(); // 表格/折线图例同步
     toast("✅ 已按总剩余从多到少排序并保存");
@@ -223,7 +225,7 @@ async function sortByTotal() {
 // ---- 仪表盘:表格 + 折线(异步加载,失败不阻塞) ----
 async function renderDash() {
   try {
-    const j = await api("/api/dashboard/all");
+    const j = await api(__BASE__ + "/api/dashboard/all");
     dashPer = j.per || [];
   } catch { return; }
   renderDashTable();
@@ -352,7 +354,7 @@ function renderBuckets(gifts) {
 }
 async function loadHist(uin) {
   try {
-    const j = await api("/api/history?account=" + encodeURIComponent(uin));
+    const j = await api(__BASE__ + "/api/history?account=" + encodeURIComponent(uin));
     const h = j.history || [];
     const box = $("histBox");
     if (!box) return;
@@ -401,10 +403,10 @@ async function confirmSmall() {
   try {
     if (type === "rename") {
       const name = $("renameInput").value.trim();
-      await api("/api/rename", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: id, name }) });
+      await api(__BASE__ + "/api/rename", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: id, name }) });
       toast("已更新显示名称");
     } else {
-      await api("/api/del", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: id }) });
+      await api(__BASE__ + "/api/del", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: id }) });
       toast("已删除");
     }
     closeSmall();
@@ -416,18 +418,18 @@ async function confirmSmall() {
 async function saveCurrent() {
   const b = $("btnAdd"); b.disabled = true; b.textContent = "保存中…";
   try {
-    const j = await api("/api/save-current", { method: "POST" });
+    const j = await api(__BASE__ + "/api/save-current", { method: "POST" });
     toast(`已保存账号[${j.account.name}]`);
     refreshAll(false);
   } catch (e) { toast("❌ " + e.message); }
   finally { b.disabled = false; b.textContent = "＋ 添加当前账号"; }
 }
-function exportMd() { window.location.href = "/api/export.md"; }
+function exportMd() { window.location.href = __BASE__ + "/api/export.md"; }
 
 // ---- daemon 探测 ----
 async function checkDaemon() {
   try {
-    const j = await api("/api/status");
+    const j = await api(__BASE__ + "/api/status");
     showDaemon(j.daemon !== "ok" ? "⚠️ 浏览器代理未运行:「添加当前账号」暂不可用(查询不受影响)。请重新运行 wb-gui.bat。" : "");
   } catch { }
 }
@@ -468,7 +470,7 @@ async function openSync() {
   $("syncMask").classList.add("show");
   setSyncStatus("加载配置…");
   try {
-    const j = await api("/api/webdav/config");
+    const j = await api(__BASE__ + "/api/webdav/config");
     $("syncUrl").value = j.url || "";
     $("syncUser").value = j.user || "";
     $("syncPass").value = "";
@@ -482,7 +484,7 @@ function syncCfg() {
 }
 async function saveSyncCfg() {
   try {
-    await api("/api/webdav/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(syncCfg()) });
+    await api(__BASE__ + "/api/webdav/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(syncCfg()) });
     toast("✅ 配置已保存到本机");
     setSyncStatus("✅ 配置已保存,正在验证连接…");
     await syncAct("test", true); // 保存后自动测试,成功即显示上传/下载
@@ -494,7 +496,7 @@ async function syncAct(action, silent) {
   setSyncStatus(action === "test" ? "测试中…" : action === "upload" ? "上传中…" : "下载中…");
   try {
     if (action === "download" && !confirm("下载会覆盖本地的账号池/历史数据,确定继续吗?")) { setSyncStatus("已取消"); return; }
-    const j = await api("/api/webdav/" + action, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    const j = await api(__BASE__ + "/api/webdav/" + action, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
     if (action === "test") { showSyncQuick(); } // 登录成功 → 操作条云同步右侧出现上传/下载
     if (!silent) toast("✅ " + j.message);
     setSyncStatus("✅ " + j.message + (action === "download" && j.restored && j.restored.length ? ",请点「刷新全部」查看" : ""));
@@ -514,7 +516,7 @@ async function confirmClear() {
   if (!names.length) return toast("请至少勾选一项");
   if (!confirm(`确认永久清空:${names.join("、")}?此操作不可恢复!`)) return;
   try {
-    const j = await api("/api/clear-data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sel) });
+    const j = await api(__BASE__ + "/api/clear-data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sel) });
     closeClear();
     ["clearAccounts", "clearHistory", "clearCache"].forEach((id) => { $(id).checked = false; });
     toast(`已清空:${(j.cleared || []).join("、") || "无"}`);
@@ -533,7 +535,7 @@ applyAuto();
 // 若已配置过 WebDAV,操作条云同步右侧直接显示上传/下载
 async function checkWebdavQuick() {
   try {
-    const j = await api("/api/webdav/config");
+    const j = await api(__BASE__ + "/api/webdav/config");
     if (j.has) showSyncQuick();
   } catch {}
 }
