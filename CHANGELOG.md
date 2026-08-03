@@ -1,5 +1,43 @@
 # CHANGELOG
 
+## v1.3.3 (2026-08-04 02:00) · 确认弹窗修复(下载/清空恢复)
+
+- **严重:确认弹窗点「确定」无效**(v1.3.0 引入):`cfmRes()` 先调 `closeSmall()` 再 resolve,而 `closeSmall` 的兜底 `cfmResolve(false)` 抢先执行 → 点确定实际=取消 → **WebDAV 下载、清空数据全部被"已取消"**
+- 修复:先 `cfmResolve(v)` 再 `closeSmall()`;兜底仅在遮罩/✕ 关闭时触发
+- 单测:确认→true / 取消→false / 遮罩→false 全通过
+
+## v1.3.2 (2026-08-04 01:56) · WebDAV 默认地址 + 空账号显示
+
+- WebDAV 默认地址 `https://w2e0b1d6av.ddnsto.com`(内网穿透,NAS 不可达)→ **`http://192.168.2.1:6086/`**(前后端统一,链接框留空即用默认)
+- 空账号池时 footer 不再被清空(显示版本号 + 引导文案)
+- 空账号手动刷新提示「暂无账号数据」,不再误报「已是最新无变化」
+
+## v1.3.1 (2026-08-04 01:52) · 自动刷新免闪屏
+
+- 数据指纹 `fpS()`/`fpDash()`:刷新时比较,未变则跳过 hero/卡片/表格/折线重绘(节点保留 → 拖拽事件与滚动位置自然保留)
+- 手动刷新无变化时 toast「✅ 已是最新数据(无变化)」
+
+## v1.3.0 (2026-08-04 01:40) · 模块化重构(子代理全量审核后执行)
+
+- **P0**:cfm 确认弹窗遮罩关闭不 resolve → Promise 悬空 → 上传/下载永久失效;`closeSmall` 兜底 `cfmResolve(false)`
+- 弹窗显隐统一 `openMask/closeMask`(4 个 mask 共用)
+- 拖拽排序去重 → 统一 `saveOrder(ids, okMsg)`
+- 内联样式抽 CSS 类(`.bar-*/.ph-sm/.t-faint/.t-bad/.btn-lg/.num-b/.row-total/.tbl-short` 等):33 处 → 11 处(仅动态值)
+- 两段式渲染合并:`todayMap/prevTodayUsed` 模块级变量替代 `window.*`
+- 清死代码:`mergeAccounts/deleteFile/sleep/后端 totals/残留 .bucket CSS`
+- ⚠️ 过程事故:脚本清理 CSS 误删 HTML 大段,已 git 恢复并改用精确编辑重做
+
+## v1.2.1 (2026-08-04 01:28) · 审核修复
+
+- `data-n` 账号名 HTML 属性转义(escAttr)防注入
+- 单点账号补 hover 区(悬浮大数字)
+- dashboard 缓存键加本地日期,跨午夜自动失效
+
+## v1.2.0 (2026-08-04 01:25) · 计算架构收敛
+
+- **后端唯一计算源**:`/api/dashboard/all` 按自然日(本地时区)统一聚合 → series 直接返回每日消耗;`todayUsed` 与折线图同源
+- 前端删 `toLocalKey/aggregateConsumption` 死代码,纯展示
+
 ## v1.0.16 (2026-08-03) · 手机端 UI 大修 + 性能优化 + CSS 恢复
 
 ### 手机端 UI
