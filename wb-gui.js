@@ -455,7 +455,7 @@ function lineChart(series, mode) {
       }
       prevV = p.v;
     }
-    if (d) paths += `<g id="line-${s.key}"><path d="${d}" fill="none" stroke="${color}" stroke-width="1" stroke-dasharray="4 3" stroke-linejoin="round" stroke-linecap="round"/>${pts}</g>`;
+    if (d) paths += `<g id="line-${s.key}"><path d="${d}" fill="none" stroke="${color}" stroke-width="1" vector-effect="non-scaling-stroke" stroke-dasharray="4 3" stroke-linejoin="round" stroke-linecap="round"/>${pts}</g>`;
   });
   const unit = mode === "month" ? "当月" : "当日";
   const note = `<text x="${w - R}" y="12" font-size="10" fill="#6b7484" text-anchor="end">● ${unit}有消耗</text>`;
