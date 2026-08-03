@@ -127,20 +127,21 @@ function todayExpiringOf(r) {
   return sum;
 }
 
-// 今日已用 = 今日最早快照总剩余 − 今日最新快照总剩余(>0 为消耗;数据不足显示 0/—)
+// 今日已用 = 每个账号今日消耗之和(该账号今日最早快照总剩余 − 最新快照总剩余,>0 计入)
+// 按账号分别算,避免"当天新加账号导致聚合总量跳变"的干扰
 async function updateTodayUsed() {
   try {
     const j = await api(__BASE__ + "/api/dashboard/all");
-    const totals = j.totals || [];
     const now = new Date();
-    const today = totals.filter((t) => {
-      const d = new Date(t.ts);
-      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-    });
-    if (!today.length) { $("heroToday").textContent = "—"; return; }
-    if (today.length === 1) { $("heroToday").textContent = "0"; return; }
-    const diff = today[0].total - today[today.length - 1].total;
-    $("heroToday").textContent = diff > 0 ? fmt(diff) : "0";
+    const isToday = (t) => { const d = new Date(t); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate(); };
+    let totalUsed = 0;
+    for (const a of (j.per || [])) {
+      const today = (a.series || []).filter((p) => isToday(p.t));
+      if (today.length < 2) continue;
+      const diff = today[0].v - today[today.length - 1].v;
+      if (diff > 0) totalUsed += diff;
+    }
+    $("heroToday").textContent = totalUsed > 0 ? fmt(totalUsed) : "0";
   } catch { }
 }
 
