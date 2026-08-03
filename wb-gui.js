@@ -102,6 +102,7 @@ async function loadLast() {
 async function doRefresh(manual) {
   setBusy(true);
   try {
+    const oldSfp = fpS(); // 基于旧 S 的指纹,用于判断本次是否有变化
     const j = await api(__BASE__ + "/api/all", { timeout: 30000 });
     S = j;
     showErr("");
@@ -111,7 +112,8 @@ async function doRefresh(manual) {
       const rs = j.results || [];
       const ok = rs.filter((r) => r.summary).length;
       const ex = rs.filter((r) => r.expired).length;
-      toast(`✅ 刷新成功(${ok}/${rs.length} 个账号${ex ? "," + ex + " 个凭证过期" : ""})`);
+      const changed = fpS() !== oldSfp;
+      toast(changed ? `✅ 刷新成功(${ok}/${rs.length} 个账号${ex ? "," + ex + " 个凭证过期" : ""})` : "✅ 已是最新数据(无变化)");
     }
   } catch (e) {
     showErr("❌ " + e.message + (S && S.results ? "，已显示上次数据" : "，点击刷新重试"));
@@ -121,11 +123,28 @@ async function doRefresh(manual) {
   }
 }
 
-// ---- 渲染(全部从 S 读取) ----
+// 数据指纹:刷新时比较,未变则跳过对应区域重绘(自动刷新不再整页闪屏/抖动)
+let lastSfp = null, lastDfp = null;
+function fpS() {
+  const rs = (S && S.results) || [];
+  return rs.map((r) => {
+    const s = r.summary;
+    return (r.account.id || "") + "|" + (s ? [s.baseRemain, s.giftRemain, s.baseUsed, s.giftUsed, s.giftCount].join(",") : (r.expired ? "e" : "f")) + "|" + (r.account.sessionExpiresAt || "");
+  }).join(";");
+}
+function fpDash() {
+  return dashPer.map((a) => a.uin + ":" + (a.currentRemain ?? "-") + ":" + (a.used ?? "-") + ":" + (a.todayUsed ?? "-") + ":" + (a.series || []).length + ":" + ((a.series && a.series.length) ? a.series[a.series.length - 1].v : "")).join(";");
+}
+
 function render() {
-  renderHero();
-  renderCards();
-  renderDash();
+  // S 未变 → hero/卡片不重绘(重绘会闪屏、重绑拖拽;节点保留则事件与滚动位置都在)
+  const sfp = fpS();
+  if (sfp !== lastSfp) {
+    renderHero();
+    renderCards();
+    lastSfp = sfp;
+  }
+  renderDash(); // dash 数据源是异步 API,指纹比较在内部
 }
 
 function renderHero() {
@@ -219,7 +238,7 @@ function renderCards() {
       </div>${foot}</div>`;
   }).join("");
   initDrag();
-  $("foot").textContent = "v1.3.0 · 数据来自 WorkBuddy 网页版接口 · 自动刷新 " + autoMin + " 分钟 · 凭证过期请重新登录后「添加当前账号」 · 卡片可拖动排序";
+  $("foot").textContent = "v1.3.1 · 数据来自 WorkBuddy 网页版接口 · 自动刷新 " + autoMin + " 分钟 · 凭证过期请重新登录后「添加当前账号」 · 卡片可拖动排序";
 }
 
 // ---- 卡片拖拽排序(顺序随账号池持久化,经 /api/reorder 保存) ----
@@ -321,24 +340,31 @@ async function sortByExpiring() {
 
 // ---- 仪表盘:表格 + 折线(异步加载,失败不阻塞) ----
 async function renderDash() {
+  let changed = true;
   try {
     const j = await api(__BASE__ + "/api/dashboard/all");
     dashPer = j.per || [];
-    todayMap = buildTodayUsedMap(dashPer);
-    // hero 今日已用:直接从后端预计算的 todayUsed 汇总
-    const totalUsed = dashPer.reduce((s, a) => s + (a.todayUsed || 0), 0);
-    const prev = prevTodayUsed;
-    let trendHtml = totalUsed > 0 ? fmt(totalUsed) : "0";
-    if (prev !== undefined && totalUsed !== prev) {
-      const delta = totalUsed - prev;
-      const arrow = delta > 0 ? "↑" : "↓";
-      const c = delta > 0 ? "var(--bad)" : "var(--ok)";
-      trendHtml = `${fmt(totalUsed)} <span style="font-size:12px;color:${c}">${arrow}${fmt(Math.abs(delta))}</span>`;
+    const dfp = fpDash();
+    changed = dfp !== lastDfp;
+    if (changed) {
+      lastDfp = dfp;
+      todayMap = buildTodayUsedMap(dashPer);
+      // hero 今日已用:直接从后端预计算的 todayUsed 汇总
+      const totalUsed = dashPer.reduce((s, a) => s + (a.todayUsed || 0), 0);
+      const prev = prevTodayUsed;
+      let trendHtml = totalUsed > 0 ? fmt(totalUsed) : "0";
+      if (prev !== undefined && totalUsed !== prev) {
+        const delta = totalUsed - prev;
+        const arrow = delta > 0 ? "↑" : "↓";
+        const c = delta > 0 ? "var(--bad)" : "var(--ok)";
+        trendHtml = `${fmt(totalUsed)} <span style="font-size:12px;color:${c}">${arrow}${fmt(Math.abs(delta))}</span>`;
+      }
+      prevTodayUsed = totalUsed;
+      $("heroToday").innerHTML = trendHtml;
+      syncCardsToday(); // dashPer 就绪后增量同步卡片今日消耗
     }
-    prevTodayUsed = totalUsed;
-    $("heroToday").innerHTML = trendHtml;
-    syncCardsToday(); // dashPer 就绪后增量同步卡片今日消耗
   } catch { return; }
+  if (!changed) return; // 数据未变:表格/折线/时间戳都不重绘
   renderDashTable();
   renderLines();
   // 面板时间戳
