@@ -119,14 +119,25 @@ const server = http.createServer(async (req, res) => {
         const first = arr[0], last = arr[arr.length - 1];
         const rem = (x) => (x ? (x.giftRemain || 0) + (x.baseRemain || 0) : 0); // 总剩余
         const usd = (x) => (x ? (x.giftUsed || 0) + (x.baseUsed || 0) : 0);     // 累计已用
-        // 今日消耗 = 今天最早剩余 − 最晚剩余(按自然日)
-        const now = new Date();
-        const isToday = (t) => { const d = new Date(t); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate(); };
-        const todayPts = arr.filter((x) => isToday(x.ts)).sort((a, b) => a.ts < b.ts ? -1 : 1);
-        const todayUsed = todayPts.length >= 2 ? rem(todayPts[0]) - rem(todayPts[todayPts.length - 1]) : 0;
-        const series = arr
-          .map((x) => ({ t: x.ts, v: rem(x) }))
-          .sort((a, b) => (a.t < b.t ? -1 : 1));
+        const pad = (n) => String(n).padStart(2, "0");
+        // 自然日(本地时区)分组的工具:所有"按天"计算统一走这里,标准唯一
+        const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+        // 按自然日分组剩余序列
+        const byDay = new Map();
+        for (const x of arr) {
+          const k = dayKey(x.ts);
+          if (!byDay.has(k)) byDay.set(k, []);
+          byDay.get(k).push(x);
+        }
+        // 每日消耗 = 当天最早剩余 − 当天最晚剩余(自然日,本地时区)
+        const series = [...byDay.keys()].sort().map((k) => {
+          const pts = byDay.get(k).sort((a, b) => (a.ts < b.ts ? -1 : 1));
+          return { t: pts[pts.length - 1].ts, v: Math.round((rem(pts[0]) - rem(pts[pts.length - 1])) * 100) / 100 };
+        });
+        // 今日消耗 = 今天(自然日)最早剩余 − 最晚剩余;series 里今天的 v 即此值,保持一致
+        const todayKey = dayKey(new Date().toISOString());
+        const todayPt = series.find((x) => dayKey(x.t) === todayKey);
+        const todayUsed = todayPt ? todayPt.v : 0;
         return {
           uin: a.uin, name: a.name, displayName: a.displayName,
           currentRemain: last ? rem(last) : null,
@@ -134,7 +145,7 @@ const server = http.createServer(async (req, res) => {
           consumed: arr.length > 1 ? rem(first) - rem(last) : 0,
           todayUsed: todayUsed > 0 ? Math.round(todayUsed * 100) / 100 : 0,
           points: arr.length,
-          series,
+          series, // 每日消耗序列(自然日),前端直接展示不再计算
         };
       });
       dashCache = { mtime: histMtime, payload: { totals, per } };

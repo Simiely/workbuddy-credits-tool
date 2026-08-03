@@ -479,17 +479,7 @@ function lineChart(series, mode) {
   const minW = window.innerWidth >= 640 ? 430 : 0;
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;min-width:${minW}px;display:block">${ticks}${paths}${xl}${note}</svg>`;
 }
-// 消耗聚合:按 keyFn 分组(day→本地YYYY-MM-DD,month→本地YYYY-MM),消耗=最早剩余−最晚剩余
-// 关键:用本地日期而非 UTC(t.slice(0,10) 是 UTC 日期,会把北京时间凌晨的数据归到前一天)
-function toLocalKey(t, month) {
-  const d = new Date(t), p = (n) => String(n).padStart(2, "0");
-  return month ? `${d.getFullYear()}-${p(d.getMonth() + 1)}` : `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-function aggregateConsumption(pts, keyFn) {
-  const firstOf = new Map(), lastOf = new Map();
-  for (const p of pts) { const k = keyFn(p.t); if (!firstOf.has(k)) firstOf.set(k, p); lastOf.set(k, p); }
-  return [...firstOf.keys()].sort().map((k) => ({ t: lastOf.get(k).t, v: (firstOf.get(k).v || 0) - (lastOf.get(k).v || 0) }));
-}
+// 每日消耗已由后端 /api/dashboard/all 按自然日算好(series 直接是消耗值),前端不再聚合
 function renderLines() {
   const raw = dashPer.filter((a) => (a.series || []).length >= 1);
   if (!raw.length) {
@@ -497,11 +487,18 @@ function renderLines() {
     $("chart").innerHTML = '<div class="ph">暂无足够数据,多刷新几次后出现折线</div>';
     return;
   }
-  const keyFn = dashMode === "day" ? (t) => toLocalKey(t) : (t) => toLocalKey(t, true);
+  // 后端已按自然日算好每日消耗序列(series),前端只做展示;month 模式按月份累加
   const lines = raw.map((a) => {
-    const pts = (a.series || []).slice().sort((a, b) => a.t < b.t ? -1 : 1);
-    const days = aggregateConsumption(pts, keyFn);
-    return days.length ? { key: a.uin, name: acctName(a), pts: days } : null;
+    let pts = (a.series || []).slice().sort((a, b) => a.t < b.t ? -1 : 1);
+    if (dashMode === "month") {
+      const m = new Map();
+      for (const p of pts) {
+        const d = new Date(p.t), k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        m.set(k, (m.get(k) || 0) + p.v);
+      }
+      pts = [...m.keys()].sort().map((k) => ({ t: k, v: m.get(k) }));
+    }
+    return pts.length ? { key: a.uin, name: acctName(a), pts } : null;
   }).filter(Boolean);
   if (!lines.length) {
     $("legend").innerHTML = "";
