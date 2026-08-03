@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## v1.0.10 (2026-08-03)
+
+### 变更
+- **操作条按钮响应式**:窄屏(≤640px)只显示 emoji,文字隐藏(`.ops .txt{display:none}`),方便手机使用
+- 按钮结构:`<span class="em">emoji</span><span class="txt">文字</span>`,宽屏显示完整,窄屏只余 emoji
+- 操作条 5 个按钮已全部包 span(添加/排序/清空/导出/云同步);云同步已配 WebDAV 时右侧 3 个纯 emoji 快捷按钮不受影响
+
 ## v1.0.9 (2026-08-03)
 
 ### 变更
