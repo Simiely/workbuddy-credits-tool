@@ -40,6 +40,9 @@ input,select{font:inherit;color:var(--text)}
 @keyframes sp{to{transform:rotate(360deg)}}
 
 .ops{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px 12px;margin-bottom:12px}
+/* 左右两组:左组靠左,右组靠右(margin-right:auto 标准 flex 弹性对齐,无占位元素) */
+.ops-l{display:flex;align-items:center;gap:8px;margin-right:auto;flex-shrink:0}
+.ops-r{display:flex;align-items:center;gap:8px;flex-shrink:0}
 /* 窄屏(手机):操作条按钮只显示 emoji,隐藏文字,紧凑适配 */
 @media(max-width:640px){.ops .txt{display:none}}
 .sep{width:1px;height:22px;background:var(--line2);margin:0 3px}
@@ -187,17 +190,20 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
   </div></header>
 
   <div class="ops">
-    <button class="btn btn-g" onclick="saveCurrent()" id="btnAdd"><span class="em">＋</span><span class="txt">添加当前账号</span></button>
-    <button class="btn btn-g" onclick="sortByTotal()"><span class="em">📊</span><span class="txt">总剩余排序</span></button>
-    <button class="btn btn-g" onclick="openClear()"><span class="em">🧹</span><span class="txt">清空</span></button>
-    <button class="btn btn-g" onclick="exportMd()"><span class="em">📝</span><span class="txt">导出 MD</span></button>
-    <span style="flex:1"></span>
-    <button class="btn btn-g" onclick="openSync()"><span class="em">☁️</span><span class="txt">云同步</span></button>
-    <span id="syncQuick" hidden>
-      <button class="btn btn-g" title="测试连接" onclick="syncAct('test')">🔌</button>
-      <button class="btn btn-g" title="上传数据" onclick="syncAct('upload')">⬆️</button>
-      <button class="btn btn-g" title="下载数据" onclick="syncAct('download')">⬇️</button>
-    </span>
+    <div class="ops-l">
+      <button class="btn btn-g" onclick="saveCurrent()" id="btnAdd"><span class="em">＋</span><span class="txt">添加当前账号</span></button>
+      <button class="btn btn-g" onclick="sortByTotal()"><span class="em">📊</span><span class="txt">总剩余排序</span></button>
+      <button class="btn btn-g" onclick="openClear()"><span class="em">🧹</span><span class="txt">清空</span></button>
+      <button class="btn btn-g" onclick="exportMd()"><span class="em">📝</span><span class="txt">导出 MD</span></button>
+    </div>
+    <div class="ops-r">
+      <button class="btn btn-g" onclick="openSync()"><span class="em">☁️</span><span class="txt">云同步</span></button>
+      <span id="syncQuick" hidden>
+        <button class="btn btn-g" title="测试连接" onclick="syncAct('test')">🔌</button>
+        <button class="btn btn-g" title="上传数据" onclick="syncAct('upload')">⬆️</button>
+        <button class="btn btn-g" title="下载数据" onclick="syncAct('download')">⬇️</button>
+      </span>
+    </div>
   </div>
 
   <div class="warn" id="err" hidden></div>
