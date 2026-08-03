@@ -65,6 +65,9 @@ input,select{font:inherit;color:var(--text)}
 
 .warn{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.3);color:var(--bad);padding:10px 14px;border-radius:12px;margin-bottom:12px;font-size:13px}
 .warn.d{background:rgba(247,163,92,.08);border-color:rgba(247,163,92,.3);color:var(--warn)}
+#daemonWarn{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.warn-x{flex-shrink:0;background:none;border:none;color:var(--warn);font-size:14px;line-height:1;cursor:pointer;padding:4px 6px;border-radius:6px;opacity:.7}
+.warn-x:hover{opacity:1;background:rgba(247,163,92,.15)}
 
 .hero{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}
 /* 手机:2x2 均分(默认已是),数字稍小防溢出 */
@@ -250,7 +253,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 
   <div class="warn" id="err" hidden></div>
-  <div class="warn d" id="daemonWarn" hidden></div>
+  <div class="warn d" id="daemonWarn" hidden><span id="daemonMsg"></span><button class="warn-x" id="daemonHide" title="知道了,不再显示">✕</button></div>
 
   <section class="hero" id="hero"></section>
 
@@ -339,6 +342,6 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 <div class="toast" id="toast"></div>
 <script>window.__BASE__ = (location.pathname.match(/^\/tool\/[^/]+/) || [""])[0];</script>
-<script src="./wb-gui.js?v=v1.0.9"></script>
+<script src="./wb-gui.js?v=v1.1.0"></script>
 </body>
 </html>

@@ -41,7 +41,23 @@ function toast(msg, ms = 2600) {
   toastTimer = setTimeout(() => t.classList.remove("show"), ms);
 }
 function showErr(msg) { const e = $("err"); e.hidden = !msg; e.textContent = msg || ""; }
-function showDaemon(msg) { const w = $("daemonWarn"); w.hidden = !msg; w.textContent = msg || ""; }
+const LS_DAEMON_HIDE = "wb_daemon_hide"; // 用户手动隐藏过 daemon 提示后不再打扰
+function showDaemon(msg) {
+  const w = $("daemonWarn");
+  if (!msg) { w.hidden = true; return; }
+  if (localStorage.getItem(LS_DAEMON_HIDE)) return; // 已手动隐藏
+  $("daemonMsg").textContent = msg;
+  w.hidden = false;
+}
+// 提示条「✕」:隐藏并记住,刷新后不再显示
+(function () {
+  const btn = document.getElementById("daemonHide");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    $("daemonWarn").hidden = true;
+    try { localStorage.setItem(LS_DAEMON_HIDE, "1"); } catch {}
+  });
+})();
 
 // ---- 按钮状态单点控制(唯一改按钮的地方,finally 必恢复) ----
 function setBusy(b) {
