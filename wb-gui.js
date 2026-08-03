@@ -130,7 +130,7 @@ function renderHero() {
   $("hero").innerHTML = `
     <div class="hcard total ${cls}"><span class="h-ico">🏦</span><div class="n" id="heroTotal">${rs.length ? fmt(total) : "—"}</div><div class="l">总剩余积分</div><div class="s">${sub}</div></div>
     <div class="hcard"><span class="h-ico">⏳</span><div class="n" id="heroExp3d">${rs.length ? fmt(exp3d) : "—"}</div><div class="l">近3天过期</div></div>
-    <div class="hcard"><span class="h-ico">📉</span><div class="n" id="heroToday">—</div><div class="l">今日已用</div></div>
+    <div class="hcard"><span class="h-ico">📉</span><div class="n" id="heroToday">0</div><div class="l">今日已用</div></div>
     <div class="hcard"><span class="h-ico">🔥</span><div class="n">${fmt(used)}</div><div class="l">累计已用</div></div>`;
 }
 // ---------- 过期统计工具 ----------
@@ -613,6 +613,17 @@ function openSmall(title, bodyHtml) {
 }
 function closeSmall() { $("smallMask").classList.remove("show"); small = null; }
 
+// 通用确认弹窗(Promise):resolve(true/false),替代原生 confirm
+let cfmResolve = null;
+function cfm(msg) {
+  return new Promise((r) => {
+    cfmResolve = r;
+    openSmall("确认操作", `<div class="tip" style="color:var(--bad)">${msg}</div>
+      <div class="factions"><button class="btn btn-g" onclick="cfmRes(false)">取消</button><button class="btn btn-d" style="min-height:38px;padding:9px 15px" onclick="cfmRes(true)">确认</button></div>`);
+  });
+}
+function cfmRes(v) { closeSmall(); if (cfmResolve) { cfmResolve(v); cfmResolve = null; } }
+
 function openRename(id) {
   small = { type: "rename", id };
   const r = (S.results || []).find((x) => x.account.id === id);
@@ -734,8 +745,8 @@ async function syncAct(action, silent) {
   syncBusy = true;
   setSyncStatus(action === "test" ? "测试中…" : action === "upload" ? "上传中…" : action === "clear" ? "清空中…" : "下载中…");
   try {
-    if (action === "download" && !confirm("下载会覆盖本地的账号池/历史数据,确定继续吗?")) { setSyncStatus("已取消"); return; }
-    if (action === "clear" && !confirm("确认清空本地保存的 WebDAV 登录配置?")) { setSyncStatus("已取消"); return; }
+    if (action === "download" && !await cfm("下载会覆盖本地的账号池/历史数据,确定继续吗?")) { setSyncStatus("已取消"); return; }
+    if (action === "clear" && !await cfm("确认清空本地保存的 WebDAV 登录配置?")) { setSyncStatus("已取消"); return; }
     const j = await api(__BASE__ + "/api/webdav/" + action, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
     if (action === "test") { showSyncQuick(); } // 登录成功 → 操作条云同步右侧出现上传/下载
     if (action === "clear") { $("syncQuick").hidden = true; closeSync(); }
@@ -755,7 +766,7 @@ async function confirmClear() {
   const sel = { accounts: $("clearAccounts").checked, history: $("clearHistory").checked, cache: $("clearCache").checked };
   const names = [sel.accounts && "账号池", sel.history && "历史快照", sel.cache && "最近缓存"].filter(Boolean);
   if (!names.length) return toast("请至少勾选一项");
-  if (!confirm(`确认永久清空:${names.join("、")}?此操作不可恢复!`)) return;
+  if (!await cfm(`确认永久清空:${names.join("、")}?此操作不可恢复!`)) return;
   try {
     const j = await api(__BASE__ + "/api/clear-data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sel) });
     closeClear();

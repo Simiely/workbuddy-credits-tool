@@ -25,7 +25,12 @@ let dashCache = null;
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
   const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(obj)); };
-  const body = () => new Promise((resolve) => { let s = ""; req.on("data", (c) => (s += c)); req.on("end", () => resolve(s)); });
+  const body = () => new Promise((resolve, reject) => {
+    let s = ""; let size = 0;
+    req.on("data", (c) => { s += c; size += c.length; if (size > 1024 * 1024) { reject(new Error("请求体过大")); req.destroy(); } });
+    req.on("end", () => resolve(s));
+    req.on("error", reject);
+  });
   try {
     // 允许跨域(演示预览页/其他端口也能请求本服务)
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -41,8 +46,11 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/status") {
       let daemon = "down";
       try {
-        const r = await fetch(`${DAEMON_BASE}/status`);
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 2500);
+        const r = await fetch(`${DAEMON_BASE}/status`, { signal: ctrl.signal });
         const j = await r.json();
+        clearTimeout(t);
         daemon = j.connected ? "ok" : "down";
       } catch {}
       return json(200, { ok: true, daemon });
@@ -57,7 +65,7 @@ const server = http.createServer(async (req, res) => {
       const raw = await fetchAllAccounts();
       const results = raw.map((r) => ({ account: brief(r.account), summary: r.summary, data: r.data, error: r.error, expired: r.expired }));
       const payload = { ok: true, fetchedAt: new Date().toLocaleString("zh-CN"), results };
-      // 本地缓存(完整数据,离线可看)+ 历史快照(消耗跟踪)
+      // 本地缓存(完整数据,离线可看)+ 历史快照(消耗跟踪)—— 异步落盘,不阻塞响应
       saveLastData({ fetchedAt: payload.fetchedAt, results });
       const entries = results.filter((r) => r.summary).map((r) => ({
         uin: r.account.uin, name: r.account.name, displayName: r.account.displayName,
