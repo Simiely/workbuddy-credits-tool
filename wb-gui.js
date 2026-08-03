@@ -49,15 +49,13 @@ function showDaemon(msg) {
   $("daemonMsg").textContent = msg;
   w.hidden = false;
 }
-// 提示条「✕」:隐藏并记住,刷新后不再显示
-(function () {
-  const btn = document.getElementById("daemonHide");
-  if (!btn) return;
-  btn.addEventListener("click", () => {
+// 提示条「✕」:隐藏并记住,刷新后不再显示。用事件委托(无论 DOM 时序都可靠绑定)
+document.addEventListener("click", (e) => {
+  if (e.target && e.target.closest && e.target.closest("#daemonHide")) {
     $("daemonWarn").hidden = true;
     try { localStorage.setItem(LS_DAEMON_HIDE, "1"); } catch {}
-  });
-})();
+  }
+});
 
 // ---- 按钮状态单点控制(唯一改按钮的地方,finally 必恢复) ----
 function setBusy(b) {
