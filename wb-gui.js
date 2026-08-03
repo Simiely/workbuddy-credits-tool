@@ -503,8 +503,28 @@ function renderLines() {
     $("chart").innerHTML = '<div class="ph">暂无足够数据,多刷新几次后出现折线</div>';
     return;
   }
-  $("legend").innerHTML = raw.map((a, i) => `<div class="lg" data-key="${a.uin}" onclick="toggleLine('${a.uin}', this)"><i style="background:${LINE_COLORS[i % LINE_COLORS.length]}"></i>${acctName(a)}</div>`).join("");
+  $("legend").innerHTML = `<div class="lg-tip">单击=只看TA · 双击=隐藏TA</div>` + raw.map((a, i) => `<div class="lg" data-key="${a.uin}" onclick="onLegendClick('${a.uin}', this)"><i style="background:${LINE_COLORS[i % LINE_COLORS.length]}"></i>${acctName(a)}</div>`).join("");
   $("chart").innerHTML = lineChart(lines, dashMode);
+}
+// 图例交互:单击=独显该账号,双击=切换隐藏该账号(双击间隔 <300ms)
+let lgLastKey = "", lgLastTime = 0, lgTimer = null;
+function onLegendClick(key, el) {
+  const now = Date.now();
+  if (lgLastKey === key && now - lgLastTime < 300) {
+    clearTimeout(lgTimer);
+    lgLastKey = ""; lgLastTime = 0;
+    toggleLine(key, el); // 双击:切换显示/隐藏
+    return;
+  }
+  lgLastKey = key; lgLastTime = now;
+  lgTimer = setTimeout(() => {
+    soloLine(key); // 单击:独显
+    lgLastKey = ""; lgLastTime = 0;
+  }, 300);
+}
+function soloLine(key) {
+  document.querySelectorAll("[id^='line-']").forEach((g) => { g.style.display = g.id === "line-" + key ? "" : "none"; });
+  document.querySelectorAll("#legend .lg").forEach((lg) => { lg.classList.toggle("off", lg.dataset.key !== key); });
 }
 function toggleLine(key, el) {
   const p = document.getElementById("line-" + key);
