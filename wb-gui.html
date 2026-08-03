@@ -41,6 +41,8 @@ input,select{font:inherit;color:var(--text)}
 
 .ops{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px 12px;margin-bottom:12px}
 .sep{width:1px;height:22px;background:var(--line2);margin:0 3px}
+#syncQuick{display:flex;gap:8px}
+#syncQuick[hidden]{display:none !important}
 .auto{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--sub)}
 .auto input{width:50px;border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:5px 7px;font-size:12px;text-align:center;outline:none}
 .auto input:focus{border-color:var(--brand)}
@@ -191,7 +193,7 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
     <button class="btn btn-g" onclick="exportMd()">📝 导出 MD</button>
     <span class="sep" style="margin-left:auto"></span>
     <button class="btn btn-g" onclick="openSync()">☁️ 云同步</button>
-    <span id="syncQuick" hidden style="display:flex;gap:8px">
+    <span id="syncQuick" hidden>
       <button class="btn btn-g" onclick="syncAct('test')">🔌 测试</button>
       <button class="btn btn-g" onclick="syncAct('upload')">⬆️ 上传数据</button>
       <button class="btn btn-g" onclick="syncAct('download')">⬇️ 下载数据</button>

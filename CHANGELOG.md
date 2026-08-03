@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## v1.0.4 (2026-08-03)
+
+### 修复
+- **云同步快捷按钮(测试/上传/下载)显示逻辑**:`syncQuick` 的 `hidden` 属性被内联 `style="display:flex"` 覆盖(内联样式优先级更高),导致未配置 WebDAV 也一直显示
+  - 移除内联样式,改 CSS 控制:`#syncQuick{display:flex}` + `#syncQuick[hidden]{display:none !important}`
+  - 验证:未配置 → hidden(不显示);已配置 → 显示。保存配置/测试成功/页面加载检测到配置三条路径均触发显示
+
 ## v1.0.3 (2026-08-03)
 
 ### 修复
