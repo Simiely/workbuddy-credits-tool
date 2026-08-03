@@ -15,8 +15,6 @@ let autoTimer = null;
 let autoOn = localStorage.getItem("wb_auto_on") !== "0";
 let autoMin = parseInt(localStorage.getItem("wb_auto_min") || "5", 10) || 5;
 const LS_ON = "wb_auto_on", LS_MIN = "wb_auto_min";
-// 移动端断点:与 CSS @media(max-width:640px) 同源,JS/CSS 永远一致
-const mqMobile = window.matchMedia("(max-width: 640px)");
 
 // ---- 统一请求:默认 15s 超时(批量刷新可传 timeout:30000)+ JSON + 错误抛出 ----
 async function api(path, opts = {}) {
@@ -350,7 +348,12 @@ function updateCardsToday() {
   });
 }
 function renderDashTable() {
-  if (!dashPer.length) { $("dashTbody").innerHTML = '<tr><td colspan="7" class="ph">暂无账号</td></tr>'; $("dashMeta").textContent = ""; return; }
+  if (!dashPer.length) {
+    $("dashCards").innerHTML = '<div class="ph" style="padding:24px">暂无账号</div>';
+    $("dashTbody").innerHTML = '<tr><td colspan="7" class="ph">暂无账号</td></tr>';
+    $("dashMeta").textContent = "";
+    return;
+  }
   const expMap = buildExpiryMap();
   const tuMap = window._todayUsedMap || {};
   // 凭证状态(来自 S.results,不在 dashPer 里)
@@ -358,50 +361,46 @@ function renderDashTable() {
   for (const r of (S && S.results) || []) {
     credMap[r.account.uin] = { expired: !!r.expired, sessionExpiresAt: r.account.sessionExpiresAt };
   }
-  const isMobile = mqMobile.matches; // 与 CSS @media(max-width:640px) 同源,永远一致
-  if (isMobile) {
-    // 单元格工具:作用域在手机分支内,被每账号卡片 + 合计卡复用
-    const cell = (label, val, color, bg, big) => `<div class="dcell ${bg}" ${color ? `style="--dc:var(--${color})"` : ""}>${big ? `<div class="dc-l">${label}</div><div class="dc-v big">${val}</div>` : `<div class="dc-l">${label}</div><div class="dc-v">${val}</div>`}</div>`;
-    // 手机:2 列网格,每账号一张紧凑卡片(序号+名称+总剩余+2x2 指标;凭证日期移桌面)
-    const cards = dashPer.map((a, i) => {
-      const ex = expMap[a.uin] || {};
-      const tu = tuMap[a.uin] || 0;
-      const cred = credMap[a.uin] || {};
-      const e1 = ex.expiring1d || 0, e3 = ex.expiring3d || 0;
-      return `<div class="dacct">
-        <div class="dhead">
-          <span class="di">${i + 1}</span>
-          <span class="dname">${acctName(a)}</span>
-          ${cred.expired ? `<span class="dtag bad">⚠️</span>` : `<span class="dtag ok">✓</span>`}
-        </div>
-        <div class="dremain"><div class="dr-v">${fmt(a.currentRemain ?? "-")}</div><div class="dr-l">💎 总剩余</div></div>
-        <div class="dgrid">
-          ${cell("今日消耗", fmt(tu), "", "plain", false)}
-          ${cell("累计已用", fmt(a.used ?? "-"), "", "plain", false)}
-          ${cell("近1天过期", fmt(e1), e1 > 0 ? "warn" : "", e1 > 0 ? "warn" : "ok", e1 > 0)}
-          ${cell("近3天过期", fmt(e3), e3 > 0 ? "warn" : "", e3 > 0 ? "warn" : "ok", e3 > 0)}
-        </div>
-      </div>`;
-    }).join("");
-    const sum = (k) => dashPer.reduce((s, x) => s + (x[k] || 0), 0);
-    const sumExp1d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring1d || 0), 0);
-    const sumExp3d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring3d || 0), 0);
-    const sumTu = dashPer.reduce((s, a) => s + (tuMap[a.uin] || 0), 0);
-    // 合计卡跨整行
-    const total = `<div class="dacct dtot">
-      <div class="dhead"><div class="dname" style="font-weight:800">📊 合计</div></div>
-      <div class="dgrid">
-        ${cell("今日消耗", fmt(sumTu), "", "plain", false)}
-        ${cell("累计已用", fmt(sum("used")), "", "plain", false)}
-        ${cell("近1天过期", fmt(sumExp1d), sumExp1d > 0 ? "warn" : "", sumExp1d > 0 ? "warn" : "ok", sumExp1d > 0)}
-        ${cell("近3天过期", fmt(sumExp3d), sumExp3d > 0 ? "warn" : "", sumExp3d > 0 ? "warn" : "ok", sumExp3d > 0)}
+  // 单元格工具(卡片版)
+  const cell = (label, val, color, bg, big) => `<div class="dcell ${bg}" ${color ? `style="--dc:var(--${color})"` : ""}>${big ? `<div class="dc-l">${label}</div><div class="dc-v big">${val}</div>` : `<div class="dc-l">${label}</div><div class="dc-v">${val}</div>`}</div>`;
+  // ===== 手机卡片版(桌面隐藏) =====
+  const cards = dashPer.map((a, i) => {
+    const ex = expMap[a.uin] || {};
+    const tu = tuMap[a.uin] || 0;
+    const cred = credMap[a.uin] || {};
+    const e1 = ex.expiring1d || 0, e3 = ex.expiring3d || 0;
+    return `<div class="dacct">
+      <div class="dhead">
+        <span class="di">${i + 1}</span>
+        <span class="dname">${acctName(a)}</span>
+        ${cred.expired ? `<span class="dtag bad">⚠️</span>` : `<span class="dtag ok">✓</span>`}
       </div>
-      <div class="dremain" style="background:none;border:none;padding:6px 0 0"><div class="dr-v" style="font-size:22px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">${fmt(sum("currentRemain"))}</div><div class="dr-l">💎 总剩余</div></div>
+      <div class="dremain"><div class="dr-v">${fmt(a.currentRemain ?? "-")}</div><div class="dr-l">💎 总剩余</div></div>
+      <div class="dgrid">
+        ${cell("今日消耗", fmt(tu), "", "plain", false)}
+        ${cell("累计已用", fmt(a.used ?? "-"), "", "plain", false)}
+        ${cell("近1天过期", fmt(e1), e1 > 0 ? "warn" : "", e1 > 0 ? "warn" : "ok", e1 > 0)}
+        ${cell("近3天过期", fmt(e3), e3 > 0 ? "warn" : "", e3 > 0 ? "warn" : "ok", e3 > 0)}
+      </div>
     </div>`;
-    $("dashTbody").innerHTML = `<tr><td colspan="7" style="padding:0;white-space:normal"><div class="dash-mobile">${cards}${total}</div></td></tr>`;
-    $("dashMeta").textContent = dashPer.length + " 个账号";
-    return;
-  }
+  }).join("");
+  const sum = (k) => dashPer.reduce((s, x) => s + (x[k] || 0), 0);
+  const sumExp1d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring1d || 0), 0);
+  const sumExp3d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring3d || 0), 0);
+  const sumTu = dashPer.reduce((s, a) => s + (tuMap[a.uin] || 0), 0);
+  // 合计卡跨整行
+  const total = `<div class="dacct dtot">
+    <div class="dhead"><div class="dname" style="font-weight:800">📊 合计</div></div>
+    <div class="dgrid">
+      ${cell("今日消耗", fmt(sumTu), "", "plain", false)}
+      ${cell("累计已用", fmt(sum("used")), "", "plain", false)}
+      ${cell("近1天过期", fmt(sumExp1d), sumExp1d > 0 ? "warn" : "", sumExp1d > 0 ? "warn" : "ok", sumExp1d > 0)}
+      ${cell("近3天过期", fmt(sumExp3d), sumExp3d > 0 ? "warn" : "", sumExp3d > 0 ? "warn" : "ok", sumExp3d > 0)}
+    </div>
+    <div class="dremain" style="background:none;border:none;padding:6px 0 0"><div class="dr-v" style="font-size:22px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">${fmt(sum("currentRemain"))}</div><div class="dr-l">💎 总剩余</div></div>
+  </div>`;
+  $("dashCards").innerHTML = cards + total;
+  // ===== 桌面表格版(手机隐藏) =====
   const rows = dashPer.map((a, i) => {
     const ex = expMap[a.uin] || {};
     return `<tr>
@@ -411,10 +410,6 @@ function renderDashTable() {
     <td class="num" style="color:var(--${ex.expiring1d > 0 ? 'warn' : 'faint'})">${fmt(ex.expiring1d)}</td>
     <td class="num" style="color:var(--${ex.expiring3d > 0 ? 'warn' : 'faint'})${ex.expiring3d > 0 ? ';font-weight:800' : ''}">${fmt(ex.expiring3d)}</td></tr>`;
   }).join("");
-  const sum = (k) => dashPer.reduce((s, x) => s + (x[k] || 0), 0);
-  const sumExp1d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring1d || 0), 0);
-  const sumExp3d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring3d || 0), 0);
-  const sumTu = dashPer.reduce((s, a) => s + (tuMap[a.uin] || 0), 0);
   $("dashTbody").innerHTML = rows + `<tr style="border-top:2px solid var(--line2);font-weight:800">
     <td></td><td>合计</td><td class="num">${fmt(sum("currentRemain"))}</td><td class="num">${fmt(sum("used"))}</td>
     <td class="num">${fmt(sumTu)}</td><td class="num">${fmt(sumExp1d)}</td><td class="num">${fmt(sumExp3d)}</td></tr>`;
@@ -782,18 +777,6 @@ refreshAll(false);
 checkDaemon();
 checkWebdavQuick();
 applyAuto();
-
-// 断点变化时重渲染总览:JS 判断与 CSS media query 同源(mqMobile),
-// 跨断点(宽↔手机 / F12 模拟切换)时 CSS 先变、JS 需重渲染,否则表格 HTML 会挤成一坨文本
-let mqTimer = null;
-const onBreakpoint = () => {
-  clearTimeout(mqTimer);
-  mqTimer = setTimeout(() => {
-    if (dashPer.length) renderDashTable();
-  }, 200);
-};
-if (mqMobile.addEventListener) mqMobile.addEventListener("change", onBreakpoint);
-else if (mqMobile.addListener) mqMobile.addListener(onBreakpoint); // Safari <14 兼容
 
 // 若已配置过 WebDAV,操作条云同步右侧直接显示上传/下载
 async function checkWebdavQuick() {

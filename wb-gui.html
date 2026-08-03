@@ -102,42 +102,41 @@ select.inp{background:var(--card2);border:1px solid var(--line);border-radius:8p
 .chart{flex:1;min-width:0;overflow-x:auto}
 
 .tbl{overflow:auto;max-height:360px}
+/* 账号总览:两套 DOM 并存(JS 都渲染),CSS 决定显示哪套 */
+.dash-cards{display:none}          /* 卡片版默认隐藏(桌面走表格) */
+.dash-table{display:block}         /* 表格版默认显示 */
 table{width:100%;border-collapse:collapse;font-size:13px;min-width:540px}
 th{position:sticky;top:0;z-index:1;background:var(--card2);color:var(--sub);font-weight:700;text-align:left;padding:9px 12px;border-bottom:1px solid var(--line2);font-size:11px;white-space:nowrap}
 td{padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(255,255,255,.02)}
 .num{font-variant-numeric:tabular-nums}
-/* 手机:总览表隐藏表头,JS 渲染每账号一卡(2 列网格,紧凑适配) */
+/* ===== 账号总览卡片版样式(全局;默认隐藏,手机 media 显示) ===== */
+.dacct{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;position:relative;padding:8px 8px 10px}
+.dacct::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:var(--grad)}
+.dacct.dtot{grid-column:1/-1}
+.dacct.dtot::before{opacity:.5}
+.dhead{display:flex;align-items:center;gap:4px;margin-bottom:6px;font-size:11px;min-height:18px}
+.dhead .di{flex-shrink:0;width:16px;height:16px;border-radius:4px;background:var(--grad);color:#2d1a1a;font-weight:800;font-size:9px;display:grid;place-items:center}
+.dhead .dname{flex:1;min-width:0;font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dhead .dtag{flex-shrink:0;font-size:9px;padding:1px 5px;border-radius:6px;font-weight:700}
+.dhead .dtag.ok{color:var(--ok);background:rgba(61,214,140,.1)}
+.dhead .dtag.bad{color:var(--warn);background:rgba(247,163,92,.15)}
+.dremain{text-align:center;padding:4px 0 6px}
+.dr-v{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.1}
+.dr-l{font-size:9px;color:var(--sub);margin-top:1px}
+.dgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.dcell{border-radius:8px;padding:5px 4px;text-align:center}
+.dcell.plain{background:var(--card2);border:1px solid var(--line)}
+.dcell.ok{background:rgba(61,214,140,.08);border:1px solid rgba(61,214,140,.2)}
+.dcell.warn{background:rgba(247,163,92,.1);border:1px solid rgba(247,163,92,.3)}
+.dc-l{font-size:9px;color:var(--sub);line-height:1.2}
+.dc-v{font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--text);margin-top:1px}
+.dc-v.big{font-size:14px;color:var(--dc,var(--text))}
+/* 手机:显示卡片(2 列网格),隐藏表格 */
 @media(max-width:640px){
-  .tbl{max-height:none}
-  .tbl table{min-width:0}
-  .tbl thead{display:none}
-  .tbl tbody td{padding:0;border:none;white-space:normal}
-  .tbl tbody tr{display:block;border:none}
-  .tbl tbody tr:hover td{background:none}
-  .dash-mobile{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:2px}
-  .dacct{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:0;overflow:hidden;position:relative;padding:8px 8px 10px}
-  .dacct::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:var(--grad)}
-  .dacct.dtot{grid-column:1/-1}
-  .dacct.dtot::before{opacity:.5}
-  .dhead{display:flex;align-items:center;gap:4px;margin-bottom:6px;font-size:11px;min-height:18px}
-  .dhead .di{flex-shrink:0;width:16px;height:16px;border-radius:4px;background:var(--grad);color:#2d1a1a;font-weight:800;font-size:9px;display:grid;place-items:center}
-  .dhead .dname{flex:1;min-width:0;font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .dhead .dtag{flex-shrink:0;font-size:9px;padding:1px 5px;border-radius:6px;font-weight:700}
-  .dhead .dtag.ok{color:var(--ok);background:rgba(61,214,140,.1)}
-  .dhead .dtag.bad{color:var(--warn);background:rgba(247,163,92,.15)}
-  .dremain{text-align:center;padding:4px 0 6px}
-  .dr-v{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.1}
-  .dr-l{font-size:9px;color:var(--sub);margin-top:1px}
-  .dgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
-  .dcell{border-radius:8px;padding:5px 4px;text-align:center}
-  .dcell.plain{background:var(--card2);border:1px solid var(--line)}
-  .dcell.ok{background:rgba(61,214,140,.08);border:1px solid rgba(61,214,140,.2)}
-  .dcell.warn{background:rgba(247,163,92,.1);border:1px solid rgba(247,163,92,.3)}
-  .dc-l{font-size:9px;color:var(--sub);line-height:1.2}
-  .dc-v{font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--text);margin-top:1px}
-  .dc-v.big{font-size:14px;color:var(--dc,var(--text))}
+  .dash-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:2px}
+  .dash-table{display:none}
 }
 @media(min-width:640px){
   .wrap{padding:0 20px}
@@ -190,7 +189,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
   <section class="panel">
     <div class="phead"><h2>📋 账号总览</h2><span class="hint" id="dashMeta"></span></div>
-    <div class="pbody"><div class="tbl"><table><thead><tr><th>#</th><th>账号</th><th>总剩余</th><th>累计已用</th><th>今日消耗</th><th>近1天过期</th><th>近3天过期</th></tr></thead><tbody id="dashTbody"></tbody></table></div></div>
+    <div class="pbody">
+      <div class="dash-cards" id="dashCards"></div>
+      <div class="tbl dash-table"><table><thead><tr><th>#</th><th>账号</th><th>总剩余</th><th>累计已用</th><th>今日消耗</th><th>近1天过期</th><th>近3天过期</th></tr></thead><tbody id="dashTbody"></tbody></table></div>
+    </div>
   </section>
 
   <div class="ops">
