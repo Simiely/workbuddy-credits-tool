@@ -1,0 +1,20 @@
+# ===== 运行数据(含凭证,严禁上传) =====
+# 账号池(每账号 cookie 凭证)
+wb-accounts.json
+# WebDAV 配置(含密码)
+wb-sync.json
+# 消耗历史快照
+wb-history.json
+# 最近一次查询缓存
+wb-last-data.json
+*.log
+*.log.err
+
+# ===== 旧文档(已被 README/DEVELOPMENT/docs 规范文档替代,仅本地留存) =====
+README-架构.md
+README-wb-credits.md
+
+# ===== 系统 =====
+.DS_Store
+Thumbs.db
+node_modules/

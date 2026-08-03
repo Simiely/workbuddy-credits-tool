@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>积分指挥中心</title>
+<style>
+:root {
+  --bg:#101318; --card:#1a1f28; --card2:#202634; --chip:#262d3a;
+  --text:#eef0f4; --sub:#98a1b1; --faint:#6b7484;
+  --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.14);
+  --brand:#ff9292; --brand2:#ff7aa2;
+  --grad:linear-gradient(135deg,#ff9292,#ff7aa2);
+  --ok:#3dd68c; --warn:#f7a35c; --bad:#ff6b6b;
+  --r:12px; --pill:999px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:radial-gradient(900px 500px at 85% -10%,rgba(255,146,146,.07),transparent 60%),var(--bg);color:var(--text);min-height:100vh;padding:0 14px 60px}
+.wrap{max-width:1240px;margin:0 auto}
+button{font:inherit;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+input,select{font:inherit;color:var(--text)}
+*::-webkit-scrollbar{width:8px;height:8px}*::-webkit-scrollbar-thumb{background:#39414f;border-radius:4px}
+
+.top{position:sticky;top:0;z-index:40;backdrop-filter:blur(12px);background:rgba(16,19,24,.78);border-bottom:1px solid var(--line);margin-bottom:12px}
+.top-in{max-width:1240px;margin:0 auto;padding:10px 0;display:flex;align-items:center;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.logo{width:36px;height:36px;border-radius:10px;background:var(--grad);display:grid;place-items:center;color:#2d1a1a;font-weight:900;font-size:14px;flex-shrink:0}
+.brand h1{font-size:16px;font-weight:800;white-space:nowrap}
+.brand .upd{font-size:11px;color:var(--faint);display:block;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50vw}
+.top-acts{margin-left:auto;display:flex;gap:8px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:38px;transition:transform .15s,opacity .15s;white-space:nowrap}
+.btn:active{transform:scale(.96)}
+.btn-p{background:var(--grad);color:#2d1a1a}
+.btn-g{background:var(--card2);color:var(--text);border:1px solid var(--line)}
+.btn-g:hover{border-color:var(--line2)}
+.btn-d{background:transparent;color:var(--bad);border:1px solid var(--line);font-size:12px;padding:5px 10px;min-height:28px}
+.btn:disabled{opacity:.5;pointer-events:none}
+.spin{width:13px;height:13px;border:2px solid rgba(45,26,26,.3);border-top-color:#2d1a1a;border-radius:50%;animation:sp .7s linear infinite;flex-shrink:0}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.ops{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px 12px;margin-bottom:12px}
+.sep{width:1px;height:22px;background:var(--line2);margin:0 3px}
+.auto{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--sub)}
+.auto input{width:50px;border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:5px 7px;font-size:12px;text-align:center;outline:none}
+.auto input:focus{border-color:var(--brand)}
+
+.warn{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.3);color:var(--bad);padding:10px 14px;border-radius:12px;margin-bottom:12px;font-size:13px}
+.warn.d{background:rgba(247,163,92,.08);border-color:rgba(247,163,92,.3);color:var(--warn)}
+
+.hero{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}
+.hcard{position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;overflow:hidden;min-height:84px}
+.hcard::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:var(--grad)}
+.hcard .n{font-size:26px;font-weight:900;font-variant-numeric:tabular-nums;margin-top:6px}
+.hcard .l{font-size:11px;color:var(--sub);margin-top:3px}
+.hcard .h-ico{font-size:18px;position:absolute;right:12px;top:12px;opacity:.55}
+.hcard.total{grid-column:1/-1}
+.hcard.total .n{font-size:38px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hcard.bad{border-color:rgba(255,107,107,.5)}
+.hcard.bad .n{background:none;-webkit-text-fill-color:var(--bad)}
+.hcard.warn{border-color:rgba(247,163,92,.45)}
+.hcard.warn .n{background:none;-webkit-text-fill-color:var(--warn)}
+.hcard .s{font-size:11px;margin-top:4px;color:var(--faint)}
+.hcard.ok .s{color:var(--ok)}.hcard.warn .s{color:var(--warn)}.hcard.bad .s{color:var(--bad)}
+
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:12px}
+.phead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+.phead h2{font-size:14px;font-weight:800}
+.pbody{padding:14px 16px}
+select.inp{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;outline:none}
+.hint{font-size:11px;color:var(--faint)}
+.ph{text-align:center;color:var(--faint);padding:40px 12px;font-size:13px}
+
+.line{display:flex;flex-direction:column-reverse;gap:12px}
+.legend{display:flex;flex-wrap:wrap;gap:6px}
+.lg{display:inline-flex;align-items:center;gap:7px;font-size:12px;padding:5px 11px;border:1px solid var(--line);border-radius:999px;cursor:pointer;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.lg:hover{border-color:var(--line2);background:var(--chip)}
+.lg.off{opacity:.4;text-decoration:line-through}
+.lg i{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.chart{flex:1;min-width:0;overflow-x:auto}
+
+.tbl{overflow:auto;max-height:360px}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:540px}
+th{position:sticky;top:0;z-index:1;background:var(--card2);color:var(--sub);font-weight:700;text-align:left;padding:9px 12px;border-bottom:1px solid var(--line2);font-size:11px;white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+.num{font-variant-numeric:tabular-nums}
+
+.grid{display:grid;grid-template-columns:1fr;gap:12px}
+.acct{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;cursor:pointer;position:relative;overflow:hidden;transition:transform .25s,border-color .25s}
+.acct:hover{transform:translateY(-2px);border-color:rgba(255,146,146,.35)}
+.acct-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.acct-name{font-size:15px;font-weight:800;word-break:break-all}
+.acct-uin{font-size:11px;color:var(--faint);margin-top:3px}
+.remain{background:rgba(255,146,146,.1);border:1px solid rgba(255,146,146,.22);color:var(--brand);border-radius:12px;padding:6px 12px;text-align:center;flex-shrink:0;min-width:76px}
+.remain .tt{display:block;font-size:9px;font-weight:700;opacity:.8;letter-spacing:.5px}
+.remain .tn{display:block;font-size:19px;font-weight:900;line-height:1.2}
+.acct-rows{margin-top:14px;display:flex;flex-direction:column;gap:12px}
+.arow .l{font-size:11px;color:var(--sub);margin-bottom:4px;display:flex;justify-content:space-between}
+.arow .l b{color:var(--text)}
+.meter{height:7px;border-radius:999px;background:var(--chip);overflow:hidden}
+.meter i{display:block;height:100%;border-radius:999px;background:var(--grad);transition:width .5s}
+.meter.warn i{background:linear-gradient(90deg,var(--warn),#ffc08a)}
+.acct-foot{display:flex;justify-content:space-between;align-items:center;margin-top:14px;gap:8px;flex-wrap:wrap}
+.acct-foot .exp{font-size:11px;color:var(--faint)}
+.acts{display:flex;gap:6px}
+.empty{text-align:center;color:var(--faint);padding:40px 12px}
+.empty .big{font-size:42px;margin-bottom:10px}
+footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
+
+.mask{position:fixed;inset:0;background:rgba(8,10,14,.66);backdrop-filter:blur(5px);display:none;align-items:flex-end;justify-content:center;z-index:60}
+.mask.show{display:flex}
+.sheet{width:100%;max-height:92vh;background:var(--card);border-radius:16px 16px 0 0;display:flex;flex-direction:column;overflow:hidden;animation:up .3s}
+@keyframes up{from{transform:translateY(60px);opacity:.3}to{transform:none;opacity:1}}
+.shead{display:flex;align-items:center;justify-content:space-between;padding:15px 16px;border-bottom:1px solid var(--line)}
+.shead h2{font-size:15px;font-weight:800}
+.shead button{background:transparent;color:var(--sub);font-size:18px;width:32px;height:32px;border-radius:8px}
+.shead button:hover{background:var(--chip)}
+.sbody{overflow:auto;padding:16px;-webkit-overflow-scrolling:touch}
+.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px}
+.mcard{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.mcard .l{font-size:10px;color:var(--sub)}
+.mcard .v{font-size:18px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums}
+.mcard .s{font-size:10px;color:var(--faint);margin-top:3px}
+.sect{margin-bottom:16px}
+.stitle{font-size:12px;font-weight:800;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.stitle .sub{font-size:10px;color:var(--faint);font-weight:500;margin-left:auto}
+.bucket{border:1px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden}
+.bucket.now{border-color:rgba(255,146,146,.4)}
+.bh{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;cursor:pointer;font-size:13px}
+.bh:hover{background:var(--chip)}
+.bh .br{font-weight:800}
+.bh .bs b{color:var(--brand);font-variant-numeric:tabular-nums}
+.bh .bt{color:var(--sub);font-size:11px;white-space:nowrap}
+.bd{display:none;border-top:1px dashed var(--line2);padding:9px 14px}
+.open .bd{display:block}
+.bday{margin-bottom:9px}.bday:last-child{margin-bottom:0}
+.bday-h{font-size:11px;font-weight:700;color:var(--sub);margin-bottom:4px}
+.bday-i{font-size:12px;padding:3px 0 3px 10px;border-left:2px solid var(--line2);margin:2px 0 2px 4px}
+.finput{width:100%;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:11px 13px;font-size:14px;outline:none}
+.finput:focus{border-color:var(--brand)}
+.factions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+.tip{font-size:12px;color:var(--sub);margin-bottom:14px;line-height:1.7}
+
+.toast{
+  position:fixed;top:calc(14px + env(safe-area-inset-top));left:50%;
+  transform:translateX(-50%) translateY(-8px);background:var(--card2);color:var(--text);
+  border:1px solid var(--line-strong);
+  padding:11px 20px;border-radius:var(--pill);font-size:13px;font-weight:700;
+  opacity:0;pointer-events:none;z-index:90;box-shadow:0 8px 24px rgba(0,0,0,.55);
+  transition:opacity .25s,transform .25s;max-width:calc(100vw - 32px);text-align:center;
+}
+.toast.show{opacity:.97;transform:translateX(-50%)}
+
+@media(min-width:640px){
+  .wrap{padding:0 20px}
+  .hero{grid-template-columns:1.7fr 1fr 1fr 1fr}
+  .hcard.total{grid-column:auto}
+  .grid{grid-template-columns:repeat(2,1fr)}
+  .cards{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+  .mask{align-items:center;padding:24px}
+  .sheet{border-radius:16px;width:min(860px,100%)}
+  .sheet.sm{width:min(400px,100%)}
+  .line{flex-direction:row}
+  .legend{width:150px;flex-shrink:0;flex-direction:column;max-height:250px;overflow:auto;gap:5px}
+  .lg{width:100%}
+}
+@media(min-width:900px){.grid{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:1200px){.grid{grid-template-columns:repeat(4,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top"><div class="top-in">
+    <div class="brand"><span class="logo">WB</span><div><h1>积分指挥中心</h1><span class="upd" id="updated">加载中…</span></div></div>
+    <div class="top-acts">
+      <span class="auto" style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:4px 10px">⏱ 自动刷新 <input type="number" id="autoMin" min="1" max="1440" value="5"> 分钟 <button class="btn btn-g" id="btnAuto" onclick="toggleAuto()" style="min-height:30px;padding:4px 12px">开</button></span>
+      <button class="btn btn-p" id="btnRefresh" onclick="refreshAll(true)"><span class="spin" id="refreshSpin" hidden></span><span id="refreshTxt">刷新全部</span></button>
+    </div>
+  </div></header>
+
+  <div class="ops">
+    <button class="btn btn-g" onclick="saveCurrent()" id="btnAdd">＋ 添加当前账号</button>
+    <span class="sep"></span>
+    <button class="btn btn-g" onclick="openClear()">🧹 清空</button>
+    <button class="btn btn-g" onclick="exportMd()">📝 导出 MD</button>
+    <span class="sep" style="margin-left:auto"></span>
+    <button class="btn btn-g" onclick="openSync()">☁️ 云同步</button>
+    <span id="syncQuick" hidden style="display:flex;gap:8px">
+      <button class="btn btn-g" onclick="syncAct('test')">🔌 测试</button>
+      <button class="btn btn-g" onclick="syncAct('upload')">⬆️ 上传数据</button>
+      <button class="btn btn-g" onclick="syncAct('download')">⬇️ 下载数据</button>
+    </span>
+  </div>
+
+  <div class="warn" id="err" hidden></div>
+  <div class="warn d" id="daemonWarn" hidden></div>
+
+  <section class="hero" id="hero"></section>
+
+  <section class="panel">
+    <div class="phead"><h2>📈 积分消耗趋势</h2>
+      <div style="display:flex;gap:10px;align-items:center"><span class="hint">点击图例隐藏折线</span>
+      <select class="inp" id="mode" onchange="changeMode()"><option value="day">按天</option><option value="month">按月</option></select></div>
+    </div>
+    <div class="pbody line"><div class="legend" id="legend"></div><div class="chart" id="chart"><div class="ph">加载中…</div></div></div>
+  </section>
+
+  <section class="panel">
+    <div class="phead"><h2>📋 账号总览</h2><span class="hint" id="dashMeta"></span></div>
+    <div class="pbody"><div class="tbl"><table><thead><tr><th>#</th><th>账号</th><th>总剩余</th><th>累计已用</th><th>记录期消耗</th><th>记录</th></tr></thead><tbody id="dashTbody"></tbody></table></div></div>
+  </section>
+
+  <div class="grid" id="grid"></div>
+  <footer id="foot"></footer>
+</div>
+
+<div class="mask" id="mask" onclick="if(event.target===this)closeModal()">
+  <div class="sheet"><div class="shead"><h2 id="mTitle"></h2><button onclick="closeModal()">✕</button></div>
+  <div class="sbody" id="mBody"></div></div>
+</div>
+<div class="mask" id="smallMask" onclick="if(event.target===this)closeSmall()">
+  <div class="sheet sm"><div class="shead"><h2 id="smallTitle"></h2><button onclick="closeSmall()">✕</button></div>
+  <div class="sbody" id="smallBody"></div></div>
+</div>
+<!-- 云同步弹窗 -->
+<div class="mask" id="syncMask" onclick="if(event.target===this)closeSync()">
+  <div class="sheet">
+    <div class="shead"><h2>☁️ 云同步(WebDAV)</h2><button onclick="closeSync()">✕</button></div>
+    <div class="sbody">
+      <div class="tip">将账号池与统计数据备份到你的 WebDAV(坚果云 / Nextcloud 等)。换电脑时先「下载数据」再刷新即可恢复。<br>⚠️ 备份含登录凭证,请妥善保管 WebDAV 账号与密码(密码仅保存在本机)。</div>
+      <label class="tip" style="display:block;margin-bottom:6px">WebDAV 地址(文件夹 URL,如 https://dav.jianguoyun.com/dav/)</label>
+      <input class="finput" id="syncUrl" placeholder="https://dav.example.com/dav/" autocomplete="off">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+        <div><label class="tip" style="display:block;margin-bottom:6px">用户名</label><input class="finput" id="syncUser" placeholder="账号" autocomplete="off"></div>
+        <div><label class="tip" style="display:block;margin-bottom:6px">密码(仅存本机)</label><input class="finput" id="syncPass" type="password" placeholder="密码" autocomplete="off"></div>
+      </div>
+      <div class="factions" style="justify-content:flex-start;flex-wrap:wrap;gap:8px;margin-top:14px">
+        <button class="btn btn-g" onclick="saveSyncCfg()">💾 保存配置</button>
+        <button class="btn btn-g" onclick="syncAct('test')">🔌 测试连接</button>
+        <button class="btn btn-g" onclick="syncAct('upload')">⬆️ 上传数据</button>
+        <button class="btn btn-g" onclick="syncAct('download')">⬇️ 下载数据</button>
+      </div>
+      <div class="tip" id="syncStatus" style="margin-top:12px"></div>
+    </div>
+  </div>
+</div>
+<!-- 清空本地数据弹窗 -->
+<div class="mask" id="clearMask" onclick="if(event.target===this)closeClear()">
+  <div class="sheet sm">
+    <div class="shead"><h2>🧹 清空本地数据</h2><button onclick="closeClear()">✕</button></div>
+    <div class="sbody">
+      <div class="tip" style="color:var(--bad)">⚠️ 以下操作会永久删除本地数据,不可恢复!建议先「☁️ 云同步」备份。</div>
+      <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--card2);border:1px solid var(--line);border-radius:12px;margin-bottom:10px;cursor:pointer">
+        <input type="checkbox" id="clearAccounts" style="width:18px;height:18px"><div><div style="font-size:13px;font-weight:700">账号池</div><div style="font-size:11px;color:var(--sub)">删除所有账号与登录凭证,需重新登录添加</div></div>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--card2);border:1px solid var(--line);border-radius:12px;margin-bottom:10px;cursor:pointer">
+        <input type="checkbox" id="clearHistory" style="width:18px;height:18px"><div><div style="font-size:13px;font-weight:700">历史快照</div><div style="font-size:11px;color:var(--sub)">消耗趋势折线将回到初始状态</div></div>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--card2);border:1px solid var(--line);border-radius:12px;margin-bottom:6px;cursor:pointer">
+        <input type="checkbox" id="clearCache" style="width:18px;height:18px"><div><div style="font-size:13px;font-weight:700">最近缓存</div><div style="font-size:11px;color:var(--sub)">离线可查的最近一次数据快照</div></div>
+      </label>
+      <div class="factions">
+        <button class="btn btn-g" onclick="closeClear()">取消</button>
+        <button class="btn" style="background:rgba(255,107,107,.12);color:var(--bad);border:1px solid rgba(255,107,107,.35);min-height:40px" onclick="confirmClear()">确认清空所选</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="/wb-gui.js"></script>
+</body>
+</html>
