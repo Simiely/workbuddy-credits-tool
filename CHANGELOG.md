@@ -1,5 +1,36 @@
 # CHANGELOG
 
+## v1.0.16 (2026-08-03) · 手机端 UI 大修 + 性能优化 + CSS 恢复
+
+### 手机端 UI
+- **账号总览重设计**:手机端每账号一卡(渐变顶条 + 总剩余大数字 + 2×2 指标网格 + 凭证状态),桌面保持 7 列表格
+- **2 列网格**:手机端账号总览改为 `grid-template-columns:1fr 1fr` 紧凑卡,合计卡跨整行,消除大面积空白
+- **断点同源根治**:JS 同时渲染卡片+表格两套 DOM,CSS media query 决定显示哪套(删除 JS 分支判断与 matchMedia 监听),彻底消除"JS/CSS 不同步 → 表格 td 挤成一坨"问题
+- **布局**:自动刷新控件移到操作条「导出 MD」后,顶栏只留品牌+刷新(手机一行)
+- 拖拽排序触屏禁用(`matchMedia("(hover:none)")`);hero 手机 2x2 均分
+
+### 修复
+- **严重:CSS 丢失**(此前脚本批量替换误删):
+  - 弹窗/抽屉类:`.mask/.sheet/.shead/.sbody/.toast/.finput/.factions/.tip`(4 个弹窗曾裸显示在页面流)
+  - 明细弹窗内:`.cards/.mcard/.sect/.stitle/.bucket/.bh/.bd/.bday*`
+  - 账号卡片列表:`.grid/.acct*/.remain/.acct-rows/.arow/.meter/.acct-foot/.empty/footer` 共 22 条
+  - 已从 git 历史完整恢复,并加 Python 审计脚本比对(JS 引用 class vs CSS 定义,0 缺失)
+- `cell is not defined` 作用域 bug(定义在 map 回调内,合计卡用时已出作用域)
+- 首屏长时间"加载中" → 缓存秒开 + 后台刷新
+
+### 性能
+- **首屏缓存秒开**:启动先加载 `/api/last` 本地缓存渲染,再后台 `/api/all` 实时覆盖;手动刷新强制实时
+- **超时分级**:批量刷新 30s,其他请求 15s(≥12 账号时旧 15s 会被查询时长打爆)
+- **dashboard/all 内存缓存**:按 wb-history.json mtime 失效,命中 0.2s
+- **缓存异步写**:history.js 写盘队列(fs.promises),610KB 缓存不阻塞事件循环
+- **后端健壮性**:body 1MB 限流、`/api/status` daemon 探测 2.5s 超时、edge-daemon CDP send 15s 超时+清理 pending
+- **防缓存**:html meta no-cache + JS 引用版本戳 `?v=v1.0.6`
+- 常量统一:删 `MAX_HISTORY`,用 util.js `HISTORY_LIMIT`
+
+### 变更
+- 原生 `confirm()` 全部改自定义 `cfm()` Promise 弹窗(复用 smallMask,与 tools-center 风格一致)
+- hero「今日已用」初始 0(非 —);删死代码 `shortName`
+
 ## v1.0.15 (2026-08-03) · 模块化重构 + UI 优化 + 多项修复
 
 ### 重构
