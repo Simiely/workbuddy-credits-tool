@@ -98,6 +98,7 @@ function renderHero() {
   const failN = rs.length - okN;
   const total = rs.reduce((s, r) => s + (r.summary ? totalOf(r.summary) : 0), 0);
   const used = rs.reduce((s, r) => s + (r.summary ? (r.summary.baseUsed ?? 0) + r.summary.giftUsed : 0), 0);
+  const exp3d = rs.reduce((s, r) => s + expiringInDays(r, 3), 0);
   let cls = "ok", sub = "✅ 一切正常";
   if (!rs.length) { cls = ""; sub = "账号池为空,点「＋ 添加当前账号」"; }
   else if (expN > 0) { cls = "bad"; sub = `⚠️ ${expN} 个凭证过期,需重新登录`; }
@@ -105,7 +106,7 @@ function renderHero() {
   else sub = `✅ 一切正常 · ${okN}/${rs.length} 账号有效`;
   $("hero").innerHTML = `
     <div class="hcard total ${cls}"><span class="h-ico">🏦</span><div class="n" id="heroTotal">${rs.length ? fmt(total) : "—"}</div><div class="l">总剩余积分</div><div class="s">${sub}</div></div>
-    <div class="hcard"><span class="h-ico">⏳</span><div class="n" id="heroExpiring">${rs.length ? fmt(rs.reduce((s, r) => s + todayExpiringOf(r), 0)) : "—"}</div><div class="l">今日会过期</div></div>
+    <div class="hcard"><span class="h-ico">⏳</span><div class="n" id="heroExp3d">${rs.length ? fmt(exp3d) : "—"}</div><div class="l">近3天过期</div></div>
     <div class="hcard"><span class="h-ico">📉</span><div class="n" id="heroToday">—</div><div class="l">今日已用</div></div>
     <div class="hcard"><span class="h-ico">🔥</span><div class="n">${fmt(used)}</div><div class="l">累计已用</div></div>`;
   updateTodayUsed(); // 异步计算今日已用(基于历史快照)
@@ -125,6 +126,46 @@ function todayExpiringOf(r) {
     if (d === dk) sum += a.CapacityRemain || 0;
   }
   return sum;
+}
+
+// 近 maxDays 天内过期的有效赠送包剩余积分合计
+function expiringInDays(r, maxDays) {
+  if (!r || !r.data) return 0;
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const limit = new Date(now.getTime() + maxDays * 86400000); limit.setHours(23, 59, 59, 999);
+  let sum = 0;
+  for (const a of r.data.Accounts || []) {
+    if (a.PackageName.includes("体验版")) continue;
+    if (a.Status !== 0) continue;
+    const dt = new Date((a.CycleEndTime || "").replace(" ", "T"));
+    if (dt >= now && dt <= limit) sum += a.CapacityRemain || 0;
+  }
+  return sum;
+}
+
+// 按 uin 建立近1天/3天过期积分映射
+function buildExpiryMap() {
+  const map = {};
+  const rs = (S && S.results) || [];
+  for (const r of rs) {
+    if (!r.data) continue;
+    map[r.account.uin] = { expiring1d: expiringInDays(r, 1), expiring3d: expiringInDays(r, 3) };
+  }
+  return map;
+}
+
+// 按 uin 建立今日消耗积分映射(基于历史快照差值)
+function buildTodayUsedMap(per) {
+  const map = {};
+  const now = new Date();
+  const isToday = (t) => { const d = new Date(t); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate(); };
+  for (const a of (per || [])) {
+    const today = (a.series || []).filter((p) => isToday(p.t));
+    if (today.length < 2) { map[a.uin] = 0; continue; }
+    const diff = today[0].v - today[today.length - 1].v;
+    map[a.uin] = diff > 0 ? Math.round(diff * 100) / 100 : 0;
+  }
+  return map;
 }
 
 // 今日已用 = 每个账号今日消耗之和(该账号今日最早快照总剩余 − 最新快照总剩余,>0 计入)
@@ -235,14 +276,11 @@ async function moveCard(fromId, toId) {
   }
 }
 
-// ---- 一键排序:按总剩余积分从多到少(保存到账号池,与拖拽同机制) ----
-async function sortByTotal() {
+// ---- 一键排序:按指定指标从多到少(保存到账号池,与拖拽同机制) ----
+async function sortByMetric(getV, label) {
   const rs = (S && S.results) || [];
   if (rs.length < 2) return toast("账号不足 2 个,无需排序");
-  const sorted = [...rs].sort((a, b) => {
-    const va = totalOf(a.summary) || 0, vb = totalOf(b.summary) || 0;
-    return vb - va; // 无 summary(失败/过期)视为 0,自然排最后
-  });
+  const sorted = [...rs].sort((a, b) => (getV(b) || 0) - (getV(a) || 0)); // 无值(失败/过期)视为 0,自然排最后
   S.results = sorted;
   renderCards();
   const ids = S.results.map((r) => r.account.id);
@@ -250,33 +288,45 @@ async function sortByTotal() {
     const j = await api(__BASE__ + "/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
     if (!j.ok) throw new Error(j.error || "保存失败");
     renderDash(); // 表格/折线图例同步
-    toast("✅ 已按总剩余从多到少排序并保存");
+    toast(`✅ 已按${label}从多到少排序并保存`);
   } catch (e) {
     toast("❌ " + e.message);
     refreshAll(false); // 失败回滚
   }
 }
+function sortByTotal() { sortByMetric((r) => totalOf(r.summary), "总剩余"); }
+function sortByExpiring1d() { sortByMetric((r) => expiringInDays(r, 1), "近1天过期"); }
 
 // ---- 仪表盘:表格 + 折线(异步加载,失败不阻塞) ----
 async function renderDash() {
   try {
     const j = await api(__BASE__ + "/api/dashboard/all");
     dashPer = j.per || [];
+    window._todayUsedMap = buildTodayUsedMap(dashPer);
   } catch { return; }
   renderDashTable();
   renderLines();
 }
 function renderDashTable() {
-  if (!dashPer.length) { $("dashTbody").innerHTML = '<tr><td colspan="6" class="ph">暂无账号</td></tr>'; $("dashMeta").textContent = ""; return; }
-  const rows = dashPer.map((a, i) => `<tr>
+  if (!dashPer.length) { $("dashTbody").innerHTML = '<tr><td colspan="7" class="ph">暂无账号</td></tr>'; $("dashMeta").textContent = ""; return; }
+  const expMap = buildExpiryMap();
+  const tuMap = window._todayUsedMap || {};
+  const rows = dashPer.map((a, i) => {
+    const ex = expMap[a.uin] || {};
+    return `<tr>
     <td class="num" style="color:var(--faint)">${i + 1}</td><td>${acctName(a)}</td>
     <td class="num"><b>${a.currentRemain ?? "-"}</b></td><td class="num">${a.used ?? "-"}</td>
-    <td class="num">${a.points > 1 ? (a.consumed > 0 ? fmt(a.consumed) : "0") : "—"}</td>
-    <td class="num" style="color:var(--faint)">${a.points}</td></tr>`).join("");
+    <td class="num">${tuMap[a.uin] > 0 ? fmt(tuMap[a.uin]) : "0"}</td>
+    <td class="num" style="color:var(--${ex.expiring1d > 0 ? 'warn' : 'faint'})">${fmt(ex.expiring1d)}</td>
+    <td class="num" style="color:var(--${ex.expiring3d > 0 ? 'warn' : 'faint'})">${fmt(ex.expiring3d)}</td></tr>`;
+  }).join("");
   const sum = (k) => dashPer.reduce((s, x) => s + (x[k] || 0), 0);
+  const sumExp1d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring1d || 0), 0);
+  const sumExp3d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring3d || 0), 0);
+  const sumTu = dashPer.reduce((s, a) => s + (tuMap[a.uin] || 0), 0);
   $("dashTbody").innerHTML = rows + `<tr style="border-top:2px solid var(--line2);font-weight:800">
     <td></td><td>合计</td><td class="num">${fmt(sum("currentRemain"))}</td><td class="num">${fmt(sum("used"))}</td>
-    <td class="num">${fmt(sum("consumed"))}</td><td class="num" style="color:var(--faint)">${dashPer.length} 账号</td></tr>`;
+    <td class="num">${fmt(sumTu)}</td><td class="num">${fmt(sumExp1d)}</td><td class="num">${fmt(sumExp3d)}</td></tr>`;
   $("dashMeta").textContent = dashPer.length + " 个账号";
 }
 function agg(pts, mode) {
@@ -306,11 +356,24 @@ function lineChart(series) {
   let paths = "";
   series.forEach((s, si) => {
     if (s.pts.length < 2) return;
-    let d = "";
-    for (const p of s.pts) { const i = times.indexOf(p.t); if (i < 0) continue; d += (d ? "L" : "M") + X(i).toFixed(1) + "," + Y(p.v).toFixed(1); }
-    if (d) paths += `<path id="line-${s.key}" d="${d}" fill="none" stroke="${LINE_COLORS[si % LINE_COLORS.length]}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const color = LINE_COLORS[si % LINE_COLORS.length];
+    let d = "", pts = "", prevV = null;
+    for (const p of s.pts) {
+      const i = times.indexOf(p.t);
+      if (i < 0) continue;
+      const x = X(i).toFixed(1), y = Y(p.v).toFixed(1);
+      d += (d ? "L" : "M") + x + "," + y;
+      // 消耗标记:相对上一快照剩余减少(=当天有消耗),仅标点不连线
+      if (prevV !== null && p.v < prevV) {
+        pts += `<circle cx="${x}" cy="${y}" r="3.4" fill="${color}" stroke="#101318" stroke-width="1.6"/>`;
+      }
+      prevV = p.v;
+    }
+    if (d) paths += `<g id="line-${s.key}"><path d="${d}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>${pts}</g>`;
   });
-  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;min-width:430px;display:block">${ticks}${paths}${xl}</svg>`;
+  const unit = dashMode === "month" ? "当月" : "当日";
+  const note = `<text x="${w - R}" y="12" font-size="10" fill="#6b7484" text-anchor="end">● ${unit}有消耗</text>`;
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;min-width:430px;display:block">${ticks}${paths}${xl}${note}</svg>`;
 }
 function renderLines() {
   const withS = dashPer.map((a) => ({ ...a, series: agg(a.series || [], dashMode) })).filter((a) => a.series.length >= 2);
@@ -377,14 +440,25 @@ function buildBuckets(gifts) {
 const fmtD = (d) => `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 function renderBuckets(gifts) {
   const bks = buildBuckets(gifts);
-  if (!bks.length) return '<div class="sect"><div class="stitle">📅 积分到期明细 <span class="sub">从今天起每 7 天</span></div><div class="ph" style="padding:14px">无有效赠送包</div></div>';
-  const bars = bks.map((b, i) => {
-    const max = Math.max(...bks.map((x) => x.total), 1);
-    return `<div style="flex:1;min-width:52px;text-align:center"><div style="font-size:11px;font-weight:800;color:${i === 0 ? "var(--warn)" : "var(--brand)"}">${fmt(b.total)}</div>
+  if (!bks.length) return '<div class="sect"><div class="stitle">📅 积分到期明细 <span class="sub">从今天起</span></div><div class="ph" style="padding:14px">无有效赠送包</div></div>';
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const dayDiff = (g) => { const d = new Date((g.CycleEndTime || "").replace(" ", "T")); return Math.max(0, Math.floor((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - t0) / 86400000)); };
+  const sumBy = (n) => { let t = 0, c = 0; for (const g of gifts) if (dayDiff(g) <= n) { t += g.CapacityRemain; c++; } return { t, c }; };
+  const e1 = sumBy(1), e3 = sumBy(3); // 近1天/近3天到期(含今天)
+  const max = Math.max(...bks.map((x) => x.total), e1.t, e3.t, 1);
+  const bar = (label, e, color, bg, note) => `<div style="flex:1;min-width:52px;text-align:center"><div style="font-size:11px;font-weight:800;color:${color}">${fmt(e.t)}</div>
+    <div style="height:90px;background:var(--chip);border-radius:6px;display:flex;align-items:flex-end;overflow:hidden;margin-top:4px"><div style="width:100%;background:${bg};height:${Math.max(4, (e.t / max) * 100)}%"></div></div>
+    <div style="font-size:10px;color:var(--sub);margin-top:5px">${label}</div><div style="font-size:9px;color:var(--faint)">${e.c} 包${note ? " · " + note : ""}</div></div>`;
+  const bars = [
+    bar("1天到期", e1, "var(--bad)", "linear-gradient(180deg,var(--bad),#ff8f8f)", "今+明"),
+    bar("3天到期", e3, "var(--warn)", "linear-gradient(180deg,var(--warn),#ffc08a)", "至3天后"),
+    ...bks.map((b, i) => {
+      return `<div style="flex:1;min-width:52px;text-align:center"><div style="font-size:11px;font-weight:800;color:${i === 0 ? "var(--warn)" : "var(--brand)"}">${fmt(b.total)}</div>
       <div style="height:90px;background:var(--chip);border-radius:6px;display:flex;align-items:flex-end;overflow:hidden;margin-top:4px"><div style="width:100%;background:${i === 0 ? "linear-gradient(180deg,var(--warn),#ffc08a)" : "var(--grad)"};height:${Math.max(4, (b.total / max) * 100)}%"></div></div>
       <div style="font-size:10px;color:var(--sub);margin-top:5px">${fmtD(b.start)}~${fmtD(b.end)}</div><div style="font-size:9px;color:var(--faint)">${b.count} 包</div></div>`;
-  }).join("");
-  return `<div class="sect"><div class="stitle">📅 积分到期明细 <span class="sub">从今天起每 7 天</span></div>
+    }),
+  ].join("");
+  return `<div class="sect"><div class="stitle">📅 积分到期明细 <span class="sub">从今天起</span></div>
     <div style="display:flex;gap:8px;overflow-x:auto;padding:6px 0">${bars}</div></div>`;
 }
 async function loadHist(uin) {

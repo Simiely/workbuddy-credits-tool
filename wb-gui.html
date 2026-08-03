@@ -29,7 +29,7 @@ input,select{font:inherit;color:var(--text)}
 .brand .upd{font-size:11px;color:var(--faint);display:block;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50vw}
 .top-acts{margin-left:auto;display:flex;gap:8px}
 
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:38px;transition:transform .15s,opacity .15s;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:38px;transition:transform .15s,opacity .15s;white-space:nowrap;flex-shrink:0}
 .btn:active{transform:scale(.96)}
 .btn-p{background:var(--grad);color:#2d1a1a}
 .btn-g{background:var(--card2);color:var(--text);border:1px solid var(--line)}
@@ -39,14 +39,9 @@ input,select{font:inherit;color:var(--text)}
 .spin{width:13px;height:13px;border:2px solid rgba(45,26,26,.3);border-top-color:#2d1a1a;border-radius:50%;animation:sp .7s linear infinite;flex-shrink:0}
 @keyframes sp{to{transform:rotate(360deg)}}
 
-.ops{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px 12px;margin-bottom:12px}
-/* 左右两组:左组靠左,右组靠右(margin-right:auto 标准 flex 弹性对齐,无占位元素) */
-.ops-l{display:flex;align-items:center;gap:8px;margin-right:auto;flex-shrink:0}
-.ops-r{display:flex;align-items:center;gap:8px;flex-shrink:0}
-/* 窄屏(手机):操作条按钮只显示 emoji,隐藏文字,紧凑适配 */
-@media(max-width:640px){.ops .txt{display:none}}
+.ops{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px 12px;margin-bottom:12px;max-height:102px;overflow-y:auto}
 .sep{width:1px;height:22px;background:var(--line2);margin:0 3px}
-#syncQuick{display:flex;gap:8px}
+#syncQuick{display:contents}
 #syncQuick[hidden]{display:none !important}
 .auto{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--sub)}
 .auto input{width:50px;border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:5px 7px;font-size:12px;text-align:center;outline:none}
@@ -190,20 +185,17 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
   </div></header>
 
   <div class="ops">
-    <div class="ops-l">
-      <button class="btn btn-g" onclick="saveCurrent()" id="btnAdd"><span class="em">＋</span><span class="txt">添加当前账号</span></button>
-      <button class="btn btn-g" onclick="sortByTotal()"><span class="em">📊</span><span class="txt">总剩余排序</span></button>
-      <button class="btn btn-g" onclick="openClear()"><span class="em">🧹</span><span class="txt">清空</span></button>
-      <button class="btn btn-g" onclick="exportMd()"><span class="em">📝</span><span class="txt">导出 MD</span></button>
-    </div>
-    <div class="ops-r">
-      <button class="btn btn-g" onclick="openSync()"><span class="em">☁️</span><span class="txt">云同步</span></button>
-      <span id="syncQuick" hidden>
-        <button class="btn btn-g" title="测试连接" onclick="syncAct('test')">🔌</button>
-        <button class="btn btn-g" title="上传数据" onclick="syncAct('upload')">⬆️</button>
-        <button class="btn btn-g" title="下载数据" onclick="syncAct('download')">⬇️</button>
-      </span>
-    </div>
+    <button class="btn btn-g" onclick="saveCurrent()" id="btnAdd"><span class="em">＋</span><span class="txt">添加账号</span></button>
+    <button class="btn btn-g" onclick="sortByTotal()"><span class="em">📊</span><span class="txt">剩余排序</span></button>
+    <button class="btn btn-g" onclick="sortByExpiring1d()"><span class="em">⏰</span><span class="txt">近1天过期排序</span></button>
+    <button class="btn btn-g" onclick="openClear()"><span class="em">🧹</span><span class="txt">清空</span></button>
+    <button class="btn btn-g" onclick="exportMd()"><span class="em">📝</span><span class="txt">导出 MD</span></button>
+    <button class="btn btn-g" onclick="openSync()"><span class="em">☁️</span><span class="txt">云同步</span></button>
+    <span id="syncQuick" hidden>
+      <button class="btn btn-g" title="测试连接" onclick="syncAct('test')">🔌</button>
+      <button class="btn btn-g" title="上传数据" onclick="syncAct('upload')">⬆️</button>
+      <button class="btn btn-g" title="下载数据" onclick="syncAct('download')">⬇️</button>
+    </span>
   </div>
 
   <div class="warn" id="err" hidden></div>
@@ -221,7 +213,7 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
 
   <section class="panel">
     <div class="phead"><h2>📋 账号总览</h2><span class="hint" id="dashMeta"></span></div>
-    <div class="pbody"><div class="tbl"><table><thead><tr><th>#</th><th>账号</th><th>总剩余</th><th>累计已用</th><th>记录期消耗</th><th>记录</th></tr></thead><tbody id="dashTbody"></tbody></table></div></div>
+    <div class="pbody"><div class="tbl"><table><thead><tr><th>#</th><th>账号</th><th>总剩余</th><th>累计已用</th><th>今日消耗</th><th>近1天过期</th><th>近3天过期</th></tr></thead><tbody id="dashTbody"></tbody></table></div></div>
   </section>
 
   <div class="grid" id="grid"></div>

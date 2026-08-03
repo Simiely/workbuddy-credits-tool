@@ -9,7 +9,7 @@
 - Node.js ≥ 18(开发用 22.x),**纯原生 ESM**,零第三方依赖(`node:http` / `node:fs` / fetch / AbortController)
 - 浏览器侧:Edge CDP(WebSocket)→ `edge-daemon.mjs` 独立进程提供本地 HTTP API(仅添加账号用)
 - GUI 前端:原生 HTML/CSS/JS,无框架;折线图为自绘 SVG
-- 当前版本:v1.0.12(见 CHANGELOG)
+- 当前版本:v1.0.14(见 CHANGELOG)
 
 ## 关键坑(摘要,详情见 @rules/常见坑.md)
 
@@ -20,6 +20,8 @@
 5. 历史快照**同分钟去重**(`lib/history.js`),快照读取后必须按时间升序排序(折线方向)
 6. **子路径挂载自适应**:资源用相对路径,API 全部 `__BASE__ + "/api/.."`(`__BASE__` 平台注入或自行检测;独立运行为空)——否则挂载到 `/tool/<id>/` 后按钮全失效
 7. edge-daemon 端口 **8129**(HTTP API)/ Edge 调试 **9222**;发现机制用 CDP 标准(`/json/version`),**勿改回读 DevToolsActivePort 文件**(残留坑);改 `lib/util.js` 后必须重启常驻子进程
+8. **近1天/近3天过期口径**:有效(Status===0)且非"体验版"的赠送包,`CycleEndTime` 距今天 ≤1/≤3 天(按天比对)的 `CapacityRemain` 合计;`expiringInDays(r,n)` 已统一,表格/hero/明细柱/排序全走它
+9. **消耗标记点**:趋势图数据点比上一快照剩余**减少**即画散点(不连线);折线+标记点包在 `<g id="line-key">`,图例 toggle 整体隐藏
 
 ## 约定
 
