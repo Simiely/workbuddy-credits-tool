@@ -455,7 +455,7 @@ function lineChart(series, mode) {
     if (s.pts.length === 1) {
       const p = s.pts[0]; const i = times.indexOf(p.t);
       if (i >= 0) { const x = X(i).toFixed(1), y = Y(p.v).toFixed(1);
-        paths += `<g id="line-${s.key}"><title>${new Date(p.t).toLocaleString("zh-CN").slice(5)} 消耗 ${Math.round(p.v)}</title><circle cx="${x}" cy="${y}" r="1" fill="${color}"/><text x="${x}" y="${y - 8}" font-size="11" fill="${color}" text-anchor="middle">${Math.round(p.v)}</text></g>`; }
+        paths += `<g id="line-${s.key}"><title>${new Date(p.t).toLocaleString("zh-CN").slice(5)} 消耗 ${Math.round(p.v)}</title><circle cx="${x}" cy="${y}" r="1" fill="${color}"/><circle cx="${x}" cy="${y}" r="7" fill="transparent" class="cpt" data-v="${Math.round(p.v)}" data-t="${p.t}" data-n="${escAttr(s.name)}"/><text x="${x}" y="${y - 8}" font-size="11" fill="${color}" text-anchor="middle">${Math.round(p.v)}</text></g>`; }
       return;
     }
     let d = "", pts = "", prevV = null;
@@ -465,7 +465,7 @@ function lineChart(series, mode) {
       const x = X(i).toFixed(1), y = Y(p.v).toFixed(1);
       d += (d ? "L" : "M") + x + "," + y;
       // 透明 hover 区(触屏/鼠标移到点附近显示大数字浮层);上升点补可见小圆
-      pts += `<circle cx="${x}" cy="${y}" r="7" fill="transparent" class="cpt" data-v="${Math.round(p.v)}" data-t="${p.t}" data-n="${s.name || ""}"/>`;
+      pts += `<circle cx="${x}" cy="${y}" r="7" fill="transparent" class="cpt" data-v="${Math.round(p.v)}" data-t="${p.t}" data-n="${escAttr(s.name)}"/>`;
       if (prevV !== null && p.v > prevV) {
         pts += `<circle cx="${x}" cy="${y}" r="2.5" fill="${color}"/>`;
       }
@@ -480,6 +480,7 @@ function lineChart(series, mode) {
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;min-width:${minW}px;display:block">${ticks}${paths}${xl}${note}</svg>`;
 }
 // 每日消耗已由后端 /api/dashboard/all 按自然日算好(series 直接是消耗值),前端不再聚合
+const escAttr = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 function renderLines() {
   const raw = dashPer.filter((a) => (a.series || []).length >= 1);
   if (!raw.length) {

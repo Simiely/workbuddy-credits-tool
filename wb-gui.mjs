@@ -94,7 +94,9 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/dashboard/all") {
       const histMtime = fs.existsSync(path.join(TOOLS_DIR, "wb-history.json"))
         ? fs.statSync(path.join(TOOLS_DIR, "wb-history.json")).mtimeMs : 0;
-      if (dashCache && dashCache.mtime === histMtime) {
+      // 缓存键 = 历史文件 mtime + 本地日期:跨午夜后即使历史未变(今天无新快照)也要重算 todayUsed
+      const cacheKey = histMtime + "|" + new Date().toDateString();
+      if (dashCache && dashCache.key === cacheKey) {
         return json(200, { ok: true, ...dashCache.payload });
       }
       const hist = loadHistory();
@@ -148,7 +150,7 @@ const server = http.createServer(async (req, res) => {
           series, // 每日消耗序列(自然日),前端直接展示不再计算
         };
       });
-      dashCache = { mtime: histMtime, payload: { totals, per } };
+      dashCache = { key: cacheKey, payload: { totals, per } };
       return json(200, { ok: true, totals, per });
     }
     if (url.pathname === "/api/credits") {
