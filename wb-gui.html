@@ -28,13 +28,13 @@ input,select{font:inherit;color:var(--text)}
 .brand h1{font-size:16px;font-weight:800;white-space:nowrap}
 .brand .upd{font-size:11px;color:var(--faint);display:block;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50vw}
 .top-acts{margin-left:auto;display:flex;gap:8px;align-items:center}
-/* 手机:自动刷新控件精简为"⏱ N分 [开]",副标题隐藏 */
+/* 手机:顶栏只留品牌+刷新,自动刷新控件已在操作条 */
 @media(max-width:640px){
   .brand .upd{display:none}
-  .auto .lbl{display:none}
-  .auto input{width:38px;padding:4px 4px}
   .top-acts{gap:6px}
-  .btn{padding:8px 10px}
+  .top .btn{padding:8px 12px}
+  .ops .auto{padding:3px 8px}
+  .ops .auto input{width:38px;padding:4px 4px}
 }
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:38px;transition:transform .15s,opacity .15s;white-space:nowrap;flex-shrink:0}
@@ -214,7 +214,6 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
   <header class="top"><div class="top-in">
     <div class="brand"><span class="logo">WB</span><div><h1>积分指挥中心</h1><span class="upd" id="updated">加载中…</span></div></div>
     <div class="top-acts">
-      <span class="auto" style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:4px 10px">⏱ <span class="lbl">自动刷新</span> <input type="number" id="autoMin" min="1" max="1440" value="5"> <span class="lbl">分钟</span> <button class="btn btn-g" id="btnAuto" onclick="toggleAuto()" style="min-height:30px;padding:4px 12px">开</button></span>
       <button class="btn btn-p" id="btnRefresh" onclick="refreshAll(true)"><span class="spin" id="refreshSpin" hidden></span><span id="refreshTxt">刷新全部</span></button>
     </div>
   </div></header>
@@ -253,6 +252,7 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
     <button class="btn btn-g" onclick="sortByExpiring()"><span class="em">⏰</span><span class="txt">过期排序</span></button>
     <button class="btn btn-g" onclick="openClear()"><span class="em">🧹</span><span class="txt">清空</span></button>
     <button class="btn btn-g" onclick="exportMd()"><span class="em">📝</span><span class="txt">导出 MD</span></button>
+    <span class="auto" style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:4px 10px">⏱ <span class="lbl">自动刷新</span> <input type="number" id="autoMin" min="1" max="1440" value="5"> <span class="lbl">分钟</span> <button class="btn btn-g" id="btnAuto" onclick="toggleAuto()" style="min-height:30px;padding:4px 12px">开</button></span>
   </div>
 
   <div class="grid" id="grid"></div>
