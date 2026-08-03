@@ -175,6 +175,8 @@ function buildExpiryMap() {
 }
 
 // 各账号今日消耗映射(数据来自后端 per.todayUsed,避免重复计算)
+// 今日已用映射:renderDash 更新后增量同步到已渲染的账号卡(避免全量重渲染)
+let todayMap = {}, prevTodayUsed;
 function buildTodayUsedMap(per) {
   const map = {};
   for (const a of (per || [])) map[a.uin] = a.todayUsed || 0;
@@ -213,11 +215,11 @@ function renderCards() {
           ${s.baseSize ? `<div class="meter ${bp > 85 ? "warn" : ""}"><i style="width:${bp}%"></i></div>` : ""}</div>
         <div class="arow"><div class="l"><span>📦 有效赠送包(${s.giftCount} 个)</span><b>剩余 ${s.giftRemain}</b></div>
           <div class="meter ${gp > 85 ? "warn" : ""}"><i style="width:${gp}%"></i></div></div>
-        <div class="arow"><div class="l" style="color:var(--brand)"><div class="acct-today">今日消耗 —</div></div></div>
+        <div class="arow"><div class="l t-brand"><div class="acct-today">今日消耗 ${todayMap[a.uin] !== undefined ? fmt(todayMap[a.uin]) : "—"}</div></div></div>
       </div>${foot}</div>`;
   }).join("");
   initDrag();
-  $("foot").textContent = "v1.1.0 · 数据来自 WorkBuddy 网页版接口 · 自动刷新 " + autoMin + " 分钟 · 凭证过期请重新登录后「添加当前账号」 · 卡片可拖动排序";
+  $("foot").textContent = "v1.3.0 · 数据来自 WorkBuddy 网页版接口 · 自动刷新 " + autoMin + " 分钟 · 凭证过期请重新登录后「添加当前账号」 · 卡片可拖动排序";
 }
 
 // ---- 卡片拖拽排序(顺序随账号池持久化,经 /api/reorder 保存) ----
@@ -256,6 +258,19 @@ function initDrag() {
     });
   });
 }
+// 保存排序:POST /api/reorder + 同步数据 + 重渲染 + 成功/失败提示(拖拽/一键排序共用)
+async function saveOrder(ids, okMsg) {
+  try {
+    await api(__BASE__ + "/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+    const byId = new Map((S.results || []).map((r) => [r.account.id, r]));
+    S.results = ids.map((id) => byId.get(id)).filter(Boolean);
+    renderDash(); // 表格/折线图例同步
+    toast("✅ " + okMsg);
+  } catch (e) {
+    toast("❌ " + e.message);
+    refreshAll(false); // 失败回滚到服务端顺序
+  }
+}
 async function moveCard(fromId, toId) {
   const cards = [...$("grid").querySelectorAll(".acct")];
   const from = cards.find((c) => c.dataset.id === fromId);
@@ -264,18 +279,7 @@ async function moveCard(fromId, toId) {
   if (from.compareDocumentPosition(to) & Node.DOCUMENT_POSITION_FOLLOWING) to.after(from);
   else to.before(from);
   const ids = [...$("grid").querySelectorAll(".acct")].map((c) => c.dataset.id);
-  try {
-    const j = await api(__BASE__ + "/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
-    if (!j.ok) throw new Error(j.error || "保存失败");
-    // 同步数据顺序(表格/后续渲染保持一致)
-    const byId = new Map((S.results || []).map((r) => [r.account.id, r]));
-    S.results = ids.map((id) => byId.get(id)).filter(Boolean);
-    renderDash(); // 后端已保存新顺序,重拉仪表盘使表格/图例同步
-    toast("✅ 卡片顺序已保存");
-  } catch (e) {
-    toast("❌ " + e.message);
-    refreshAll(false); // 失败回滚到服务端顺序
-  }
+  await saveOrder(ids, "卡片顺序已保存");
 }
 
 // ---- 一键排序:按指定指标从多到少(保存到账号池,与拖拽同机制) ----
@@ -293,15 +297,7 @@ async function persistOrder(sorted, label) {
   S.results = sorted;
   renderCards();
   const ids = S.results.map((r) => r.account.id);
-  try {
-    const j = await api(__BASE__ + "/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
-    if (!j.ok) throw new Error(j.error || "保存失败");
-    renderDash(); // 表格/折线图例同步
-    toast(`✅ 已按${label}从多到少排序并保存`);
-  } catch (e) {
-    toast("❌ " + e.message);
-    refreshAll(false); // 失败回滚
-  }
+  await saveOrder(ids, `已按${label}从多到少排序并保存`);
 }
 async function sortByMetric(getV, label) {
   const rs = (S && S.results) || [];
@@ -328,10 +324,10 @@ async function renderDash() {
   try {
     const j = await api(__BASE__ + "/api/dashboard/all");
     dashPer = j.per || [];
-    window._todayUsedMap = buildTodayUsedMap(dashPer);
+    todayMap = buildTodayUsedMap(dashPer);
     // hero 今日已用:直接从后端预计算的 todayUsed 汇总
     const totalUsed = dashPer.reduce((s, a) => s + (a.todayUsed || 0), 0);
-    const prev = window._prevTodayUsed;
+    const prev = prevTodayUsed;
     let trendHtml = totalUsed > 0 ? fmt(totalUsed) : "0";
     if (prev !== undefined && totalUsed !== prev) {
       const delta = totalUsed - prev;
@@ -339,9 +335,9 @@ async function renderDash() {
       const c = delta > 0 ? "var(--bad)" : "var(--ok)";
       trendHtml = `${fmt(totalUsed)} <span style="font-size:12px;color:${c}">${arrow}${fmt(Math.abs(delta))}</span>`;
     }
-    window._prevTodayUsed = totalUsed;
+    prevTodayUsed = totalUsed;
     $("heroToday").innerHTML = trendHtml;
-    updateCardsToday(); // 卡片上的今日消耗(异步,等 dashPer 加载后)
+    syncCardsToday(); // dashPer 就绪后增量同步卡片今日消耗
   } catch { return; }
   renderDashTable();
   renderLines();
@@ -354,8 +350,8 @@ async function renderDash() {
     if (lastTs) $("dashMeta").textContent += " · " + new Date(lastTs).toLocaleString("zh-CN").slice(5);
   }
 }
-function updateCardsToday() {
-  const map = window._todayUsedMap || {};
+function syncCardsToday() {
+  const map = todayMap || {};
   document.querySelectorAll(".acct[data-uin]").forEach((c) => {
     const el = c.querySelector(".acct-today");
     if (el) el.textContent = "今日消耗 " + fmt(map[c.dataset.uin] || 0);
@@ -363,13 +359,13 @@ function updateCardsToday() {
 }
 function renderDashTable() {
   if (!dashPer.length) {
-    $("dashCards").innerHTML = '<div class="ph" style="padding:24px">暂无账号</div>';
+    $("dashCards").innerHTML = '<div class="ph ph-md">暂无账号</div>';
     $("dashTbody").innerHTML = '<tr><td colspan="7" class="ph">暂无账号</td></tr>';
     $("dashMeta").textContent = "";
     return;
   }
   const expMap = buildExpiryMap();
-  const tuMap = window._todayUsedMap || {};
+  const tuMap = todayMap || {};
   // 凭证状态(来自 S.results,不在 dashPer 里)
   const credMap = {};
   for (const r of (S && S.results) || []) {
@@ -404,7 +400,7 @@ function renderDashTable() {
   const sumTu = dashPer.reduce((s, a) => s + (tuMap[a.uin] || 0), 0);
   // 合计卡跨整行
   const total = `<div class="dacct dtot">
-    <div class="dhead"><div class="dname" style="font-weight:800">📊 合计</div></div>
+    <div class="dhead"><div class="dname num-b">📊 合计</div></div>
     <div class="dgrid">
       ${cell("今日消耗", fmt(sumTu), "", "plain", false)}
       ${cell("累计已用", fmt(sum("used")), "", "plain", false)}
@@ -418,13 +414,13 @@ function renderDashTable() {
   const rows = dashPer.map((a, i) => {
     const ex = expMap[a.uin] || {};
     return `<tr>
-    <td class="num" style="color:var(--faint)">${i + 1}</td><td>${acctName(a)}</td>
+    <td class="num t-faint">${i + 1}</td><td>${acctName(a)}</td>
     <td class="num"><b>${a.currentRemain ?? "-"}</b></td><td class="num">${a.used ?? "-"}</td>
     <td class="num">${tuMap[a.uin] > 0 ? fmt(tuMap[a.uin]) : "0"}</td>
     <td class="num" style="color:var(--${ex.expiring1d > 0 ? 'warn' : 'faint'})">${fmt(ex.expiring1d)}</td>
     <td class="num" style="color:var(--${ex.expiring3d > 0 ? 'warn' : 'faint'})${ex.expiring3d > 0 ? ';font-weight:800' : ''}">${fmt(ex.expiring3d)}</td></tr>`;
   }).join("");
-  $("dashTbody").innerHTML = rows + `<tr style="border-top:2px solid var(--line2);font-weight:800">
+  $("dashTbody").innerHTML = rows + `<tr class="row-total">
     <td></td><td>合计</td><td class="num">${fmt(sum("currentRemain"))}</td><td class="num">${fmt(sum("used"))}</td>
     <td class="num">${fmt(sumTu)}</td><td class="num">${fmt(sumExp1d)}</td><td class="num">${fmt(sumExp3d)}</td></tr>`;
   $("dashMeta").textContent = dashPer.length + " 个账号";
@@ -538,12 +534,15 @@ function toggleLine(key, el) {
 function changeMode(mode) { dashMode = mode; $("btnDay").className = "btn btn-g"; $("btnMonth").className = "btn btn-g"; (dashMode === "day" ? $("btnDay") : $("btnMonth")).classList.add("active"); renderLines(); }
 
 // ---- 明细弹窗 ----
-function closeModal() { $("mask").classList.remove("show"); }
+// ---- 弹窗统一开关(4 个 mask 共用一套显隐逻辑)----
+const openMask = (id) => $(id).classList.add("show");
+const closeMask = (id) => $(id).classList.remove("show");
+function closeModal() { closeMask("mask"); }
 function openDetail(id) {
   if (suppressClick) return; // 拖拽后抑制误触点击
   const r = (S && S.results || []).find((x) => x.account.id === id); // 用 id 定位,拖拽后不串位
   if (!r || !r.summary || !r.data) return toast("该账号暂无数据,无法查看明细");
-  $("mask").classList.add("show");
+  openMask("mask");
   $("mTitle").textContent = acctName(r.account) + " · 明细";
   const s = r.summary;
   const gifts = r.data.Accounts.filter((a) => !a.PackageName.includes("体验版"));
@@ -551,7 +550,7 @@ function openDetail(id) {
   const expC = gifts.filter((a) => a.Status !== 0).length;
   const baseNote = s.baseCycleEnd ? `(当月有效 · 至 ${s.baseCycleEnd.slice(5, 10)})` : "";
   $("mBody").innerHTML = `
-    <div class="hint" style="margin-bottom:12px">数据时间: ${S.fetchedAt} · 点「刷新全部」获取最新</div>
+    <div class="hint hint-mb">数据时间: ${S.fetchedAt} · 点「刷新全部」获取最新</div>
     <div class="cards">
       <div class="mcard"><div class="l">🎁 体验版剩余 ${baseNote}</div><div class="v">${s.baseRemain ?? "-"}</div></div>
       <div class="mcard"><div class="l">📦 赠送包已用/总量</div><div class="v">${fmt(s.giftUsed)} / ${s.giftSize}</div></div>
@@ -559,7 +558,7 @@ function openDetail(id) {
       <div class="mcard"><div class="l">💎 剩余总积分</div><div class="v">${fmt(totalOf(s))}</div><div class="s">体验版 ${s.baseRemain ?? 0} + 赠送 ${s.giftRemain} · 过期 ${expC}</div></div>
     </div>
     ${renderBuckets(act)}
-    <div class="sect"><div class="stitle">📈 消耗历史 <span class="sub">剩余总积分变化</span></div><div id="histBox"><div class="ph" style="padding:14px">加载中…</div></div></div>`;
+    <div class="sect"><div class="stitle">📈 消耗历史 <span class="sub">剩余总积分变化</span></div><div id="histBox"><div class="ph ph-sm">加载中…</div></div></div>`;
   loadHist(r.account.uin);
 }
 function buildBuckets(gifts) {
@@ -584,26 +583,23 @@ function buildBuckets(gifts) {
 const fmtD = (d) => `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 function renderBuckets(gifts) {
   const bks = buildBuckets(gifts);
-  if (!bks.length) return '<div class="sect"><div class="stitle">📅 积分到期明细 <span class="sub">从今天起</span></div><div class="ph" style="padding:14px">无有效赠送包</div></div>';
+  if (!bks.length) return '<div class="sect"><div class="stitle">📅 积分到期明细 <span class="sub">从今天起</span></div><div class="ph ph-sm">无有效赠送包</div></div>';
   const t0 = new Date(); t0.setHours(0, 0, 0, 0);
   const dayDiff = (g) => { const d = new Date((g.CycleEndTime || "").replace(" ", "T")); return Math.max(0, Math.floor((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - t0) / 86400000)); };
   const sumBy = (n) => { let t = 0, c = 0; for (const g of gifts) if (dayDiff(g) <= n) { t += g.CapacityRemain; c++; } return { t, c }; };
   const e1 = sumBy(1), e3 = sumBy(3); // 近1天/近3天到期(含今天)
   const max = Math.max(...bks.map((x) => x.total), e1.t, e3.t, 1);
-  const bar = (label, e, color, bg, note) => `<div style="flex:1;min-width:52px;text-align:center"><div style="font-size:11px;font-weight:800;color:${color}">${fmt(e.t)}</div>
-    <div style="height:90px;background:var(--chip);border-radius:6px;display:flex;align-items:flex-end;overflow:hidden;margin-top:4px"><div style="width:100%;background:${bg};height:${Math.max(4, (e.t / max) * 100)}%"></div></div>
-    <div style="font-size:10px;color:var(--sub);margin-top:5px">${label}</div><div style="font-size:9px;color:var(--faint)">${e.c} 包${note ? " · " + note : ""}</div></div>`;
+  // 统一条形样式(样式在 CSS 类 .bar-*,仅高度动态)
+  const bar = (label, e, cls, note) => `<div class="bar-col"><div class="bar-v ${cls}">${fmt(e.t)}</div>
+    <div class="bar-track"><div class="bar-fill ${cls}" style="height:${Math.max(4, (e.t / max) * 100)}%"></div></div>
+    <div class="bar-label">${label}</div><div class="bar-sub">${e.c} 包${note ? " · " + note : ""}</div></div>`;
   const bars = [
-    bar("1天到期", e1, "var(--bad)", "linear-gradient(180deg,var(--bad),#ff8f8f)", "今+明"),
-    bar("3天到期", e3, "var(--warn)", "linear-gradient(180deg,var(--warn),#ffc08a)", "至3天后"),
-    ...bks.map((b, i) => {
-      return `<div style="flex:1;min-width:52px;text-align:center"><div style="font-size:11px;font-weight:800;color:${i === 0 ? "var(--warn)" : "var(--brand)"}">${fmt(b.total)}</div>
-      <div style="height:90px;background:var(--chip);border-radius:6px;display:flex;align-items:flex-end;overflow:hidden;margin-top:4px"><div style="width:100%;background:${i === 0 ? "linear-gradient(180deg,var(--warn),#ffc08a)" : "var(--grad)"};height:${Math.max(4, (b.total / max) * 100)}%"></div></div>
-      <div style="font-size:10px;color:var(--sub);margin-top:5px">${fmtD(b.start)}~${fmtD(b.end)}</div><div style="font-size:9px;color:var(--faint)">${b.count} 包</div></div>`;
-    }),
+    bar("1天到期", e1, "bad", "今+明"),
+    bar("3天到期", e3, "warn", "至3天后"),
+    ...bks.map((b, i) => bar(`${fmtD(b.start)}~${fmtD(b.end)}`, b, i === 0 ? "warn" : "brand", `${b.count} 包`)),
   ].join("");
   return `<div class="sect"><div class="stitle">📅 积分到期明细 <span class="sub">从今天起</span></div>
-    <div style="display:flex;gap:8px;overflow-x:auto;padding:6px 0">${bars}</div></div>`;
+    <div class="bar-row">${bars}</div></div>`;
 }
 async function loadHist(uin) {
   try {
@@ -611,7 +607,7 @@ async function loadHist(uin) {
     const h = j.history || [];
     const box = $("histBox");
     if (!box) return;
-    if (!h.length) { box.innerHTML = '<div class="ph" style="padding:12px">暂无历史(每次成功刷新自动记录)</div>'; return; }
+    if (!h.length) { box.innerHTML = '<div class="ph ph-sm">暂无历史(每次成功刷新自动记录)</div>'; return; }
     // 按自然日聚合:每天取最早和最晚的快照,计算日消耗
     const byDay = {};
     for (const x of h) {
@@ -629,13 +625,13 @@ async function loadHist(uin) {
         return { day, start: first.totalRemain, end: last.totalRemain, consumed };
       });
     const rows = days.map((d) => {
-      const diff = d.consumed > 0 ? `<span style="color:var(--bad);font-weight:700">-${fmt(d.consumed)}</span>` : d.consumed === 0 ? "0" : `<span style="color:var(--ok)">+${fmt(Math.abs(d.consumed))}</span>`;
-      return `<tr><td class="num" style="color:var(--faint)">${d.day}</td><td class="num">${fmt(d.start)}</td><td class="num"><b>${fmt(d.end)}</b></td><td>${diff}</td></tr>`;
+      const diff = d.consumed > 0 ? `<span class="t-bad num-b">-${fmt(d.consumed)}</span>` : d.consumed === 0 ? "0" : `<span class="t-ok">+${fmt(Math.abs(d.consumed))}</span>`;
+      return `<tr><td class="num t-faint">${d.day}</td><td class="num">${fmt(d.start)}</td><td class="num"><b>${fmt(d.end)}</b></td><td>${diff}</td></tr>`;
     }).join("");
-    box.innerHTML = `<div class="tbl" style="max-height:230px"><table style="min-width:0"><thead><tr><th>日期</th><th>起</th><th>终</th><th>日消耗</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    box.innerHTML = `<div class="tbl tbl-short"><table class="tbl-narrow"><thead><tr><th>日期</th><th>起</th><th>终</th><th>日消耗</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   } catch {
     const box = $("histBox");
-    if (box) box.innerHTML = '<div class="ph" style="padding:12px">历史加载失败</div>';
+    if (box) box.innerHTML = '<div class="ph ph-sm">历史加载失败</div>';
   }
 }
 
@@ -644,17 +640,21 @@ let small = null;
 function openSmall(title, bodyHtml) {
   $("smallTitle").textContent = title;
   $("smallBody").innerHTML = bodyHtml;
-  $("smallMask").classList.add("show");
+  openMask("smallMask");
 }
-function closeSmall() { $("smallMask").classList.remove("show"); small = null; }
+function closeSmall() {
+  closeMask("smallMask");
+  small = null;
+  if (cfmResolve) { cfmResolve(false); cfmResolve = null; } // 兜底:遮罩/✕关闭视为取消,防止 Promise 悬空
+}
 
 // 通用确认弹窗(Promise):resolve(true/false),替代原生 confirm
 let cfmResolve = null;
 function cfm(msg) {
   return new Promise((r) => {
     cfmResolve = r;
-    openSmall("确认操作", `<div class="tip" style="color:var(--bad)">${msg}</div>
-      <div class="factions"><button class="btn btn-g" onclick="cfmRes(false)">取消</button><button class="btn btn-d" style="min-height:38px;padding:9px 15px" onclick="cfmRes(true)">确认</button></div>`);
+    openSmall("确认操作", `<div class="tip t-bad">${msg}</div>
+      <div class="factions"><button class="btn btn-g" onclick="cfmRes(false)">取消</button><button class="btn btn-d btn-lg" onclick="cfmRes(true)">确认</button></div>`);
   });
 }
 function cfmRes(v) { closeSmall(); if (cfmResolve) { cfmResolve(v); cfmResolve = null; } }
@@ -671,7 +671,7 @@ function openDel(id) {
   small = { type: "del", id };
   const r = (S.results || []).find((x) => x.account.id === id);
   openSmall("删除账号", `<div class="tip">确认删除账号[${r ? acctName(r.account) : ""}]?不可恢复,需重新登录找回。</div>
-    <div class="factions"><button class="btn btn-g" onclick="closeSmall()">取消</button><button class="btn btn-d" style="min-height:38px;padding:9px 15px" onclick="confirmSmall()">删除</button></div>`);
+    <div class="factions"><button class="btn btn-g" onclick="closeSmall()">取消</button><button class="btn btn-d btn-lg" onclick="confirmSmall()">删除</button></div>`);
 }
 async function confirmSmall() {
   if (!small) return;
@@ -748,7 +748,7 @@ function setSyncStatus(msg) {
 }
 function showSyncQuick() { const a = $("syncQuick"); if (a) a.hidden = false; } // 操作条:云同步右侧的上传/下载快捷按钮
 async function openSync() {
-  $("syncMask").classList.add("show");
+  openMask("syncMask");
   setSyncStatus("加载配置…");
   try {
     const j = await api(__BASE__ + "/api/webdav/config");
@@ -759,7 +759,7 @@ async function openSync() {
     else setSyncStatus("尚未配置,填写后点「保存配置」");
   } catch (e) { setSyncStatus("❌ " + e.message); }
 }
-function closeSync() { $("syncMask").classList.remove("show"); }
+function closeSync() { closeMask("syncMask"); }
 const SYNC_DEFAULT_URL = atob("aHR0cHM6Ly93MmUwYjFkNmF2LmRkbnN0by5jb20v");
 // 云同步配置:URL 为空时用默认(用于操作,不用于保存)
 function syncCfg() {
@@ -795,8 +795,8 @@ async function syncAct(action, silent) {
 }
 
 // ---- 清空本地数据 ----
-function openClear() { $("clearMask").classList.add("show"); }
-function closeClear() { $("clearMask").classList.remove("show"); }
+function openClear() { openMask("clearMask"); }
+function closeClear() { closeMask("clearMask"); }
 async function confirmClear() {
   const sel = { accounts: $("clearAccounts").checked, history: $("clearHistory").checked, cache: $("clearCache").checked };
   const names = [sel.accounts && "账号池", sel.history && "历史快照", sel.cache && "最近缓存"].filter(Boolean);

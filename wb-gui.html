@@ -100,6 +100,26 @@ input,select{font:inherit;color:var(--text)}
 select.inp{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;outline:none}
 .hint{font-size:11px;color:var(--faint)}
 .ph{text-align:center;color:var(--faint);padding:40px 12px;font-size:13px}
+.ph-sm{padding:12px}.ph-md{padding:24px}
+.t-faint{color:var(--faint)}.t-sub{color:var(--sub)}.t-bad{color:var(--bad)}.t-ok{color:var(--ok)}.t-warn{color:var(--warn)}.t-brand{color:var(--brand)}
+.btn-lg{min-height:38px;padding:9px 15px}
+.num-b{font-weight:800}
+.row-total{border-top:2px solid var(--line2);font-weight:800}
+.hint-mb{margin-bottom:12px}
+.tbl-short{max-height:230px}
+.tbl-narrow{min-width:0}
+/* ===== 到期明细条形图(统一样式,JS 只传高度)===== */
+.bar-row{display:flex;gap:8px;overflow-x:auto;padding:6px 0}
+.bar-col{flex:1;min-width:52px;text-align:center}
+.bar-v{font-size:11px;font-weight:800}
+.bar-v.bad{color:var(--bad)}.bar-v.warn{color:var(--warn)}.bar-v.brand{color:var(--brand)}
+.bar-track{height:90px;background:var(--chip);border-radius:6px;display:flex;align-items:flex-end;overflow:hidden;margin-top:4px}
+.bar-fill{width:100%}
+.bar-fill.bad{background:linear-gradient(180deg,var(--bad),#ff8f8f)}
+.bar-fill.warn{background:linear-gradient(180deg,var(--warn),#ffc08a)}
+.bar-fill.brand{background:var(--grad)}
+.bar-label{font-size:10px;color:var(--sub);margin-top:5px}
+.bar-sub{font-size:9px;color:var(--faint)}
 
 .line{display:flex;flex-direction:column-reverse;gap:12px}
 .legend{display:flex;flex-wrap:wrap;gap:6px;max-height:200px;overflow-y:auto}
@@ -344,6 +364,6 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 <div class="toast" id="toast"></div>
 <script>window.__BASE__ = (location.pathname.match(/^\/tool\/[^/]+/) || [""])[0];</script>
-<script src="./wb-gui.js?v=v1.2.1"></script>
+<script src="./wb-gui.js?v=v1.3.0"></script>
 </body>
 </html>

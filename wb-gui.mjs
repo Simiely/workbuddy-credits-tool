@@ -101,13 +101,6 @@ const server = http.createServer(async (req, res) => {
       }
       const hist = loadHistory();
       const accounts = loadAccounts();
-      const totals = hist
-        .map((s) => ({
-          ts: s.ts,
-          total: s.entries.reduce((a, e) => a + (e.giftRemain || 0) + (e.baseRemain || 0), 0), // 总剩余 = 体验版 + 赠送
-          used: s.entries.reduce((a, e) => a + (e.giftUsed || 0) + (e.baseUsed || 0), 0),     // 累计已用 = 体验版 + 赠送
-        }))
-        .sort((a, b) => (a.ts < b.ts ? -1 : 1)); // 按时间升序,保证折线方向正确
       // 按账号分组历史(一次性遍历)
       const byUin = new Map();
       for (const s of hist) {
@@ -150,8 +143,8 @@ const server = http.createServer(async (req, res) => {
           series, // 每日消耗序列(自然日),前端直接展示不再计算
         };
       });
-      dashCache = { key: cacheKey, payload: { totals, per } };
-      return json(200, { ok: true, totals, per });
+      dashCache = { key: cacheKey, payload: { per } };
+      return json(200, { ok: true, per });
     }
     if (url.pathname === "/api/credits") {
       const key = url.searchParams.get("account") || "";
