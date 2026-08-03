@@ -6,7 +6,7 @@
 //   node edge-ctl.mjs newtab <url>
 //   node edge-ctl.mjs shot <idx> <out.png>
 //   node edge-ctl.mjs close <idx>
-const BASE = "http://127.0.0.1:9333";
+const BASE = "http://127.0.0.1:8129";
 
 async function main() {
   const [cmd, arg1, arg2] = process.argv.slice(2);

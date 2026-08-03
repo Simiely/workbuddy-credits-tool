@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## v1.0.3 (2026-08-03)
+
+### 修复
+- **edge-daemon 连接发现机制重写**:弃用读 `DevToolsActivePort` 文件(可能残留旧 uuid,连不存在的 ws 路径永久挂起),改为标准 CDP 发现——轮询 `GET :9222/json/version` 取真实 `webSocketDebuggerUrl`
+- 修正常驻子进程端口失效:改 lib/util.js 后需重启进程(模块加载时读值)
+
+### 变更
+- 全部 daemon 端口 **9333 → 8129**(lib/util.js / lib/daemon.js / edge-daemon.mjs / edge-ctl.mjs):daemon HTTP API 8129(平台端口段内,可被 tools-center 托管)、Edge 调试端口 9222(默认,EDGE_DEBUG_PORT/argv[3] 可覆盖)
+- 前端 daemon 提示文案场景化:工具中心挂载 → 指向接入 edge-daemon 工具;独立运行 → 指向 `node edge-daemon.mjs 8129`
+
 ## v1.0.2 (2026-08-03)
 
 ### 新增

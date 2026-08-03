@@ -1,6 +1,6 @@
 // edge-daemon.mjs - 常驻 CDP 代理:保持一条浏览器连接,供本地 HTTP API 复用
 // 解决:edge://inspect 授权机制按"每条连接"弹窗,此代理只连一次,弹窗仅首次出现
-// 启动: node edge-daemon.mjs [port=9333]
+// 启动: node edge-daemon.mjs [port=8129] [debugPort=9222]
 // API:
 //   GET  /status                  -> { connected, port }
 //   GET  /tabs                    -> [{index, targetId, title, url}]
@@ -11,7 +11,8 @@ import http from "node:http";
 import fs from "node:fs";
 
 const USER_DATA = "C:\\Users\\2504\\AppData\\Local\\Microsoft\\Edge\\User Data";
-const PORT = parseInt(process.argv[2] || "9333", 10);
+const PORT = parseInt(process.argv[2] || "8129", 10);           // 本 daemon HTTP 端口
+const DEBUG_PORT = parseInt(process.argv[3] || process.env.EDGE_DEBUG_PORT || "9222", 10); // Edge 调试端口
 const CONNECT_TIMEOUT = 25000; // 超过则关闭重连(错过授权弹窗时重新触发)
 
 let ws = null;
@@ -20,54 +21,60 @@ let msgId = 0;
 const pending = new Map();
 const sessions = new Map(); // targetId -> sessionId
 
-function readDevToolsActivePort() {
-  const p = USER_DATA + "\\DevToolsActivePort";
-  if (!fs.existsSync(p)) return null;
-  const [port, wsPath] = fs.readFileSync(p, "utf8").trim().split(/\r?\n/);
-  return { port: parseInt(port, 10), wsPath };
+// 发现:HTTP 询问浏览器真实调试端点(标准 CDP 机制)。
+// 不依赖 DevToolsActivePort 残留文件——该文件可能过时(旧实例 uuid),导致连错 ws 路径挂起。
+async function discoverWsUrl() {
+  const r = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/version`, { signal: AbortSignal.timeout(4000) });
+  if (!r.ok) return null;
+  const j = await r.json();
+  return j.webSocketDebuggerUrl || null;
 }
 
 function connect() {
-  const info = readDevToolsActivePort();
-  if (!info) {
-    console.log("[daemon] DevToolsActivePort not found, retry in 3s");
-    return setTimeout(connect, 3000);
-  }
-  console.log("[daemon] connecting ws://127.0.0.1:" + info.port + info.wsPath);
-  const sock = new WebSocket("ws://127.0.0.1:" + info.port + info.wsPath);
-  let opened = false;
-  const timer = setTimeout(() => {
-    if (!opened) {
-      console.log("[daemon] connect timeout (waiting for authorization in Edge?), retry");
-      try { sock.close(); } catch {}
-    }
-  }, CONNECT_TIMEOUT);
+  discoverWsUrl()
+    .then((wsUrl) => {
+      if (!wsUrl) {
+        console.log(`[daemon] Edge 调试端点(:${DEBUG_PORT})不可用,3s 后重试(请以 --remote-debugging-port=${DEBUG_PORT} 启动 Edge)`);
+        return setTimeout(connect, 3000);
+      }
+      console.log("[daemon] connecting " + wsUrl);
+      let sock;
+      try { sock = new WebSocket(wsUrl); } catch { return setTimeout(connect, 3000); }
+      let opened = false;
+      const timer = setTimeout(() => {
+        if (!opened) {
+          console.log("[daemon] connect timeout (waiting for authorization in Edge?), retry");
+          try { sock.close(); } catch {}
+        }
+      }, CONNECT_TIMEOUT);
 
-  sock.onopen = () => {
-    opened = true;
-    clearTimeout(timer);
-    ws = sock;
-    connected = true;
-    console.log("[daemon] CONNECTED (authorize once in Edge if prompted)");
-  };
-  sock.onmessage = (ev) => {
-    const m = JSON.parse(ev.data);
-    if (m.id && pending.has(m.id)) {
-      pending.get(m.id)(m);
-      pending.delete(m.id);
-    }
-  };
-  sock.onclose = () => {
-    clearTimeout(timer);
-    ws = null;
-    connected = false;
-    console.log("[daemon] disconnected, retry in 3s");
-    setTimeout(connect, 3000);
-  };
-  sock.onerror = () => {
-    clearTimeout(timer);
-    try { sock.close(); } catch {}
-  };
+      sock.onopen = () => {
+        opened = true;
+        clearTimeout(timer);
+        ws = sock;
+        connected = true;
+        console.log("[daemon] CONNECTED (authorize once in Edge if prompted)");
+      };
+      sock.onmessage = (ev) => {
+        const m = JSON.parse(ev.data);
+        if (m.id && pending.has(m.id)) {
+          pending.get(m.id)(m);
+          pending.delete(m.id);
+        }
+      };
+      sock.onclose = () => {
+        clearTimeout(timer);
+        ws = null;
+        connected = false;
+        console.log("[daemon] disconnected, retry in 3s");
+        setTimeout(connect, 3000);
+      };
+      sock.onerror = () => {
+        clearTimeout(timer);
+        try { sock.close(); } catch {}
+      };
+    })
+    .catch(() => setTimeout(connect, 3000));
 }
 
 function send(method, params = {}, sessionId) {

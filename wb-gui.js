@@ -430,7 +430,11 @@ function exportMd() { window.location.href = __BASE__ + "/api/export.md"; }
 async function checkDaemon() {
   try {
     const j = await api(__BASE__ + "/api/status");
-    showDaemon(j.daemon !== "ok" ? "⚠️ 浏览器代理未运行:「添加当前账号」暂不可用(查询不受影响)。请重新运行 wb-gui.bat。" : "");
+    // 场景化提示:工具中心挂载时指向 edge-daemon 工具;独立运行时指向手动启动
+    const tip = __BASE__
+      ? "请先在工具中心「＋ 添加工具」接入 edge-daemon 工具(或保持其运行)。"
+      : "请先启动 edge-daemon.mjs(node edge-daemon.mjs 8129)。";
+    showDaemon(j.daemon !== "ok" ? `⚠️ 浏览器代理未运行:「添加当前账号」暂不可用(查询不受影响)。${tip}` : "");
   } catch { }
 }
 
