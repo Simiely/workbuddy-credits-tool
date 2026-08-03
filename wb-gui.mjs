@@ -274,4 +274,5 @@ function listen(port, max) {
   });
 }
 
-listen(parseInt(process.argv[2] || String(GUI_PORT), 10), 8090);
+const basePort = parseInt(process.argv[2] || String(GUI_PORT), 10) || GUI_PORT;
+listen(basePort, basePort + 20); // 被占用时最多顺延 20 个端口(旧版写死 8090,8123 永远顺延不了)
