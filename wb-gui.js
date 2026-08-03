@@ -431,7 +431,9 @@ function lineChart(series, mode) {
   }
   const step = Math.max(1, Math.ceil(times.length / 6));
   let xl = "";
-  times.forEach((t, i) => { if (i % step === 0 || i === times.length - 1) { const p = t.slice(5, 10).split("-"); xl += `<text x="${X(i)}" y="${h - 8}" font-size="10" fill="#6b7484" text-anchor="middle">${mode === "month" ? parseInt(p[0],10) + "月" : parseInt(p[0],10) + "月" + parseInt(p[1],10) + "日"}</text>`; } });
+  // X 轴标签 anchor:两端用 start/end 避开 Y 轴/右边界重叠(否则首日标签被 Y 轴"0"遮挡,看起来只显示 1 日)
+  const xAnchor = (i) => i === 0 ? "start" : (i === times.length - 1 ? "end" : "middle");
+  times.forEach((t, i) => { if (i % step === 0 || i === times.length - 1) { const p = t.slice(5, 10).split("-"); xl += `<text x="${X(i)}" y="${h - 8}" font-size="10" fill="#6b7484" text-anchor="${xAnchor(i)}">${mode === "month" ? parseInt(p[0],10) + "月" : parseInt(p[0],10) + "月" + parseInt(p[1],10) + "日"}</text>`; } });
   let paths = "";
   series.forEach((s, si) => {
     if (!s.pts.length) return;
