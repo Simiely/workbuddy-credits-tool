@@ -124,7 +124,7 @@ function renderCards() {
       <button class="btn btn-d" onclick="event.stopPropagation();openDel('${a.id}')">删除</button></span></div>`;
     if (!s) {
       const c = r.expired ? "warn" : "bad";
-      return `<div class="acct" onclick="openDetail(${i})"><div class="acct-top">
+      return `<div class="acct" data-id="${a.id}" draggable="true" onclick="openDetail('${a.id}')"><div class="acct-top">
         <div><div class="acct-name">${nm}</div><div class="acct-uin">Uin: ${a.uin || "?"}</div></div>
         <span class="remain" style="color:var(--${c});border-color:currentColor;background:transparent">${r.expired ? "⚠️ 凭证过期" : "❌ 失败"}</span></div>
         <div class="acct-rows"><div class="arow"><div class="l">${r.error || "查询失败"}</div></div></div>${foot}</div>`;
@@ -132,7 +132,7 @@ function renderCards() {
     const bp = s.baseSize ? Math.min(100, (s.baseUsed / s.baseSize) * 100) : 0;
     const gp = s.giftSize ? Math.min(100, (s.giftUsed / s.giftSize) * 100) : 0;
     const baseNote = s.baseCycleEnd ? `(至 ${s.baseCycleEnd.slice(5, 10)})` : "";
-    return `<div class="acct" onclick="openDetail(${i})"><div class="acct-top">
+    return `<div class="acct" data-id="${a.id}" draggable="true" onclick="openDetail('${a.id}')"><div class="acct-top">
       <div><div class="acct-name">${nm}</div><div class="acct-uin">Uin: ${a.uin || "?"}</div></div>
       <div class="remain"><span class="tt">💎 总剩余积分</span><span class="tn">${fmt(totalOf(s))}</span></div></div>
       <div class="acct-rows">
@@ -142,7 +142,82 @@ function renderCards() {
           <div class="meter ${gp > 85 ? "warn" : ""}"><i style="width:${gp}%"></i></div></div>
       </div>${foot}</div>`;
   }).join("");
-  $("foot").textContent = "数据来自 WorkBuddy 网页版接口 · 自动刷新 " + autoMin + " 分钟 · 凭证过期请重新登录后「添加当前账号」";
+  initDrag();
+  $("foot").textContent = "数据来自 WorkBuddy 网页版接口 · 自动刷新 " + autoMin + " 分钟 · 凭证过期请重新登录后「添加当前账号」 · 卡片可拖动排序";
+}
+
+// ---- 卡片拖拽排序(顺序随账号池持久化,经 /api/reorder 保存) ----
+let dragId = null;
+let suppressClick = false; // 拖拽后抑制一次点击,避免误开明细
+function initDrag() {
+  const grid = $("grid");
+  grid.querySelectorAll(".acct").forEach((card) => {
+    card.addEventListener("dragstart", (e) => {
+      dragId = card.dataset.id;
+      suppressClick = true;
+      setTimeout(() => { suppressClick = false; }, 0);
+      card.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", dragId); } catch {}
+    });
+    card.addEventListener("dragend", () => {
+      dragId = null;
+      card.classList.remove("dragging");
+      grid.querySelectorAll(".acct").forEach((c) => c.classList.remove("drag-over"));
+    });
+    card.addEventListener("dragover", (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; });
+    card.addEventListener("dragenter", (e) => { e.preventDefault(); if (dragId && card.dataset.id !== dragId) card.classList.add("drag-over"); });
+    card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
+    card.addEventListener("drop", (e) => {
+      e.preventDefault();
+      card.classList.remove("drag-over");
+      if (!dragId || card.dataset.id === dragId) return;
+      moveCard(dragId, card.dataset.id);
+    });
+  });
+}
+async function moveCard(fromId, toId) {
+  const cards = [...$("grid").querySelectorAll(".acct")];
+  const from = cards.find((c) => c.dataset.id === fromId);
+  const to = cards.find((c) => c.dataset.id === toId);
+  if (!from || !to) return;
+  if (from.compareDocumentPosition(to) & Node.DOCUMENT_POSITION_FOLLOWING) to.after(from);
+  else to.before(from);
+  const ids = [...$("grid").querySelectorAll(".acct")].map((c) => c.dataset.id);
+  try {
+    const j = await api("/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+    if (!j.ok) throw new Error(j.error || "保存失败");
+    // 同步数据顺序(表格/后续渲染保持一致)
+    const byId = new Map((S.results || []).map((r) => [r.account.id, r]));
+    S.results = ids.map((id) => byId.get(id)).filter(Boolean);
+    renderDash(); // 后端已保存新顺序,重拉仪表盘使表格/图例同步
+    toast("✅ 卡片顺序已保存");
+  } catch (e) {
+    toast("❌ " + e.message);
+    refreshAll(false); // 失败回滚到服务端顺序
+  }
+}
+
+// ---- 一键排序:按总剩余积分从多到少(保存到账号池,与拖拽同机制) ----
+async function sortByTotal() {
+  const rs = (S && S.results) || [];
+  if (rs.length < 2) return toast("账号不足 2 个,无需排序");
+  const sorted = [...rs].sort((a, b) => {
+    const va = totalOf(a.summary) || 0, vb = totalOf(b.summary) || 0;
+    return vb - va; // 无 summary(失败/过期)视为 0,自然排最后
+  });
+  S.results = sorted;
+  renderCards();
+  const ids = S.results.map((r) => r.account.id);
+  try {
+    const j = await api("/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+    if (!j.ok) throw new Error(j.error || "保存失败");
+    renderDash(); // 表格/折线图例同步
+    toast("✅ 已按总剩余从多到少排序并保存");
+  } catch (e) {
+    toast("❌ " + e.message);
+    refreshAll(false); // 失败回滚
+  }
 }
 
 // ---- 仪表盘:表格 + 折线(异步加载,失败不阻塞) ----
@@ -220,8 +295,9 @@ function changeMode() { dashMode = $("mode").value; renderLines(); }
 
 // ---- 明细弹窗 ----
 function closeModal() { $("mask").classList.remove("show"); }
-function openDetail(idx) {
-  const r = (S && S.results && S.results[idx]);
+function openDetail(id) {
+  if (suppressClick) return; // 拖拽后抑制误触点击
+  const r = (S && S.results || []).find((x) => x.account.id === id); // 用 id 定位,拖拽后不串位
   if (!r || !r.summary || !r.data) return toast("该账号暂无数据,无法查看明细");
   $("mask").classList.add("show");
   $("mTitle").textContent = acctName(r.account) + " · 明细";

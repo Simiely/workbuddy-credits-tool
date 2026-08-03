@@ -149,6 +149,18 @@ const server = http.createServer(async (req, res) => {
       saveAccounts(accounts);
       return json(200, { ok: true });
     }
+    // 卡片排序:按前端拖拽结果重排账号池数组(顺序随账号池持久化/云同步)
+    if (url.pathname === "/api/reorder" && req.method === "POST") {
+      const { ids } = JSON.parse((await body()) || "{}");
+      if (!Array.isArray(ids) || !ids.length) return json(400, { ok: false, error: "ids 为空" });
+      const accounts = loadAccounts();
+      const byId = new Map(accounts.map((a) => [a.id, a]));
+      const reordered = [];
+      for (const id of ids) { const a = byId.get(id); if (a) reordered.push(a); }
+      for (const a of accounts) if (!reordered.includes(a)) reordered.push(a); // 容错:未提及的追加末尾
+      saveAccounts(reordered);
+      return json(200, { ok: true, total: reordered.length });
+    }
     // Markdown 报表(按账号分节)
     if (url.pathname === "/api/export.md") {
       const results = await fetchAllAccounts();
