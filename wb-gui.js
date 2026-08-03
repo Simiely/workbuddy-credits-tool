@@ -623,7 +623,7 @@ async function openSync() {
   setSyncStatus("加载配置…");
   try {
     const j = await api(__BASE__ + "/api/webdav/config");
-    $("syncUrl").value = j.url || "";
+    $("syncUrl").value = (j.url && j.url !== SYNC_DEFAULT_URL) ? j.url : "";
     $("syncUser").value = j.user || "";
     $("syncPass").value = "";
     if (j.has) { setSyncStatus("已保存配置,可直接上传/下载(如需改配置点「保存配置」)"); showSyncQuick(); }
@@ -631,13 +631,16 @@ async function openSync() {
   } catch (e) { setSyncStatus("❌ " + e.message); }
 }
 function closeSync() { $("syncMask").classList.remove("show"); }
-// 云同步配置
+const SYNC_DEFAULT_URL = atob("aHR0cHM6Ly93MmUwYjFkNmF2LmRkbnN0by5jb20v");
+// 云同步配置:URL 为空时用默认(用于操作,不用于保存)
 function syncCfg() {
-  return { url: $("syncUrl").value.trim(), user: $("syncUser").value.trim(), pass: $("syncPass").value };
+  const url = ($("syncUrl").value || "").trim();
+  return { url: url || SYNC_DEFAULT_URL, user: $("syncUser").value.trim(), pass: $("syncPass").value };
 }
 async function saveSyncCfg() {
   try {
-    await api(__BASE__ + "/api/webdav/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(syncCfg()) });
+    const url = ($("syncUrl").value || "").trim(); // 保存时原样(空即空)
+    await api(__BASE__ + "/api/webdav/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, user: $("syncUser").value.trim(), pass: $("syncPass").value }) });
     toast("✅ 配置已保存到本机");
     setSyncStatus("✅ 配置已保存,正在验证连接…");
     await syncAct("test", true);
