@@ -219,7 +219,7 @@ function renderCards() {
       </div>${foot}</div>`;
   }).join("");
   initDrag();
-  $("foot").textContent = "数据来自 WorkBuddy 网页版接口 · 自动刷新 " + autoMin + " 分钟 · 凭证过期请重新登录后「添加当前账号」 · 卡片可拖动排序";
+  $("foot").textContent = "v1.1.0 · 数据来自 WorkBuddy 网页版接口 · 自动刷新 " + autoMin + " 分钟 · 凭证过期请重新登录后「添加当前账号」 · 卡片可拖动排序";
 }
 
 // ---- 卡片拖拽排序(顺序随账号池持久化,经 /api/reorder 保存) ----
