@@ -12,7 +12,7 @@ import { fetchAllAccounts, fetchOneAccount } from "./lib/query.js";
 import { saveCurrentFromEdge } from "./lib/account-ops.js";
 import { brief, mdAll } from "./lib/render.js";
 import { saveLastData, loadLastData, appendSnapshot, historyFor, loadHistory } from "./lib/history.js";
-import { loadSyncConfig, saveSyncConfig, uploadFile, downloadFile, testConnection, BACKUP_DIR, SYNC_FILES } from "./lib/webdav.js";
+import { loadSyncConfig, saveSyncConfig, uploadFile, downloadFile, testConnection, BACKUP_DIR, SYNC_FILES, SYNC_FILE } from "./lib/webdav.js";
 
 const HTML_FILE = path.join(TOOLS_DIR, "wb-gui.html");
 const JS_FILE = path.join(TOOLS_DIR, "wb-gui.js");
@@ -102,14 +102,20 @@ const server = http.createServer(async (req, res) => {
         const first = arr[0], last = arr[arr.length - 1];
         const rem = (x) => (x ? (x.giftRemain || 0) + (x.baseRemain || 0) : 0); // 总剩余
         const usd = (x) => (x ? (x.giftUsed || 0) + (x.baseUsed || 0) : 0);     // 累计已用
+        // 今日消耗 = 今天最早剩余 − 最晚剩余(按自然日)
+        const now = new Date();
+        const isToday = (t) => { const d = new Date(t); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate(); };
+        const todayPts = arr.filter((x) => isToday(x.ts)).sort((a, b) => a.ts < b.ts ? -1 : 1);
+        const todayUsed = todayPts.length >= 2 ? rem(todayPts[0]) - rem(todayPts[todayPts.length - 1]) : 0;
         const series = arr
           .map((x) => ({ t: x.ts, v: rem(x) }))
-          .sort((a, b) => (a.t < b.t ? -1 : 1)); // 每账号折线点(升序)
+          .sort((a, b) => (a.t < b.t ? -1 : 1));
         return {
           uin: a.uin, name: a.name, displayName: a.displayName,
           currentRemain: last ? rem(last) : null,
           used: last ? usd(last) : null,
           consumed: arr.length > 1 ? rem(first) - rem(last) : 0,
+          todayUsed: todayUsed > 0 ? Math.round(todayUsed * 100) / 100 : 0,
           points: arr.length,
           series,
         };
@@ -217,6 +223,11 @@ const server = http.createServer(async (req, res) => {
       }
       if (!restored.length) return json(200, { ok: true, restored: [], message: "云端没有备份文件(先在其他电脑上传一次)" });
       return json(200, { ok: true, restored, message: `已下载 ${restored.length} 个文件并覆盖本地,请刷新查看` });
+    }
+    // 清空本地 WebDAV 登录配置
+    if (url.pathname === "/api/webdav/clear" && req.method === "POST") {
+      fs.rmSync(SYNC_FILE, { force: true });
+      return json(200, { ok: true, message: "已清空云端配置" });
     }
 
     json(404, { ok: false, error: "not found" });

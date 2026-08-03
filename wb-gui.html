@@ -34,13 +34,13 @@ input,select{font:inherit;color:var(--text)}
 .btn-p{background:var(--grad);color:#2d1a1a}
 .btn-g{background:var(--card2);color:var(--text);border:1px solid var(--line)}
 .btn-g:hover{border-color:var(--line2)}
+.btn-g.active{background:var(--grad);color:#2d1a1a;border-color:transparent}
 .btn-d{background:transparent;color:var(--bad);border:1px solid var(--line);font-size:12px;padding:5px 10px;min-height:28px}
 .btn:disabled{opacity:.5;pointer-events:none}
 .spin{width:13px;height:13px;border:2px solid rgba(45,26,26,.3);border-top-color:#2d1a1a;border-radius:50%;animation:sp .7s linear infinite;flex-shrink:0}
 @keyframes sp{to{transform:rotate(360deg)}}
 
 .ops{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px 12px;margin-bottom:12px;max-height:102px;overflow-y:auto}
-.sep{width:1px;height:22px;background:var(--line2);margin:0 3px}
 #syncQuick{display:contents}
 #syncQuick[hidden]{display:none !important}
 .auto{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--sub)}
@@ -73,7 +73,7 @@ select.inp{background:var(--card2);border:1px solid var(--line);border-radius:8p
 .ph{text-align:center;color:var(--faint);padding:40px 12px;font-size:13px}
 
 .line{display:flex;flex-direction:column-reverse;gap:12px}
-.legend{display:flex;flex-wrap:wrap;gap:6px}
+.legend{display:flex;flex-wrap:wrap;gap:6px;max-height:200px;overflow-y:auto}
 .lg{display:inline-flex;align-items:center;gap:7px;font-size:12px;padding:5px 11px;border:1px solid var(--line);border-radius:999px;cursor:pointer;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .lg:hover{border-color:var(--line2);background:var(--chip)}
 .lg.off{opacity:.4;text-decoration:line-through}
@@ -185,16 +185,11 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
   </div></header>
 
   <div class="ops">
-    <button class="btn btn-g" onclick="saveCurrent()" id="btnAdd"><span class="em">＋</span><span class="txt">添加账号</span></button>
-    <button class="btn btn-g" onclick="sortByTotal()"><span class="em">📊</span><span class="txt">剩余排序</span></button>
-    <button class="btn btn-g" onclick="sortByExpiring1d()"><span class="em">⏰</span><span class="txt">近1天过期排序</span></button>
-    <button class="btn btn-g" onclick="openClear()"><span class="em">🧹</span><span class="txt">清空</span></button>
-    <button class="btn btn-g" onclick="exportMd()"><span class="em">📝</span><span class="txt">导出 MD</span></button>
     <button class="btn btn-g" onclick="openSync()"><span class="em">☁️</span><span class="txt">云同步</span></button>
     <span id="syncQuick" hidden>
-      <button class="btn btn-g" title="测试连接" onclick="syncAct('test')">🔌</button>
-      <button class="btn btn-g" title="上传数据" onclick="syncAct('upload')">⬆️</button>
-      <button class="btn btn-g" title="下载数据" onclick="syncAct('download')">⬇️</button>
+      <button class="btn btn-g" title="测试连接" onclick="syncAct('test')"><span class="em">🔌</span><span class="txt">测试连接</span></button>
+      <button class="btn btn-g" title="上传数据" onclick="syncAct('upload')"><span class="em">⬆️</span><span class="txt">上传数据</span></button>
+      <button class="btn btn-g" title="下载数据" onclick="syncAct('download')"><span class="em">⬇️</span><span class="txt">下载数据</span></button>
     </span>
   </div>
 
@@ -204,9 +199,10 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
   <section class="hero" id="hero"></section>
 
   <section class="panel">
-    <div class="phead"><h2>📈 积分消耗趋势</h2>
-      <div style="display:flex;gap:10px;align-items:center"><span class="hint">点击图例隐藏折线</span>
-      <select class="inp" id="mode" onchange="changeMode()"><option value="day">按天</option><option value="month">按月</option></select></div>
+    <div class="phead"><h2>📉 积分消耗趋势</h2>
+      <div style="display:flex;gap:10px;align-items:center">      <span class="hint">点击图例隐藏折线</span>
+      <button class="btn btn-g active" id="btnDay" onclick="changeMode('day')" style="min-height:30px;padding:4px 12px;font-size:12px">每日</button>
+      <button class="btn btn-g" id="btnMonth" onclick="changeMode('month')" style="min-height:30px;padding:4px 12px;font-size:12px">每月</button></div>
     </div>
     <div class="pbody line"><div class="legend" id="legend"></div><div class="chart" id="chart"><div class="ph">加载中…</div></div></div>
   </section>
@@ -215,6 +211,14 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
     <div class="phead"><h2>📋 账号总览</h2><span class="hint" id="dashMeta"></span></div>
     <div class="pbody"><div class="tbl"><table><thead><tr><th>#</th><th>账号</th><th>总剩余</th><th>累计已用</th><th>今日消耗</th><th>近1天过期</th><th>近3天过期</th></tr></thead><tbody id="dashTbody"></tbody></table></div></div>
   </section>
+
+  <div class="ops">
+    <button class="btn btn-g" onclick="saveCurrent()" id="btnAdd"><span class="em">＋</span><span class="txt">添加账号</span></button>
+    <button class="btn btn-g" onclick="sortByTotal()"><span class="em">📊</span><span class="txt">剩余排序</span></button>
+    <button class="btn btn-g" onclick="sortByExpiring()"><span class="em">⏰</span><span class="txt">过期排序</span></button>
+    <button class="btn btn-g" onclick="openClear()"><span class="em">🧹</span><span class="txt">清空</span></button>
+    <button class="btn btn-g" onclick="exportMd()"><span class="em">📝</span><span class="txt">导出 MD</span></button>
+  </div>
 
   <div class="grid" id="grid"></div>
   <footer id="foot"></footer>
@@ -245,6 +249,7 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
         <button class="btn btn-g" onclick="syncAct('test')">🔌 测试连接</button>
         <button class="btn btn-g" onclick="syncAct('upload')">⬆️ 上传数据</button>
         <button class="btn btn-g" onclick="syncAct('download')">⬇️ 下载数据</button>
+        <button class="btn btn-d" style="min-height:38px;padding:9px 15px;margin-left:auto" onclick="syncAct('clear')">🗑 清空配置</button>
       </div>
       <div class="tip" id="syncStatus" style="margin-top:12px"></div>
     </div>

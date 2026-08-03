@@ -9,7 +9,7 @@
 - Node.js ≥ 18(开发用 22.x),**纯原生 ESM**,零第三方依赖(`node:http` / `node:fs` / fetch / AbortController)
 - 浏览器侧:Edge CDP(WebSocket)→ `edge-daemon.mjs` 独立进程提供本地 HTTP API(仅添加账号用)
 - GUI 前端:原生 HTML/CSS/JS,无框架;折线图为自绘 SVG
-- 当前版本:v1.0.14(见 CHANGELOG)
+- 当前版本:v1.0.15(见 CHANGELOG)
 
 ## 关键坑(摘要,详情见 @rules/常见坑.md)
 
