@@ -67,12 +67,10 @@ input,select{font:inherit;color:var(--text)}
 .warn.d{background:rgba(247,163,92,.08);border-color:rgba(247,163,92,.3);color:var(--warn)}
 
 .hero{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}
-/* 手机:总卡横跨整行 */
+/* 手机:2x2 均分(默认已是),数字稍小防溢出 */
 @media(max-width:640px){
-  .hero{grid-template-columns:repeat(2,1fr)}
-  .hero .hcard.total{grid-column:1/-1}
   .hcard .n{font-size:24px}
-  .hcard.total .n{font-size:28px}
+  .hcard.total .n{font-size:26px}
 }
 .hcard{position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;overflow:hidden;min-height:84px}
 .hcard::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:var(--grad)}
@@ -110,17 +108,15 @@ td{padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(255,255,255,.02)}
 .num{font-variant-numeric:tabular-nums}
-/* 手机:总览表改卡片列表(不横滑) */
+/* 手机:总览表隐藏表头横滑,JS 渲染紧凑账号卡 */
 @media(max-width:640px){
+  .tbl{max-height:none}
   .tbl table{min-width:0}
   .tbl thead{display:none}
-  .tbl tbody tr{display:block;padding:10px 12px;border-bottom:1px solid var(--line)}
-  .tbl tbody tr:last-child{border-bottom:none}
-  .tbl tbody td{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border:none;white-space:normal}
-  .tbl tbody td::before{content:attr(data-l);color:var(--sub);font-size:11px;margin-right:12px}
-  .tbl tbody tr:first-child td::before{font-weight:800;color:var(--text)}
-  .tbl tbody tr:last-child td{font-weight:800}
-  .tbl tbody tr:last-child td::before{font-weight:800;color:var(--text)}
+  .tbl tbody td{padding:0;border:none;white-space:normal}
+  .tbl tbody tr{display:block;border:none}
+  .tbl tbody tr:hover td{background:none}
+  .dash-mobile{padding:2px}
 }
 
 .grid{display:grid;grid-template-columns:1fr;gap:12px}

@@ -328,22 +328,53 @@ function renderDashTable() {
   if (!dashPer.length) { $("dashTbody").innerHTML = '<tr><td colspan="7" class="ph">暂无账号</td></tr>'; $("dashMeta").textContent = ""; return; }
   const expMap = buildExpiryMap();
   const tuMap = window._todayUsedMap || {};
+  const isMobile = window.innerWidth < 640;
+  if (isMobile) {
+    // 手机:每账号一张紧凑卡(名称 + 关键指标),不横滑
+    const cards = dashPer.map((a, i) => {
+      const ex = expMap[a.uin] || {};
+      const tu = tuMap[a.uin] || 0;
+      const row = (l, v, color) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:12px"><span style="color:var(--sub)">${l}</span><span class="num" ${color ? `style="color:var(--${color})"` : ""}>${v}</span></div>`;
+      return `<div style="background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-weight:800;font-size:13px;word-break:break-all">${i + 1}. ${acctName(a)}</span><span style="color:var(--faint);font-size:11px">#${a.uin || ""}</span></div>
+        ${row("总剩余", fmt(a.currentRemain ?? "-"))}
+        ${row("累计已用", fmt(a.used ?? "-"))}
+        ${row("今日消耗", fmt(tu))}
+        ${row("近1天过期", fmt(ex.expiring1d), ex.expiring1d > 0 ? "warn" : "")}
+        ${row("近3天过期", fmt(ex.expiring3d), ex.expiring3d > 0 ? "warn" : "")}
+      </div>`;
+    }).join("");
+    const sum = (k) => dashPer.reduce((s, x) => s + (x[k] || 0), 0);
+    const sumExp1d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring1d || 0), 0);
+    const sumExp3d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring3d || 0), 0);
+    const sumTu = dashPer.reduce((s, a) => s + (tuMap[a.uin] || 0), 0);
+    const total = `<div style="background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:10px 12px">
+      <div style="font-weight:800;font-size:12px;color:var(--sub);margin-bottom:2px">合计</div>
+      ${row("总剩余", fmt(sum("currentRemain")))}
+      ${row("累计已用", fmt(sum("used")))}
+      ${row("今日消耗", fmt(sumTu))}
+      ${row("近3天过期", fmt(sumExp3d), sumExp3d > 0 ? "warn" : "")}
+    </div>`;
+    $("dashTbody").innerHTML = `<tr><td colspan="7" style="padding:0;white-space:normal"><div class="dash-mobile">${cards}${total}</div></td></tr>`;
+    $("dashMeta").textContent = dashPer.length + " 个账号";
+    return;
+  }
   const rows = dashPer.map((a, i) => {
     const ex = expMap[a.uin] || {};
     return `<tr>
-    <td class="num" data-l="#" style="color:var(--faint)">${i + 1}</td><td data-l="账号">${acctName(a)}</td>
-    <td class="num" data-l="总剩余"><b>${a.currentRemain ?? "-"}</b></td><td class="num" data-l="累计已用">${a.used ?? "-"}</td>
-    <td class="num" data-l="今日消耗">${tuMap[a.uin] > 0 ? fmt(tuMap[a.uin]) : "0"}</td>
-    <td class="num" data-l="近1天过期" style="color:var(--${ex.expiring1d > 0 ? 'warn' : 'faint'})">${fmt(ex.expiring1d)}</td>
-    <td class="num" data-l="近3天过期" style="color:var(--${ex.expiring3d > 0 ? 'warn' : 'faint'})${ex.expiring3d > 0 ? ';font-weight:800' : ''}">${fmt(ex.expiring3d)}</td></tr>`;
+    <td class="num" style="color:var(--faint)">${i + 1}</td><td>${acctName(a)}</td>
+    <td class="num"><b>${a.currentRemain ?? "-"}</b></td><td class="num">${a.used ?? "-"}</td>
+    <td class="num">${tuMap[a.uin] > 0 ? fmt(tuMap[a.uin]) : "0"}</td>
+    <td class="num" style="color:var(--${ex.expiring1d > 0 ? 'warn' : 'faint'})">${fmt(ex.expiring1d)}</td>
+    <td class="num" style="color:var(--${ex.expiring3d > 0 ? 'warn' : 'faint'})${ex.expiring3d > 0 ? ';font-weight:800' : ''}">${fmt(ex.expiring3d)}</td></tr>`;
   }).join("");
   const sum = (k) => dashPer.reduce((s, x) => s + (x[k] || 0), 0);
   const sumExp1d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring1d || 0), 0);
   const sumExp3d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring3d || 0), 0);
   const sumTu = dashPer.reduce((s, a) => s + (tuMap[a.uin] || 0), 0);
   $("dashTbody").innerHTML = rows + `<tr style="border-top:2px solid var(--line2);font-weight:800">
-    <td data-l=""></td><td data-l="">合计</td><td class="num" data-l="总剩余">${fmt(sum("currentRemain"))}</td><td class="num" data-l="累计已用">${fmt(sum("used"))}</td>
-    <td class="num" data-l="今日消耗">${fmt(sumTu)}</td><td class="num" data-l="近1天过期">${fmt(sumExp1d)}</td><td class="num" data-l="近3天过期">${fmt(sumExp3d)}</td></tr>`;
+    <td></td><td>合计</td><td class="num">${fmt(sum("currentRemain"))}</td><td class="num">${fmt(sum("used"))}</td>
+    <td class="num">${fmt(sumTu)}</td><td class="num">${fmt(sumExp1d)}</td><td class="num">${fmt(sumExp3d)}</td></tr>`;
   $("dashMeta").textContent = dashPer.length + " 个账号";
 }
 function lineChart(series, mode) {
