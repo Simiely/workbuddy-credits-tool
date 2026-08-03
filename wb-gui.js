@@ -335,6 +335,8 @@ function renderDashTable() {
   }
   const isMobile = window.innerWidth < 640;
   if (isMobile) {
+    // 单元格工具:作用域在手机分支内,被每账号卡片 + 合计卡复用
+    const cell = (label, val, color, bg, big) => `<div class="dcell ${bg}" ${color ? `style="--dc:var(--${color})"` : ""}>${big ? `<div class="dc-l">${label}</div><div class="dc-v big">${val}</div>` : `<div class="dc-l">${label}</div><div class="dc-v">${val}</div>`}</div>`;
     // 手机:每账号一张完整卡片(渐变顶条 + 总剩余大数字 + 2x2 指标网格)
     const cards = dashPer.map((a, i) => {
       const ex = expMap[a.uin] || {};
@@ -345,7 +347,6 @@ function renderDashTable() {
         : `<span class="dtag">✅ 正常</span>`;
       const expDate = cred.sessionExpiresAt ? new Date(cred.sessionExpiresAt).toLocaleDateString("zh-CN") : "?";
       const e1 = ex.expiring1d || 0, e3 = ex.expiring3d || 0;
-      const cell = (label, val, color, bg, big) => `<div class="dcell ${bg}" ${color ? `style="--dc:var(--${color})"` : ""}>${big ? `<div class="dc-l">${label}</div><div class="dc-v big">${val}</div>` : `<div class="dc-l">${label}</div><div class="dc-v">${val}</div>`}</div>`;
       return `<div class="dacct">
         <div class="dhead">
           <div class="dname">${i + 1} · ${acctName(a)}<div class="duin">Uin: ${a.uin || "?"}</div></div>
