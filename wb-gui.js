@@ -362,44 +362,41 @@ function renderDashTable() {
   if (isMobile) {
     // 单元格工具:作用域在手机分支内,被每账号卡片 + 合计卡复用
     const cell = (label, val, color, bg, big) => `<div class="dcell ${bg}" ${color ? `style="--dc:var(--${color})"` : ""}>${big ? `<div class="dc-l">${label}</div><div class="dc-v big">${val}</div>` : `<div class="dc-l">${label}</div><div class="dc-v">${val}</div>`}</div>`;
-    // 手机:每账号一张完整卡片(渐变顶条 + 总剩余大数字 + 2x2 指标网格)
+    // 手机:2 列网格,每账号一张紧凑卡片(序号+名称+总剩余+2x2 指标;凭证日期移桌面)
     const cards = dashPer.map((a, i) => {
       const ex = expMap[a.uin] || {};
       const tu = tuMap[a.uin] || 0;
       const cred = credMap[a.uin] || {};
-      const status = cred.expired
-        ? `<span class="dtag" style="color:var(--warn);background:rgba(247,163,92,.12);border-color:rgba(247,163,92,.3)">⚠️ 凭证过期</span>`
-        : `<span class="dtag">✅ 正常</span>`;
-      const expDate = cred.sessionExpiresAt ? new Date(cred.sessionExpiresAt).toLocaleDateString("zh-CN") : "?";
       const e1 = ex.expiring1d || 0, e3 = ex.expiring3d || 0;
       return `<div class="dacct">
         <div class="dhead">
-          <div class="dname">${i + 1} · ${acctName(a)}<div class="duin">Uin: ${a.uin || "?"}</div></div>
-          ${status}
+          <span class="di">${i + 1}</span>
+          <span class="dname">${acctName(a)}</span>
+          ${cred.expired ? `<span class="dtag bad">⚠️</span>` : `<span class="dtag ok">✓</span>`}
         </div>
-        <div class="dremain"><div class="dr-l">💎 总剩余积分</div><div class="dr-v">${fmt(a.currentRemain ?? "-")}</div></div>
+        <div class="dremain"><div class="dr-v">${fmt(a.currentRemain ?? "-")}</div><div class="dr-l">💎 总剩余</div></div>
         <div class="dgrid">
           ${cell("今日消耗", fmt(tu), "", "plain", false)}
           ${cell("累计已用", fmt(a.used ?? "-"), "", "plain", false)}
           ${cell("近1天过期", fmt(e1), e1 > 0 ? "warn" : "", e1 > 0 ? "warn" : "ok", e1 > 0)}
           ${cell("近3天过期", fmt(e3), e3 > 0 ? "warn" : "", e3 > 0 ? "warn" : "ok", e3 > 0)}
         </div>
-        <div class="dfoot"><span>凭证至 ${expDate}</span><span>📊 ${(S && S.results) ? S.results.filter(r => r.summary).length : 0}/${(S && S.results) ? S.results.length : 0} 有效</span></div>
       </div>`;
     }).join("");
     const sum = (k) => dashPer.reduce((s, x) => s + (x[k] || 0), 0);
     const sumExp1d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring1d || 0), 0);
     const sumExp3d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring3d || 0), 0);
     const sumTu = dashPer.reduce((s, a) => s + (tuMap[a.uin] || 0), 0);
+    // 合计卡跨整行
     const total = `<div class="dacct dtot">
-      <div class="dhead"><div class="dname" style="font-weight:800">合计</div></div>
+      <div class="dhead"><div class="dname" style="font-weight:800">📊 合计</div></div>
       <div class="dgrid">
         ${cell("今日消耗", fmt(sumTu), "", "plain", false)}
         ${cell("累计已用", fmt(sum("used")), "", "plain", false)}
         ${cell("近1天过期", fmt(sumExp1d), sumExp1d > 0 ? "warn" : "", sumExp1d > 0 ? "warn" : "ok", sumExp1d > 0)}
         ${cell("近3天过期", fmt(sumExp3d), sumExp3d > 0 ? "warn" : "", sumExp3d > 0 ? "warn" : "ok", sumExp3d > 0)}
       </div>
-      <div class="dremain" style="background:none;border:none;padding:4px 0 0"><div class="dr-l" style="color:var(--sub)">💎 总剩余积分</div><div class="dr-v" style="font-size:22px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">${fmt(sum("currentRemain"))}</div></div>
+      <div class="dremain" style="background:none;border:none;padding:6px 0 0"><div class="dr-v" style="font-size:22px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">${fmt(sum("currentRemain"))}</div><div class="dr-l">💎 总剩余</div></div>
     </div>`;
     $("dashTbody").innerHTML = `<tr><td colspan="7" style="padding:0;white-space:normal"><div class="dash-mobile">${cards}${total}</div></td></tr>`;
     $("dashMeta").textContent = dashPer.length + " 个账号";
