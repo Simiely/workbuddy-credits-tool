@@ -39,7 +39,7 @@ input,select{font:inherit;color:var(--text)}
 .spin{width:13px;height:13px;border:2px solid rgba(45,26,26,.3);border-top-color:#2d1a1a;border-radius:50%;animation:sp .7s linear infinite;flex-shrink:0}
 @keyframes sp{to{transform:rotate(360deg)}}
 
-.ops{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px 12px;margin-bottom:12px}
+.ops{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px 12px;margin-bottom:12px}
 /* 窄屏(手机):操作条按钮只显示 emoji,隐藏文字,紧凑适配 */
 @media(max-width:640px){.ops .txt{display:none}}
 .sep{width:1px;height:22px;background:var(--line2);margin:0 3px}
