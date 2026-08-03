@@ -1,12 +1,15 @@
 # AGENTS.md · 项目规则
 
 > 给 AI 与"未来的你"看的精简规则。核心约束尽量短,细节放 `rules/` 按需 @引用。
+>
+> **接手先读**:[`docs/交接说明.md`](docs/交接说明.md)(运行实例/端口/三处同步/数据文件/待办的状态快照)。
 
 ## 技术栈
 
 - Node.js ≥ 18(开发用 22.x),**纯原生 ESM**,零第三方依赖(`node:http` / `node:fs` / fetch / AbortController)
 - 浏览器侧:Edge CDP(WebSocket)→ `edge-daemon.mjs` 独立进程提供本地 HTTP API(仅添加账号用)
 - GUI 前端:原生 HTML/CSS/JS,无框架;折线图为自绘 SVG
+- 当前版本:v1.0.12(见 CHANGELOG)
 
 ## 关键坑(摘要,详情见 @rules/常见坑.md)
 
