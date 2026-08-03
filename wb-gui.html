@@ -101,6 +101,32 @@ select.inp{background:var(--card2);border:1px solid var(--line);border-radius:8p
 .lg i{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .chart{flex:1;min-width:0;overflow-x:auto}
 
+/* ===== 账号卡片列表(grid) ===== */
+.grid{display:grid;grid-template-columns:1fr;gap:12px}
+.acct{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;cursor:grab;position:relative;overflow:hidden;transition:transform .25s,border-color .25s}
+.acct:active{cursor:grabbing}
+.acct.dragging{opacity:.4;border-style:dashed}
+.acct.drag-over{border-color:var(--brand);box-shadow:0 0 0 2px rgba(255,146,146,.35)}
+.acct:hover{transform:translateY(-2px);border-color:rgba(255,146,146,.35)}
+.acct-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.acct-name{font-size:15px;font-weight:800;word-break:break-all}
+.acct-uin{font-size:11px;color:var(--faint);margin-top:3px}
+.remain{background:rgba(255,146,146,.1);border:1px solid rgba(255,146,146,.22);color:var(--brand);border-radius:12px;padding:6px 12px;text-align:center;flex-shrink:0;min-width:76px}
+.remain .tt{display:block;font-size:9px;font-weight:700;opacity:.8;letter-spacing:.5px}
+.remain .tn{display:block;font-size:19px;font-weight:900;line-height:1.2}
+.acct-rows{margin-top:14px;display:flex;flex-direction:column;gap:12px}
+.arow .l{font-size:11px;color:var(--sub);margin-bottom:4px;display:flex;justify-content:space-between}
+.arow .l b{color:var(--text)}
+.meter{height:7px;border-radius:999px;background:var(--chip);overflow:hidden}
+.meter i{display:block;height:100%;border-radius:999px;background:var(--grad);transition:width .5s}
+.meter.warn i{background:linear-gradient(90deg,var(--warn),#ffc08a)}
+.acct-foot{display:flex;justify-content:space-between;align-items:center;margin-top:14px;gap:8px;flex-wrap:wrap}
+.acct-foot .exp{font-size:11px;color:var(--faint)}
+.acts{display:flex;gap:6px}
+.empty{text-align:center;color:var(--faint);padding:40px 12px}
+.empty .big{font-size:42px;margin-bottom:10px}
+footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
+
 .tbl{overflow:auto;max-height:360px}
 /* 账号总览:两套 DOM 并存(JS 都渲染),CSS 决定显示哪套 */
 .dash-cards{display:none}          /* 卡片版默认隐藏(桌面走表格) */
