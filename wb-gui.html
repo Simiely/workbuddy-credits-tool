@@ -56,8 +56,7 @@ input,select{font:inherit;color:var(--text)}
 .hcard .n{font-size:26px;font-weight:900;font-variant-numeric:tabular-nums;margin-top:6px}
 .hcard .l{font-size:11px;color:var(--sub);margin-top:3px}
 .hcard .h-ico{font-size:18px;position:absolute;right:12px;top:12px;opacity:.55}
-.hcard.total{grid-column:1/-1}
-.hcard.total .n{font-size:38px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hcard.total .n{font-size:30px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .hcard.bad{border-color:rgba(255,107,107,.5)}
 .hcard.bad .n{background:none;-webkit-text-fill-color:var(--bad)}
 .hcard.warn{border-color:rgba(247,163,92,.45)}
@@ -160,7 +159,7 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
 
 @media(min-width:640px){
   .wrap{padding:0 20px}
-  .hero{grid-template-columns:1.7fr 1fr 1fr 1fr}
+  .hero{grid-template-columns:repeat(4,1fr)}
   .hcard.total{grid-column:auto}
   .grid{grid-template-columns:repeat(2,1fr)}
   .cards{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}

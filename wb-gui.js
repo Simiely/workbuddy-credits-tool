@@ -106,8 +106,26 @@ function renderHero() {
   $("hero").innerHTML = `
     <div class="hcard total ${cls}"><span class="h-ico">🏦</span><div class="n" id="heroTotal">${rs.length ? fmt(total) : "—"}</div><div class="l">总剩余积分</div><div class="s">${sub}</div></div>
     <div class="hcard"><span class="h-ico">👥</span><div class="n">${rs.length}</div><div class="l">账号</div></div>
-    <div class="hcard"><span class="h-ico">🔥</span><div class="n">${fmt(used)}</div><div class="l">累计已用</div></div>
-    <div class="hcard"><span class="h-ico">⚠️</span><div class="n" style="color:${expN ? "var(--bad)" : ""}">${expN}</div><div class="l">凭证过期</div></div>`;
+    <div class="hcard"><span class="h-ico">📉</span><div class="n" id="heroToday">—</div><div class="l">今日已用</div></div>
+    <div class="hcard"><span class="h-ico">🔥</span><div class="n">${fmt(used)}</div><div class="l">累计已用</div></div>`;
+  updateTodayUsed(); // 异步计算今日已用(基于历史快照)
+}
+
+// 今日已用 = 今日最早快照总剩余 − 今日最新快照总剩余(>0 为消耗;数据不足显示 0/—)
+async function updateTodayUsed() {
+  try {
+    const j = await api(__BASE__ + "/api/dashboard/all");
+    const totals = j.totals || [];
+    const now = new Date();
+    const today = totals.filter((t) => {
+      const d = new Date(t.ts);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    });
+    if (!today.length) { $("heroToday").textContent = "—"; return; }
+    if (today.length === 1) { $("heroToday").textContent = "0"; return; }
+    const diff = today[0].total - today[today.length - 1].total;
+    $("heroToday").textContent = diff > 0 ? fmt(diff) : "0";
+  } catch { }
 }
 
 function renderCards() {
