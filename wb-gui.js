@@ -3,7 +3,6 @@
 const __BASE__ = window.__BASE__ || "";
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => Math.round((n || 0) * 100) / 100;
-const shortName = (n) => (n || "").replace("CodeBuddy个人版国内运营裂变包", "裂变包").replace("CodeBuddy个人体验版", "体验版");
 const acctName = (a) => (a && (a.displayName || "").trim()) || (a && a.name) || "账号";
 const totalOf = (s) => (s ? (s.baseRemain ?? 0) + s.giftRemain : 0);
 const LINE_COLORS = ["#ff9292", "#5ad8a6", "#f6bd16", "#e8684a", "#6dc8ec", "#9270ca", "#ff9d4d", "#269a99", "#ff99c3", "#8378ea"];
@@ -17,17 +16,18 @@ let autoOn = localStorage.getItem("wb_auto_on") !== "0";
 let autoMin = parseInt(localStorage.getItem("wb_auto_min") || "5", 10) || 5;
 const LS_ON = "wb_auto_on", LS_MIN = "wb_auto_min";
 
-// ---- 统一请求:15s 超时 + JSON + 错误抛出 ----
+// ---- 统一请求:默认 15s 超时(批量刷新可传 timeout:30000)+ JSON + 错误抛出 ----
 async function api(path, opts = {}) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 15000);
+  const timeout = opts.timeout || 15000;
+  const t = setTimeout(() => ctrl.abort(), timeout);
   try {
     const r = await fetch(path, { ...opts, signal: ctrl.signal });
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || "请求失败");
     return j;
   } catch (e) {
-    throw new Error(e.name === "AbortError" ? "请求超时(15s)" : e.message);
+    throw new Error(e.name === "AbortError" ? "请求超时(" + Math.round(timeout / 1000) + "s)" : e.message);
   } finally { clearTimeout(t); }
 }
 
@@ -61,11 +61,34 @@ function setBusy(b) {
 }
 
 // ---- 刷新(打开页面与手动共用) ----
+// 设计:先显示本地缓存(秒开),再后台实时刷新覆盖;手动刷新则强制实时
 async function refreshAll(manual) {
   if (busy) return;
+  if (manual) {
+    await doRefresh(true);
+    return;
+  }
+  // 自动/首次:缓存先行,实时随后
+  if (!S) await loadLast();      // 有缓存则秒开
+  await doRefresh(false);
+}
+
+// 从本地缓存加载(离线可看,秒开)
+async function loadLast() {
+  try {
+    const j = await api(__BASE__ + "/api/last");
+    if (j.ok && j.results) {
+      S = j;
+      render();
+      $("updated").textContent = "缓存 " + j.fetchedAt + " · 正在刷新…";
+    }
+  } catch {}
+}
+
+async function doRefresh(manual) {
   setBusy(true);
   try {
-    const j = await api(__BASE__ + "/api/all");
+    const j = await api(__BASE__ + "/api/all", { timeout: 30000 });
     S = j;
     showErr("");
     render();
@@ -744,8 +767,8 @@ async function confirmClear() {
 }
 
 // ---- 启动 ----
+// 流程:先本地缓存秒开 → 后台实时刷新 → 其余初始化并行
 refreshAll(false);
-renderDash();
 checkDaemon();
 checkWebdavQuick();
 applyAuto();

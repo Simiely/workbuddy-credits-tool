@@ -18,6 +18,9 @@ const HTML_FILE = path.join(TOOLS_DIR, "wb-gui.html");
 const JS_FILE = path.join(TOOLS_DIR, "wb-gui.js");
 const DAEMON_BASE = `http://127.0.0.1:${DAEMON_PORT}`;
 
+// dashboard/all 内存缓存 {mtime, payload}
+let dashCache = null;
+
 // ---------- HTTP 服务 ----------
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
@@ -79,7 +82,13 @@ const server = http.createServer(async (req, res) => {
       return json(200, { ok: true, account: brief(a), history: hist });
     }
     // 全部账号消耗仪表盘:总趋势 + 每账号当前状态
+    // 内存缓存:按 wb-history.json 的 mtime 失效(快照不变则结果不变,避免每次全量解析)
     if (url.pathname === "/api/dashboard/all") {
+      const histMtime = fs.existsSync(path.join(TOOLS_DIR, "wb-history.json"))
+        ? fs.statSync(path.join(TOOLS_DIR, "wb-history.json")).mtimeMs : 0;
+      if (dashCache && dashCache.mtime === histMtime) {
+        return json(200, { ok: true, ...dashCache.payload });
+      }
       const hist = loadHistory();
       const accounts = loadAccounts();
       const totals = hist
@@ -120,6 +129,7 @@ const server = http.createServer(async (req, res) => {
           series,
         };
       });
+      dashCache = { mtime: histMtime, payload: { totals, per } };
       return json(200, { ok: true, totals, per });
     }
     if (url.pathname === "/api/credits") {
