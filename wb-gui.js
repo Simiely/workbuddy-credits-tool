@@ -105,10 +105,26 @@ function renderHero() {
   else sub = `✅ 一切正常 · ${okN}/${rs.length} 账号有效`;
   $("hero").innerHTML = `
     <div class="hcard total ${cls}"><span class="h-ico">🏦</span><div class="n" id="heroTotal">${rs.length ? fmt(total) : "—"}</div><div class="l">总剩余积分</div><div class="s">${sub}</div></div>
-    <div class="hcard"><span class="h-ico">👥</span><div class="n">${rs.length}</div><div class="l">账号</div></div>
+    <div class="hcard"><span class="h-ico">⏳</span><div class="n" id="heroExpiring">${rs.length ? fmt(rs.reduce((s, r) => s + todayExpiringOf(r), 0)) : "—"}</div><div class="l">今日会过期</div></div>
     <div class="hcard"><span class="h-ico">📉</span><div class="n" id="heroToday">—</div><div class="l">今日已用</div></div>
     <div class="hcard"><span class="h-ico">🔥</span><div class="n">${fmt(used)}</div><div class="l">累计已用</div></div>`;
   updateTodayUsed(); // 异步计算今日已用(基于历史快照)
+}
+
+// 今日会过期的积分 = 所有账号中到期日为今天的有效赠送包剩余合计
+function todayExpiringOf(r) {
+  if (!r || !r.summary || !r.data) return 0;
+  const now = new Date();
+  const dk = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  let sum = 0;
+  for (const a of r.data.Accounts || []) {
+    if (a.PackageName.includes("体验版")) continue;
+    if (a.Status !== 0) continue;               // 只看有效包(今天到期 → 今天会过期)
+    const dt = new Date((a.CycleEndTime || "").replace(" ", "T"));
+    const d = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    if (d === dk) sum += a.CapacityRemain || 0;
+  }
+  return sum;
 }
 
 // 今日已用 = 今日最早快照总剩余 − 今日最新快照总剩余(>0 为消耗;数据不足显示 0/—)
