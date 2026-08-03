@@ -188,6 +188,12 @@ let dragId = null;
 let suppressClick = false; // 拖拽后抑制一次点击,避免误开明细
 function initDrag() {
   const grid = $("grid");
+  // 手机/触屏:HTML5 drag 不可用,禁用拖拽并提示用排序按钮
+  const isTouch = window.matchMedia && window.matchMedia("(hover: none)").matches;
+  if (isTouch) {
+    grid.querySelectorAll(".acct").forEach((card) => { card.draggable = false; });
+    return;
+  }
   grid.querySelectorAll(".acct").forEach((card) => {
     card.addEventListener("dragstart", (e) => {
       dragId = card.dataset.id;
@@ -325,19 +331,19 @@ function renderDashTable() {
   const rows = dashPer.map((a, i) => {
     const ex = expMap[a.uin] || {};
     return `<tr>
-    <td class="num" style="color:var(--faint)">${i + 1}</td><td>${acctName(a)}</td>
-    <td class="num"><b>${a.currentRemain ?? "-"}</b></td><td class="num">${a.used ?? "-"}</td>
-    <td class="num">${tuMap[a.uin] > 0 ? fmt(tuMap[a.uin]) : "0"}</td>
-    <td class="num" style="color:var(--${ex.expiring1d > 0 ? 'warn' : 'faint'})">${fmt(ex.expiring1d)}</td>
-    <td class="num" style="color:var(--${ex.expiring3d > 0 ? 'warn' : 'faint'})${ex.expiring3d > 0 ? ';font-weight:800' : ''}">${fmt(ex.expiring3d)}</td></tr>`;
+    <td class="num" data-l="#" style="color:var(--faint)">${i + 1}</td><td data-l="账号">${acctName(a)}</td>
+    <td class="num" data-l="总剩余"><b>${a.currentRemain ?? "-"}</b></td><td class="num" data-l="累计已用">${a.used ?? "-"}</td>
+    <td class="num" data-l="今日消耗">${tuMap[a.uin] > 0 ? fmt(tuMap[a.uin]) : "0"}</td>
+    <td class="num" data-l="近1天过期" style="color:var(--${ex.expiring1d > 0 ? 'warn' : 'faint'})">${fmt(ex.expiring1d)}</td>
+    <td class="num" data-l="近3天过期" style="color:var(--${ex.expiring3d > 0 ? 'warn' : 'faint'})${ex.expiring3d > 0 ? ';font-weight:800' : ''}">${fmt(ex.expiring3d)}</td></tr>`;
   }).join("");
   const sum = (k) => dashPer.reduce((s, x) => s + (x[k] || 0), 0);
   const sumExp1d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring1d || 0), 0);
   const sumExp3d = dashPer.reduce((s, a) => s + ((expMap[a.uin] || {}).expiring3d || 0), 0);
   const sumTu = dashPer.reduce((s, a) => s + (tuMap[a.uin] || 0), 0);
   $("dashTbody").innerHTML = rows + `<tr style="border-top:2px solid var(--line2);font-weight:800">
-    <td></td><td>合计</td><td class="num">${fmt(sum("currentRemain"))}</td><td class="num">${fmt(sum("used"))}</td>
-    <td class="num">${fmt(sumTu)}</td><td class="num">${fmt(sumExp1d)}</td><td class="num">${fmt(sumExp3d)}</td></tr>`;
+    <td data-l=""></td><td data-l="">合计</td><td class="num" data-l="总剩余">${fmt(sum("currentRemain"))}</td><td class="num" data-l="累计已用">${fmt(sum("used"))}</td>
+    <td class="num" data-l="今日消耗">${fmt(sumTu)}</td><td class="num" data-l="近1天过期">${fmt(sumExp1d)}</td><td class="num" data-l="近3天过期">${fmt(sumExp3d)}</td></tr>`;
   $("dashMeta").textContent = dashPer.length + " 个账号";
 }
 function lineChart(series, mode) {
@@ -382,7 +388,9 @@ function lineChart(series, mode) {
   });
   const unit = mode === "month" ? "当月" : "当日";
   const note = `<text x="${w - R}" y="12" font-size="10" fill="#6b7484" text-anchor="end">● ${unit}有消耗</text>`;
-  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;min-width:430px;display:block">${ticks}${paths}${xl}${note}</svg>`;
+  // 手机(<640px)不强制最小宽度,svg 撑满容器缩放
+  const minW = window.innerWidth >= 640 ? 430 : 0;
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;min-width:${minW}px;display:block">${ticks}${paths}${xl}${note}</svg>`;
 }
 // 消耗聚合:按 keyFn 分组(day→YYYY-MM-DD,month→YYYY-MM),消耗=最早剩余−最晚剩余
 function aggregateConsumption(pts, keyFn) {

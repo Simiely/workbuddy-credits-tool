@@ -22,12 +22,20 @@ input,select{font:inherit;color:var(--text)}
 *::-webkit-scrollbar{width:8px;height:8px}*::-webkit-scrollbar-thumb{background:#39414f;border-radius:4px}
 
 .top{position:sticky;top:0;z-index:40;backdrop-filter:blur(12px);background:rgba(16,19,24,.78);border-bottom:1px solid var(--line);margin-bottom:12px}
-.top-in{max-width:1240px;margin:0 auto;padding:10px 0;display:flex;align-items:center;gap:12px}
-.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.top-in{max-width:1240px;margin:0 auto;padding:10px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto}
 .logo{width:36px;height:36px;border-radius:10px;background:var(--grad);display:grid;place-items:center;color:#2d1a1a;font-weight:900;font-size:14px;flex-shrink:0}
 .brand h1{font-size:16px;font-weight:800;white-space:nowrap}
 .brand .upd{font-size:11px;color:var(--faint);display:block;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50vw}
-.top-acts{margin-left:auto;display:flex;gap:8px}
+.top-acts{margin-left:auto;display:flex;gap:8px;align-items:center}
+/* 手机:自动刷新控件精简为"⏱ N分 [开]",副标题隐藏 */
+@media(max-width:640px){
+  .brand .upd{display:none}
+  .auto .lbl{display:none}
+  .auto input{width:38px;padding:4px 4px}
+  .top-acts{gap:6px}
+  .btn{padding:8px 10px}
+}
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:38px;transition:transform .15s,opacity .15s;white-space:nowrap;flex-shrink:0}
 .btn:active{transform:scale(.96)}
@@ -41,9 +49,17 @@ input,select{font:inherit;color:var(--text)}
 @keyframes sp{to{transform:rotate(360deg)}}
 
 .ops{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px 12px;margin-bottom:12px;max-height:102px;overflow-y:auto}
+/* 手机:操作条按钮紧凑 */
+@media(max-width:640px){
+  .ops{padding:7px 8px;gap:6px;max-height:132px}
+  .ops .btn{min-height:32px;padding:6px 9px;font-size:12px}
+  .ops .em{font-size:13px}
+  .ops .txt{font-size:12px}
+}
 #syncQuick{display:contents}
 #syncQuick[hidden]{display:none !important}
 .auto{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--sub)}
+.auto .lbl{display:inline}
 .auto input{width:50px;border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:5px 7px;font-size:12px;text-align:center;outline:none}
 .auto input:focus{border-color:var(--brand)}
 
@@ -51,6 +67,13 @@ input,select{font:inherit;color:var(--text)}
 .warn.d{background:rgba(247,163,92,.08);border-color:rgba(247,163,92,.3);color:var(--warn)}
 
 .hero{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}
+/* 手机:总卡横跨整行 */
+@media(max-width:640px){
+  .hero{grid-template-columns:repeat(2,1fr)}
+  .hero .hcard.total{grid-column:1/-1}
+  .hcard .n{font-size:24px}
+  .hcard.total .n{font-size:28px}
+}
 .hcard{position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;overflow:hidden;min-height:84px}
 .hcard::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:var(--grad)}
 .hcard .n{font-size:26px;font-weight:900;font-variant-numeric:tabular-nums;margin-top:6px}
@@ -87,6 +110,18 @@ td{padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(255,255,255,.02)}
 .num{font-variant-numeric:tabular-nums}
+/* 手机:总览表改卡片列表(不横滑) */
+@media(max-width:640px){
+  .tbl table{min-width:0}
+  .tbl thead{display:none}
+  .tbl tbody tr{display:block;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .tbl tbody tr:last-child{border-bottom:none}
+  .tbl tbody td{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border:none;white-space:normal}
+  .tbl tbody td::before{content:attr(data-l);color:var(--sub);font-size:11px;margin-right:12px}
+  .tbl tbody tr:first-child td::before{font-weight:800;color:var(--text)}
+  .tbl tbody tr:last-child td{font-weight:800}
+  .tbl tbody tr:last-child td::before{font-weight:800;color:var(--text)}
+}
 
 .grid{display:grid;grid-template-columns:1fr;gap:12px}
 .acct{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;cursor:grab;position:relative;overflow:hidden;transition:transform .25s,border-color .25s}
@@ -179,7 +214,7 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
   <header class="top"><div class="top-in">
     <div class="brand"><span class="logo">WB</span><div><h1>积分指挥中心</h1><span class="upd" id="updated">加载中…</span></div></div>
     <div class="top-acts">
-      <span class="auto" style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:4px 10px">⏱ 自动刷新 <input type="number" id="autoMin" min="1" max="1440" value="5"> 分钟 <button class="btn btn-g" id="btnAuto" onclick="toggleAuto()" style="min-height:30px;padding:4px 12px">开</button></span>
+      <span class="auto" style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:4px 10px">⏱ <span class="lbl">自动刷新</span> <input type="number" id="autoMin" min="1" max="1440" value="5"> <span class="lbl">分钟</span> <button class="btn btn-g" id="btnAuto" onclick="toggleAuto()" style="min-height:30px;padding:4px 12px">开</button></span>
       <button class="btn btn-p" id="btnRefresh" onclick="refreshAll(true)"><span class="spin" id="refreshSpin" hidden></span><span id="refreshTxt">刷新全部</span></button>
     </div>
   </div></header>
