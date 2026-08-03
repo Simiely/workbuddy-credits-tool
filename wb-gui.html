@@ -89,6 +89,10 @@ input,select{font:inherit;color:var(--text)}
 .phead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
 .phead h2{font-size:14px;font-weight:800}
 .pbody{padding:14px 16px}
+.pbody.line{position:relative}
+#chartTip{position:absolute;z-index:30;pointer-events:none;background:var(--card2);border:1px solid var(--line2);border-radius:10px;padding:6px 10px;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+#chartTip .ct-v{font-size:20px;font-weight:900;font-variant-numeric:tabular-nums}
+#chartTip .ct-s{font-size:10px;color:var(--sub);margin-top:1px}
 select.inp{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;outline:none}
 .hint{font-size:11px;color:var(--faint)}
 .ph{text-align:center;color:var(--faint);padding:40px 12px;font-size:13px}
@@ -254,7 +258,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <button class="btn btn-g active" id="btnDay" onclick="changeMode('day')" style="min-height:30px;padding:4px 12px;font-size:12px">每日</button>
       <button class="btn btn-g" id="btnMonth" onclick="changeMode('month')" style="min-height:30px;padding:4px 12px;font-size:12px">每月</button></div>
     </div>
-    <div class="pbody line"><div class="legend" id="legend"></div><div class="chart" id="chart"><div class="ph">加载中…</div></div></div>
+    <div class="pbody line"><div class="legend" id="legend"></div><div class="chart" id="chart"><div class="ph">加载中…</div></div><div id="chartTip" hidden></div></div>
   </section>
 
   <section class="panel">
@@ -333,6 +337,6 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 <div class="toast" id="toast"></div>
 <script>window.__BASE__ = (location.pathname.match(/^\/tool\/[^/]+/) || [""])[0];</script>
-<script src="./wb-gui.js?v=v1.0.7"></script>
+<script src="./wb-gui.js?v=v1.0.8"></script>
 </body>
 </html>

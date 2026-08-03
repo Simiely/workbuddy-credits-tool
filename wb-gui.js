@@ -450,6 +450,8 @@ function lineChart(series, mode) {
       if (i < 0) continue;
       const x = X(i).toFixed(1), y = Y(p.v).toFixed(1);
       d += (d ? "L" : "M") + x + "," + y;
+      // 透明 hover 区(触屏/鼠标移到点附近显示大数字浮层);上升点补可见小圆
+      pts += `<circle cx="${x}" cy="${y}" r="7" fill="transparent" class="cpt" data-v="${Math.round(p.v)}" data-t="${p.t}" data-n="${s.name || ""}"/>`;
       if (prevV !== null && p.v > prevV) {
         pts += `<circle cx="${x}" cy="${y}" r="2.5" fill="${color}"/>`;
       }
@@ -480,7 +482,7 @@ function renderLines() {
   const lines = raw.map((a) => {
     const pts = (a.series || []).slice().sort((a, b) => a.t < b.t ? -1 : 1);
     const days = aggregateConsumption(pts, keyFn);
-    return days.length ? { key: a.uin, pts: days } : null;
+    return days.length ? { key: a.uin, name: acctName(a), pts: days } : null;
   }).filter(Boolean);
   if (!lines.length) {
     $("legend").innerHTML = "";
@@ -779,6 +781,29 @@ refreshAll(false);
 checkDaemon();
 checkWebdavQuick();
 applyAuto();
+
+// ---- 折线图悬浮提示(事件委托,点 hover 显示大数字)----
+const chartTip = $("chartTip");
+if (chartTip) {
+  const chartBox = () => ($("chart").closest(".pbody.line") || document.body).getBoundingClientRect();
+  const placeTip = (e) => {
+    const box = chartBox(), w = chartTip.offsetWidth, h = chartTip.offsetHeight;
+    let lx = e.clientX - box.left + 14, ly = e.clientY - box.top - h - 8;
+    if (lx + w > box.width - 4) lx = e.clientX - box.left - w - 14;
+    if (ly < 4) ly = e.clientY - box.top + 18;
+    chartTip.style.left = lx + "px";
+    chartTip.style.top = ly + "px";
+  };
+  document.addEventListener("mouseover", (e) => {
+    const el = e.target.closest && e.target.closest(".cpt");
+    if (!el) return;
+    chartTip.hidden = false;
+    chartTip.innerHTML = `<div class="ct-v">${el.dataset.v}</div><div class="ct-s">${el.dataset.n ? el.dataset.n + " · " : ""}${new Date(el.dataset.t).toLocaleString("zh-CN").slice(5)}</div>`;
+    placeTip(e);
+  });
+  document.addEventListener("mousemove", (e) => { if (!chartTip.hidden) placeTip(e); });
+  document.addEventListener("mouseout", (e) => { if (e.target.closest && e.target.closest(".cpt")) chartTip.hidden = true; });
+}
 
 // 若已配置过 WebDAV,操作条云同步右侧直接显示上传/下载
 async function checkWebdavQuick() {
