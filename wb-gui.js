@@ -15,6 +15,8 @@ let autoTimer = null;
 let autoOn = localStorage.getItem("wb_auto_on") !== "0";
 let autoMin = parseInt(localStorage.getItem("wb_auto_min") || "5", 10) || 5;
 const LS_ON = "wb_auto_on", LS_MIN = "wb_auto_min";
+// 移动端断点:与 CSS @media(max-width:640px) 同源,JS/CSS 永远一致
+const mqMobile = window.matchMedia("(max-width: 640px)");
 
 // ---- 统一请求:默认 15s 超时(批量刷新可传 timeout:30000)+ JSON + 错误抛出 ----
 async function api(path, opts = {}) {
@@ -356,7 +358,7 @@ function renderDashTable() {
   for (const r of (S && S.results) || []) {
     credMap[r.account.uin] = { expired: !!r.expired, sessionExpiresAt: r.account.sessionExpiresAt };
   }
-  const isMobile = window.innerWidth < 640;
+  const isMobile = mqMobile.matches; // 与 CSS @media(max-width:640px) 同源,永远一致
   if (isMobile) {
     // 单元格工具:作用域在手机分支内,被每账号卡片 + 合计卡复用
     const cell = (label, val, color, bg, big) => `<div class="dcell ${bg}" ${color ? `style="--dc:var(--${color})"` : ""}>${big ? `<div class="dc-l">${label}</div><div class="dc-v big">${val}</div>` : `<div class="dc-l">${label}</div><div class="dc-v">${val}</div>`}</div>`;
@@ -783,6 +785,18 @@ refreshAll(false);
 checkDaemon();
 checkWebdavQuick();
 applyAuto();
+
+// 断点变化时重渲染总览:JS 判断与 CSS media query 同源(mqMobile),
+// 跨断点(宽↔手机 / F12 模拟切换)时 CSS 先变、JS 需重渲染,否则表格 HTML 会挤成一坨文本
+let mqTimer = null;
+const onBreakpoint = () => {
+  clearTimeout(mqTimer);
+  mqTimer = setTimeout(() => {
+    if (dashPer.length) renderDashTable();
+  }, 200);
+};
+if (mqMobile.addEventListener) mqMobile.addEventListener("change", onBreakpoint);
+else if (mqMobile.addListener) mqMobile.addListener(onBreakpoint); // Safari <14 兼容
 
 // 若已配置过 WebDAV,操作条云同步右侧直接显示上传/下载
 async function checkWebdavQuick() {
