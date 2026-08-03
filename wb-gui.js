@@ -447,7 +447,7 @@ function lineChart(series, mode) {
   let xl = "";
   // X 轴标签 anchor:两端用 start/end 避开 Y 轴/右边界重叠(否则首日标签被 Y 轴"0"遮挡,看起来只显示 1 日)
   const xAnchor = (i) => i === 0 ? "start" : (i === times.length - 1 ? "end" : "middle");
-  times.forEach((t, i) => { if (i % step === 0 || i === times.length - 1) { const p = t.slice(5, 10).split("-"); xl += `<text x="${X(i)}" y="${h - 8}" font-size="10" fill="#6b7484" text-anchor="${xAnchor(i)}">${mode === "month" ? parseInt(p[0],10) + "月" : parseInt(p[0],10) + "月" + parseInt(p[1],10) + "日"}</text>`; } });
+  times.forEach((t, i) => { if (i % step === 0 || i === times.length - 1) { const dd = new Date(t); xl += `<text x="${X(i)}" y="${h - 8}" font-size="10" fill="#6b7484" text-anchor="${xAnchor(i)}">${mode === "month" ? (dd.getMonth() + 1) + "月" : (dd.getMonth() + 1) + "月" + dd.getDate() + "日"}</text>`; } });
   let paths = "";
   series.forEach((s, si) => {
     if (!s.pts.length) return;
@@ -479,7 +479,12 @@ function lineChart(series, mode) {
   const minW = window.innerWidth >= 640 ? 430 : 0;
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;min-width:${minW}px;display:block">${ticks}${paths}${xl}${note}</svg>`;
 }
-// 消耗聚合:按 keyFn 分组(day→YYYY-MM-DD,month→YYYY-MM),消耗=最早剩余−最晚剩余
+// 消耗聚合:按 keyFn 分组(day→本地YYYY-MM-DD,month→本地YYYY-MM),消耗=最早剩余−最晚剩余
+// 关键:用本地日期而非 UTC(t.slice(0,10) 是 UTC 日期,会把北京时间凌晨的数据归到前一天)
+function toLocalKey(t, month) {
+  const d = new Date(t), p = (n) => String(n).padStart(2, "0");
+  return month ? `${d.getFullYear()}-${p(d.getMonth() + 1)}` : `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 function aggregateConsumption(pts, keyFn) {
   const firstOf = new Map(), lastOf = new Map();
   for (const p of pts) { const k = keyFn(p.t); if (!firstOf.has(k)) firstOf.set(k, p); lastOf.set(k, p); }
@@ -492,7 +497,7 @@ function renderLines() {
     $("chart").innerHTML = '<div class="ph">暂无足够数据,多刷新几次后出现折线</div>';
     return;
   }
-  const keyFn = dashMode === "day" ? (t) => t.slice(0, 10) : (t) => t.slice(0, 7);
+  const keyFn = dashMode === "day" ? (t) => toLocalKey(t) : (t) => toLocalKey(t, true);
   const lines = raw.map((a) => {
     const pts = (a.series || []).slice().sort((a, b) => a.t < b.t ? -1 : 1);
     const days = aggregateConsumption(pts, keyFn);
