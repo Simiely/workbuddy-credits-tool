@@ -65,7 +65,8 @@ input,select{font:inherit;color:var(--text)}
 
 .warn{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.3);color:var(--bad);padding:10px 14px;border-radius:12px;margin-bottom:12px;font-size:13px}
 .warn.d{background:rgba(247,163,92,.08);border-color:rgba(247,163,92,.3);color:var(--warn)}
-#daemonWarn{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#daemonWarn:not([hidden]){display:flex;align-items:center;justify-content:space-between;gap:10px}
+#daemonWarn[hidden]{display:none}
 .warn-x{flex-shrink:0;background:none;border:none;color:var(--warn);font-size:14px;line-height:1;cursor:pointer;padding:4px 6px;border-radius:6px;opacity:.7}
 .warn-x:hover{opacity:1;background:rgba(247,163,92,.15)}
 
