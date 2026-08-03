@@ -195,7 +195,7 @@ const server = http.createServer(async (req, res) => {
       saveSyncConfig({ url: u, user: String(user || "").trim(), pass: String(pass || "") });
       return json(200, { ok: true });
     }
-    const syncCfg = () => { const c = loadSyncConfig(); if (!c || !c.user) throw new Error("未配置 WebDAV 账号,请先填写用户名密码并「保存配置」"); return { ...c, url: c.url || Buffer.from("aHR0cHM6Ly93MmUwYjFkNmF2LmRkbnN0by5jb20v", "base64").toString() }; };
+    const syncCfg = () => { const c = loadSyncConfig(); if (!c || !c.url) throw new Error("未配置 WebDAV,请先点「保存配置」"); return c; };
     if (url.pathname === "/api/webdav/test" && req.method === "POST") {
       const c = syncCfg();
       await testConnection(c.url, c.user, c.pass);
