@@ -1,27 +1,31 @@
-// wb-credits.mjs - WorkBuddy 积分查询 CLI(多账号)
-// 职责:命令分发 + 薄调用;查询编排在 lib/query.js,渲染在 lib/render.js
+// wb-credits.mjs - WorkBuddy 积分查询 CLI（多账号）· 薄命令分发层
+// 业务全在 src/：查询编排 src/compute/query、账号池 src/compute/store、
+// 采集 src/collect、渲染 src/present/render。
 //
 // 用法:
-//   node wb-credits.mjs save-current [备注名]   # 把当前 Edge 登录的账号保存进账号池
+//   node wb-credits.mjs save-current [备注名]   # 把当前 Edge 登录的账号保存进账号池(桌面方案)
 //   node wb-credits.mjs accounts                # 列出账号池
 //   node wb-credits.mjs rename <序号|id|Uin> <显示名>
 //   node wb-credits.mjs del <序号|id|Uin>
 //   node wb-credits.mjs all [--csv <路径>]      # 一键批量查询全部账号
+//   node wb-credits.mjs report                  # 派生视图:当前剩余/今日已用/日均/预计耗尽天数
 //   node wb-credits.mjs [--account <序号|id|Uin>] [--all|--json|--csv <路径>]  # 单账号查询
 //   (兼容别名) node wb-credits.mjs cookie        # = save-current
 // 注:数据备份/恢复请用 GUI 的「☁️ 云同步」,命令行不再提供 export/import。
 import fs from "node:fs";
 import path from "node:path";
-import { TOOLS_DIR } from "./lib/util.js";
-import { loadAccounts, saveAccounts, displayName, findAccount } from "./lib/accounts.js";
-import { fetchAllAccounts, fetchOneAccount } from "./lib/query.js";
-import { saveCurrentFromEdge } from "./lib/account-ops.js";
-import { renderSingleMarkdown, renderAllMarkdown, csvAll, csvSingle } from "./lib/render.js";
+import { TOOLS_DIR } from "./src/config.js";
+import { loadAccounts, saveAccounts, displayName, findAccount } from "./src/compute/store.js";
+import { fetchAllAccounts, fetchOneAccount } from "./src/compute/query.js";
+import { saveCurrentFromEdge } from "./src/compute/account-ops.js";
+import { deriveAll } from "./src/compute/derive.js";
+import { renderSingleMarkdown, renderAllMarkdown, csvAll, csvSingle } from "./src/present/render.js";
 
 function fail(msg) {
   console.error("ERR:", msg);
   process.exit(1);
 }
+const fmt = (n) => Math.round((n || 0) * 100) / 100; // 四舍五入,保证 CLI/GUI 口径一致
 
 // ==================== 命令:save-current ====================
 async function cmdSaveCurrent(remark) {
@@ -82,6 +86,27 @@ async function cmdAll(args) {
   renderAllMarkdown(results);
 }
 
+// ==================== 命令:report(派生视图,复用引擎) ====================
+// 复用 src/compute/derive.js 的 deriveAll,打印当前剩余/今日已用/日均消耗/预计耗尽天数等派生指标
+function cmdReport() {
+  const accounts = loadAccounts();
+  if (!accounts.length) return fail("账号池为空,先运行: wb-credits.bat save-current");
+  const per = deriveAll(accounts);
+  console.log(`# 额度派生视图(${new Date().toLocaleString("zh-CN")}) · 数据源:readings 时序`);
+  console.log("");
+  console.log("| # | 账号 | 当前剩余 | 今日已用 | 累计已用 | 日均消耗(7日) | 预计耗尽(天) | 数据点 |");
+  console.log("|---|---|---|---|---|---|---|---|");
+  per.forEach((d, i) => {
+    const dte = d.daysToEmpty == null ? "—" : d.daysToEmpty;
+    const rate = d.dailyRate > 0 ? d.dailyRate : "—";
+    console.log(
+      `| ${i + 1} | ${displayName(d)} | ${fmt(d.currentRemain)} | ${fmt(d.todayUsed)} | ${fmt(d.used)} | ${rate} | ${dte} | ${d.points} |`
+    );
+  });
+  console.log("");
+  console.log("提示: 派生指标基于历史快照,先运行 wb-credits.bat all 产生快照,再运行 report 查看趋势");
+}
+
 // ==================== 单账号查询 ====================
 async function cmdQuerySingle(args) {
   const accounts = loadAccounts();
@@ -119,6 +144,7 @@ async function main() {
     if (cmd === "rename") return cmdRename(args[1], args[2]);
     if (cmd === "del") return cmdDelete(args[1]);
     if (cmd === "all" || cmd === "batch") return await cmdAll(args);
+    if (cmd === "report") return cmdReport();
     return await cmdQuerySingle(args);
   } catch (e) {
     fail(e.message);

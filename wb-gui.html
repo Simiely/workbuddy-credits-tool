@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>积分指挥中心</title>
 <style>
 :root {
@@ -22,40 +22,63 @@ input,select{font:inherit;color:var(--text)}
 *::-webkit-scrollbar{width:8px;height:8px}*::-webkit-scrollbar-thumb{background:#39414f;border-radius:4px}
 
 .top{position:sticky;top:0;z-index:40;backdrop-filter:blur(12px);background:rgba(16,19,24,.78);border-bottom:1px solid var(--line);margin-bottom:12px}
-.top-in{max-width:1240px;margin:0 auto;padding:10px 0;display:flex;align-items:center;gap:12px}
-.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.top-in{max-width:1240px;margin:0 auto;padding:10px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto}
 .logo{width:36px;height:36px;border-radius:10px;background:var(--grad);display:grid;place-items:center;color:#2d1a1a;font-weight:900;font-size:14px;flex-shrink:0}
 .brand h1{font-size:16px;font-weight:800;white-space:nowrap}
 .brand .upd{font-size:11px;color:var(--faint);display:block;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50vw}
-.top-acts{margin-left:auto;display:flex;gap:8px}
+.top-acts{margin-left:auto;display:flex;gap:8px;align-items:center}
+/* 手机:顶栏只留品牌+刷新,自动刷新控件已在操作条 */
+@media(max-width:640px){
+  .brand .upd{display:none}
+  .top-acts{gap:6px}
+  .top .btn{padding:8px 12px}
+  .ops .auto{padding:3px 8px}
+  .ops .auto input{width:38px;padding:4px 4px}
+}
 
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:38px;transition:transform .15s,opacity .15s;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:38px;transition:transform .15s,opacity .15s;white-space:nowrap;flex-shrink:0}
 .btn:active{transform:scale(.96)}
 .btn-p{background:var(--grad);color:#2d1a1a}
 .btn-g{background:var(--card2);color:var(--text);border:1px solid var(--line)}
 .btn-g:hover{border-color:var(--line2)}
+.btn-g.active{background:var(--grad);color:#2d1a1a;border-color:transparent}
 .btn-d{background:transparent;color:var(--bad);border:1px solid var(--line);font-size:12px;padding:5px 10px;min-height:28px}
 .btn:disabled{opacity:.5;pointer-events:none}
 .spin{width:13px;height:13px;border:2px solid rgba(45,26,26,.3);border-top-color:#2d1a1a;border-radius:50%;animation:sp .7s linear infinite;flex-shrink:0}
 @keyframes sp{to{transform:rotate(360deg)}}
 
-.ops{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px 12px;margin-bottom:12px}
-/* 左右两组:左组靠左,右组靠右(margin-right:auto 标准 flex 弹性对齐,无占位元素) */
-.ops-l{display:flex;align-items:center;gap:8px;margin-right:auto;flex-shrink:0}
-.ops-r{display:flex;align-items:center;gap:8px;flex-shrink:0}
-/* 窄屏(手机):操作条按钮只显示 emoji,隐藏文字,紧凑适配 */
-@media(max-width:640px){.ops .txt{display:none}}
-.sep{width:1px;height:22px;background:var(--line2);margin:0 3px}
-#syncQuick{display:flex;gap:8px}
+.ops{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px 12px;margin-bottom:12px;max-height:102px;overflow-y:auto}
+/* 手机:操作条按钮紧凑 */
+@media(max-width:640px){
+  .ops{padding:7px 8px;gap:6px;max-height:132px}
+  .ops .btn{min-height:32px;padding:6px 9px;font-size:12px}
+  .ops .em{font-size:13px}
+  .ops .txt{font-size:12px}
+}
+#syncQuick{display:contents}
 #syncQuick[hidden]{display:none !important}
 .auto{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--sub)}
+.auto .lbl{display:inline}
 .auto input{width:50px;border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:5px 7px;font-size:12px;text-align:center;outline:none}
 .auto input:focus{border-color:var(--brand)}
+.sdot{width:8px;height:8px;border-radius:50%;background:#777;flex-shrink:0;display:inline-block;transition:background .2s,box-shadow .2s}
+.sdot.on{background:#2ecc71;box-shadow:0 0 6px #2ecc71}
+.sdot.off{background:#e07b39}
 
 .warn{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.3);color:var(--bad);padding:10px 14px;border-radius:12px;margin-bottom:12px;font-size:13px}
 .warn.d{background:rgba(247,163,92,.08);border-color:rgba(247,163,92,.3);color:var(--warn)}
+#daemonWarn:not([hidden]){display:flex;align-items:center;justify-content:space-between;gap:10px}
+#daemonWarn[hidden]{display:none}
+.warn-x{flex-shrink:0;background:none;border:none;color:var(--warn);font-size:14px;line-height:1;cursor:pointer;padding:4px 6px;border-radius:6px;opacity:.7}
+.warn-x:hover{opacity:1;background:rgba(247,163,92,.15)}
 
 .hero{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}
+/* 手机:2x2 均分(默认已是),数字稍小防溢出 */
+@media(max-width:640px){
+  .hcard .n{font-size:24px}
+  .hcard.total .n{font-size:26px}
+}
 .hcard{position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;overflow:hidden;min-height:84px}
 .hcard::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:var(--grad)}
 .hcard .n{font-size:26px;font-weight:900;font-variant-numeric:tabular-nums;margin-top:6px}
@@ -73,26 +96,44 @@ input,select{font:inherit;color:var(--text)}
 .phead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
 .phead h2{font-size:14px;font-weight:800}
 .pbody{padding:14px 16px}
+.pbody.line{position:relative}
+#chartTip{position:absolute;z-index:30;pointer-events:none;background:var(--card2);border:1px solid var(--line2);border-radius:12px;padding:8px 12px;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+#chartTip .ct-v{font-size:26px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.15;margin-top:2px}
+#chartTip .ct-p{font-size:14px;font-weight:700;color:var(--sub);font-variant-numeric:tabular-nums;margin-top:2px}
+#chartTip .ct-s{font-size:15px;font-weight:700;color:var(--text)}
 select.inp{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;outline:none}
 .hint{font-size:11px;color:var(--faint)}
 .ph{text-align:center;color:var(--faint);padding:40px 12px;font-size:13px}
+.ph-sm{padding:12px}.ph-md{padding:24px}
+.t-faint{color:var(--faint)}.t-sub{color:var(--sub)}.t-bad{color:var(--bad)}.t-ok{color:var(--ok)}.t-warn{color:var(--warn)}.t-brand{color:var(--brand)}
+.btn-lg{min-height:38px;padding:9px 15px}
+.num-b{font-weight:800}
+.row-total{border-top:2px solid var(--line2);font-weight:800}
+.hint-mb{margin-bottom:12px}
+.tbl-short{max-height:230px}
+.tbl-narrow{min-width:0}
+/* ===== 到期明细条形图(统一样式,JS 只传高度)===== */
+.bar-row{display:flex;gap:8px;overflow-x:auto;padding:6px 0}
+.bar-col{flex:1;min-width:52px;text-align:center}
+.bar-v{font-size:11px;font-weight:800}
+.bar-v.bad{color:var(--bad)}.bar-v.warn{color:var(--warn)}.bar-v.brand{color:var(--brand)}
+.bar-track{height:90px;background:var(--chip);border-radius:6px;display:flex;align-items:flex-end;overflow:hidden;margin-top:4px}
+.bar-fill{width:100%}
+.bar-fill.bad{background:linear-gradient(180deg,var(--bad),#ff8f8f)}
+.bar-fill.warn{background:linear-gradient(180deg,var(--warn),#ffc08a)}
+.bar-fill.brand{background:var(--grad)}
+.bar-label{font-size:10px;color:var(--sub);margin-top:5px}
+.bar-sub{font-size:9px;color:var(--faint)}
 
 .line{display:flex;flex-direction:column-reverse;gap:12px}
-.legend{display:flex;flex-wrap:wrap;gap:6px}
-.lg{display:inline-flex;align-items:center;gap:7px;font-size:12px;padding:5px 11px;border:1px solid var(--line);border-radius:999px;cursor:pointer;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.legend{display:flex;flex-wrap:wrap;gap:6px;max-height:200px;overflow-y:auto}
+.lg{display:inline-flex;align-items:center;gap:7px;font-size:12px;padding:5px 11px;border:1px solid var(--line);border-radius:999px;cursor:pointer;white-space:nowrap;max-width:50%;overflow:hidden;text-overflow:ellipsis}
 .lg:hover{border-color:var(--line2);background:var(--chip)}
 .lg.off{opacity:.4;text-decoration:line-through}
 .lg i{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .chart{flex:1;min-width:0;overflow-x:auto}
 
-.tbl{overflow:auto;max-height:360px}
-table{width:100%;border-collapse:collapse;font-size:13px;min-width:540px}
-th{position:sticky;top:0;z-index:1;background:var(--card2);color:var(--sub);font-weight:700;text-align:left;padding:9px 12px;border-bottom:1px solid var(--line2);font-size:11px;white-space:nowrap}
-td{padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
-tr:last-child td{border-bottom:none}
-tr:hover td{background:rgba(255,255,255,.02)}
-.num{font-variant-numeric:tabular-nums}
-
+/* ===== 账号卡片列表(grid) ===== */
 .grid{display:grid;grid-template-columns:1fr;gap:12px}
 .acct{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;cursor:grab;position:relative;overflow:hidden;transition:transform .25s,border-color .25s}
 .acct:active{cursor:grabbing}
@@ -108,18 +149,33 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .acct-rows{margin-top:14px;display:flex;flex-direction:column;gap:12px}
 .arow .l{font-size:11px;color:var(--sub);margin-bottom:4px;display:flex;justify-content:space-between}
 .arow .l b{color:var(--text)}
+/* 含改名/删除按钮的行:与左侧内容(今日消耗/错误信息)同一行,按钮靠右 */
+.arow.act-row{display:flex;align-items:center;gap:8px}
+.arow.act-row .l{flex:1;margin-bottom:0}
+.arow.act-row .acts{flex-shrink:0}
 .meter{height:7px;border-radius:999px;background:var(--chip);overflow:hidden}
 .meter i{display:block;height:100%;border-radius:999px;background:var(--grad);transition:width .5s}
 .meter.warn i{background:linear-gradient(90deg,var(--warn),#ffc08a)}
-.acct-foot{display:flex;justify-content:space-between;align-items:center;margin-top:14px;gap:8px;flex-wrap:wrap}
-.acct-foot .exp{font-size:11px;color:var(--faint)}
 .acts{display:flex;gap:6px}
 .empty{text-align:center;color:var(--faint);padding:40px 12px}
 .empty .big{font-size:42px;margin-bottom:10px}
 footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
 
+.tbl{overflow:auto;max-height:360px}
+/* 账号总览:两套 DOM 并存(JS 都渲染),CSS 决定显示哪套 */
+.dash-cards{display:none}          /* 卡片版默认隐藏(桌面走表格) */
+.dash-table{display:block}         /* 表格版默认显示 */
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:540px}
+th{position:sticky;top:0;z-index:1;background:var(--card2);color:var(--sub);font-weight:700;text-align:left;padding:9px 12px;border-bottom:1px solid var(--line2);font-size:11px;white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+.num{font-variant-numeric:tabular-nums}
+/* ===== 弹窗/底部抽屉 ===== */
 .mask{position:fixed;inset:0;background:rgba(8,10,14,.66);backdrop-filter:blur(5px);display:none;align-items:flex-end;justify-content:center;z-index:60}
 .mask.show{display:flex}
+/* 确认弹窗永远在最上:它可能在其他弹窗(云同步/清空)之上打开,同 z-index 会被后写的 DOM 遮挡 */
+#smallMask{z-index:85}
 .sheet{width:100%;max-height:92vh;background:var(--card);border-radius:16px 16px 0 0;display:flex;flex-direction:column;overflow:hidden;animation:up .3s}
 @keyframes up{from{transform:translateY(60px);opacity:.3}to{transform:none;opacity:1}}
 .shead{display:flex;align-items:center;justify-content:space-between;padding:15px 16px;border-bottom:1px solid var(--line)}
@@ -127,6 +183,20 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
 .shead button{background:transparent;color:var(--sub);font-size:18px;width:32px;height:32px;border-radius:8px}
 .shead button:hover{background:var(--chip)}
 .sbody{overflow:auto;padding:16px;-webkit-overflow-scrolling:touch}
+.finput{width:100%;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:11px 13px;font-size:14px;outline:none}
+.finput:focus{border-color:var(--brand)}
+.factions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+.tip{font-size:12px;color:var(--sub);margin-bottom:14px;line-height:1.7}
+.toast{
+  position:fixed;top:calc(14px + env(safe-area-inset-top));left:50%;
+  transform:translateX(-50%) translateY(-8px);background:var(--card2);color:var(--text);
+  border:1px solid var(--line);
+  padding:11px 20px;border-radius:var(--pill);font-size:13px;font-weight:700;
+  opacity:0;pointer-events:none;z-index:90;box-shadow:0 8px 24px rgba(0,0,0,.55);
+  transition:opacity .25s,transform .25s;max-width:calc(100vw - 32px);text-align:center;
+}
+.toast.show{opacity:.97;transform:translateX(-50%)}
+/* 明细弹窗内:统计卡 + 到期明细 */
 .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px}
 .mcard{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
 .mcard .l{font-size:10px;color:var(--sub)}
@@ -147,21 +217,33 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
 .bday{margin-bottom:9px}.bday:last-child{margin-bottom:0}
 .bday-h{font-size:11px;font-weight:700;color:var(--sub);margin-bottom:4px}
 .bday-i{font-size:12px;padding:3px 0 3px 10px;border-left:2px solid var(--line2);margin:2px 0 2px 4px}
-.finput{width:100%;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:11px 13px;font-size:14px;outline:none}
-.finput:focus{border-color:var(--brand)}
-.factions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
-.tip{font-size:12px;color:var(--sub);margin-bottom:14px;line-height:1.7}
-
-.toast{
-  position:fixed;top:calc(14px + env(safe-area-inset-top));left:50%;
-  transform:translateX(-50%) translateY(-8px);background:var(--card2);color:var(--text);
-  border:1px solid var(--line-strong);
-  padding:11px 20px;border-radius:var(--pill);font-size:13px;font-weight:700;
-  opacity:0;pointer-events:none;z-index:90;box-shadow:0 8px 24px rgba(0,0,0,.55);
-  transition:opacity .25s,transform .25s;max-width:calc(100vw - 32px);text-align:center;
+/* ===== 账号总览卡片版样式(全局;默认隐藏,手机 media 显示) ===== */
+.dacct{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;position:relative;padding:8px 8px 10px}
+.dacct::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:var(--grad)}
+.dacct.dtot{grid-column:1/-1}
+.dacct.dtot::before{opacity:.5}
+.dhead{display:flex;align-items:center;gap:4px;margin-bottom:6px;font-size:11px;min-height:18px}
+.dhead .di{flex-shrink:0;width:16px;height:16px;border-radius:4px;background:var(--grad);color:#2d1a1a;font-weight:800;font-size:9px;display:grid;place-items:center}
+.dhead .dname{flex:1;min-width:0;font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dhead .dtag{flex-shrink:0;font-size:9px;padding:1px 5px;border-radius:6px;font-weight:700}
+.dhead .dtag.ok{color:var(--ok);background:rgba(61,214,140,.1)}
+.dhead .dtag.bad{color:var(--warn);background:rgba(247,163,92,.15)}
+.dremain{text-align:center;padding:4px 0 6px}
+.dr-v{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.1}
+.dr-l{font-size:9px;color:var(--sub);margin-top:1px}
+.dgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.dcell{border-radius:8px;padding:5px 4px;text-align:center}
+.dcell.plain{background:var(--card2);border:1px solid var(--line)}
+.dcell.ok{background:rgba(61,214,140,.08);border:1px solid rgba(61,214,140,.2)}
+.dcell.warn{background:rgba(247,163,92,.1);border:1px solid rgba(247,163,92,.3)}
+.dc-l{font-size:9px;color:var(--sub);line-height:1.2}
+.dc-v{font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--text);margin-top:1px}
+.dc-v.big{font-size:14px;color:var(--dc,var(--text))}
+/* 手机:显示卡片(2 列网格),隐藏表格 */
+@media(max-width:640px){
+  .dash-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:2px}
+  .dash-table{display:none}
 }
-.toast.show{opacity:.97;transform:translateX(-50%)}
-
 @media(min-width:640px){
   .wrap{padding:0 20px}
   .hero{grid-template-columns:repeat(4,1fr)}
@@ -171,9 +253,9 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
   .mask{align-items:center;padding:24px}
   .sheet{border-radius:16px;width:min(860px,100%)}
   .sheet.sm{width:min(400px,100%)}
-  .line{flex-direction:row}
-  .legend{width:150px;flex-shrink:0;flex-direction:column;max-height:250px;overflow:auto;gap:5px}
-  .lg{width:100%}
+  .line{flex-direction:column}
+  .legend{width:auto;flex-direction:row;flex-wrap:wrap;max-height:200px;overflow:auto;gap:6px}
+  .lg{width:auto;max-width:50%}
 }
 @media(min-width:900px){.grid{grid-template-columns:repeat(3,1fr)}}
 @media(min-width:1200px){.grid{grid-template-columns:repeat(4,1fr)}}
@@ -184,45 +266,52 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
   <header class="top"><div class="top-in">
     <div class="brand"><span class="logo">WB</span><div><h1>积分指挥中心</h1><span class="upd" id="updated">加载中…</span></div></div>
     <div class="top-acts">
-      <span class="auto" style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:4px 10px">⏱ 自动刷新 <input type="number" id="autoMin" min="1" max="1440" value="5"> 分钟 <button class="btn btn-g" id="btnAuto" onclick="toggleAuto()" style="min-height:30px;padding:4px 12px">开</button></span>
+      <button class="btn btn-g" id="btnAdmin" onclick="openAdmin()" title="点击设置管理密码(启用后写操作需密码)">🔒 设置密码</button>
       <button class="btn btn-p" id="btnRefresh" onclick="refreshAll(true)"><span class="spin" id="refreshSpin" hidden></span><span id="refreshTxt">刷新全部</span></button>
     </div>
   </div></header>
 
   <div class="ops">
-    <div class="ops-l">
-      <button class="btn btn-g" onclick="saveCurrent()" id="btnAdd"><span class="em">＋</span><span class="txt">添加当前账号</span></button>
-      <button class="btn btn-g" onclick="sortByTotal()"><span class="em">📊</span><span class="txt">总剩余排序</span></button>
-      <button class="btn btn-g" onclick="openClear()"><span class="em">🧹</span><span class="txt">清空</span></button>
-      <button class="btn btn-g" onclick="exportMd()"><span class="em">📝</span><span class="txt">导出 MD</span></button>
-    </div>
-    <div class="ops-r">
-      <button class="btn btn-g" onclick="openSync()"><span class="em">☁️</span><span class="txt">云同步</span></button>
-      <span id="syncQuick" hidden>
-        <button class="btn btn-g" title="测试连接" onclick="syncAct('test')">🔌</button>
-        <button class="btn btn-g" title="上传数据" onclick="syncAct('upload')">⬆️</button>
-        <button class="btn btn-g" title="下载数据" onclick="syncAct('download')">⬇️</button>
-      </span>
-    </div>
+    <button class="btn btn-g" onclick="openSync()"><span class="em">☁️</span><span class="txt">云同步</span></button>
+    <span id="syncQuick" hidden>
+      <button class="btn btn-g" title="测试连接" onclick="syncAct('test')"><span class="em">🔌</span><span class="txt">测试连接</span></button>
+      <button class="btn btn-g" title="上传数据" onclick="syncAct('upload')"><span class="em">⬆️</span><span class="txt">上传数据</span></button>
+      <button class="btn btn-g" title="下载数据" onclick="syncAct('download')"><span class="em">⬇️</span><span class="txt">下载数据</span></button>
+    </span>
   </div>
 
   <div class="warn" id="err" hidden></div>
-  <div class="warn d" id="daemonWarn" hidden></div>
+  <div class="warn d" id="daemonWarn" hidden><span id="daemonMsg"></span><button class="warn-x" id="daemonHide" title="知道了,不再显示">✕</button></div>
 
   <section class="hero" id="hero"></section>
 
   <section class="panel">
-    <div class="phead"><h2>📈 积分消耗趋势</h2>
-      <div style="display:flex;gap:10px;align-items:center"><span class="hint">点击图例隐藏折线</span>
-      <select class="inp" id="mode" onchange="changeMode()"><option value="day">按天</option><option value="month">按月</option></select></div>
+    <div class="phead"><h2>📉 积分消耗趋势</h2>
+      <div style="display:flex;gap:10px;align-items:center">
+      <button class="btn btn-g" id="btnAll" onclick="changeMode('all')" style="min-height:30px;padding:4px 12px;font-size:12px">全部显示</button>
+      <button class="btn btn-g active" id="btnDay" onclick="changeMode('day')" style="min-height:30px;padding:4px 12px;font-size:12px">每日</button>
+      <button class="btn btn-g" id="btnMonth" onclick="changeMode('month')" style="min-height:30px;padding:4px 12px;font-size:12px">每月</button></div>
     </div>
-    <div class="pbody line"><div class="legend" id="legend"></div><div class="chart" id="chart"><div class="ph">加载中…</div></div></div>
+    <div class="pbody line"><div class="legend" id="legend"></div><div class="chart" id="chart"><div class="ph">加载中…</div></div><div id="chartTip" hidden></div></div>
   </section>
 
   <section class="panel">
     <div class="phead"><h2>📋 账号总览</h2><span class="hint" id="dashMeta"></span></div>
-    <div class="pbody"><div class="tbl"><table><thead><tr><th>#</th><th>账号</th><th>总剩余</th><th>累计已用</th><th>记录期消耗</th><th>记录</th></tr></thead><tbody id="dashTbody"></tbody></table></div></div>
+    <div class="pbody">
+      <div class="dash-cards" id="dashCards"></div>
+      <div class="tbl dash-table"><table><thead><tr><th>#</th><th>账号</th><th>总剩余</th><th>累计已用</th><th>今日消耗</th><th>近1天过期</th><th>近2天过期</th><th>近3天过期</th><th>近7天过期</th></tr></thead><tbody id="dashTbody"></tbody></table></div>
+    </div>
   </section>
+
+  <div class="ops">
+    <button class="btn btn-g" onclick="saveCurrent()" id="btnAdd"><span class="em">＋</span><span class="txt">添加账号</span></button>
+    <button class="btn btn-g" onclick="sortByExpiring()"><span class="em">⏰</span><span class="txt">过期排序</span></button>
+    <button class="btn btn-g" onclick="sortByTodayUsed()"><span class="em">📉</span><span class="txt">使用排序</span></button>
+    <button class="btn btn-g" onclick="sortByTotal()"><span class="em">📊</span><span class="txt">剩余排序</span></button>
+    <button class="btn btn-g" onclick="openClear()"><span class="em">🧹</span><span class="txt">清空</span></button>
+    <button class="btn btn-g" onclick="exportMd()"><span class="em">📝</span><span class="txt">导出 MD</span></button>
+    <span class="auto" style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:4px 10px">⏱ <span class="lbl">自动刷新</span> <input type="number" id="autoMin" min="1" max="1440" value="5"> <span class="lbl">分钟</span> <button class="btn btn-g" id="btnAuto" onclick="toggleAuto()" style="min-height:30px;padding:4px 12px">开</button><span id="streamDot" class="sdot off" title="实时推送"></span></span>
+  </div>
 
   <div class="grid" id="grid"></div>
   <footer id="foot"></footer>
@@ -241,7 +330,7 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
   <div class="sheet">
     <div class="shead"><h2>☁️ 云同步(WebDAV)</h2><button onclick="closeSync()">✕</button></div>
     <div class="sbody">
-      <div class="tip">将账号池与统计数据备份到你的 WebDAV(坚果云 / Nextcloud 等)。换电脑时先「下载数据」再刷新即可恢复。<br>⚠️ 备份含登录凭证,请妥善保管 WebDAV 账号与密码(密码仅保存在本机)。</div>
+      <div class="tip">将账号池与统计数据备份到你的 WebDAV(坚果云 / Nextcloud 等)。换电脑时先「下载数据」再刷新即可恢复。<br>⚠️ 备份文件(wb-accounts.json)含登录凭证明文,请使用 <b>HTTPS</b> 的 WebDAV 并妥善保管账号与密码(密码仅存在本机,不会上传)。</div>
       <label class="tip" style="display:block;margin-bottom:6px">WebDAV 地址(文件夹 URL,如 https://dav.jianguoyun.com/dav/)</label>
       <input class="finput" id="syncUrl" placeholder="https://dav.example.com/dav/" autocomplete="off">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
@@ -253,6 +342,7 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
         <button class="btn btn-g" onclick="syncAct('test')">🔌 测试连接</button>
         <button class="btn btn-g" onclick="syncAct('upload')">⬆️ 上传数据</button>
         <button class="btn btn-g" onclick="syncAct('download')">⬇️ 下载数据</button>
+        <button class="btn btn-d" style="min-height:38px;padding:9px 15px;margin-left:auto" onclick="syncAct('clear')">🗑 清空配置</button>
       </div>
       <div class="tip" id="syncStatus" style="margin-top:12px"></div>
     </div>
@@ -280,8 +370,33 @@ footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
     </div>
   </div>
 </div>
+<!-- 管理员密码弹窗 -->
+<div class="mask" id="adminMask" onclick="if(event.target===this)closeAdmin()">
+  <div class="sheet sm">
+    <div class="shead"><h2 id="adminTitle">🔒 设置管理密码</h2><button onclick="closeAdmin()">✕</button></div>
+    <div class="sbody">
+      <div class="tip" id="adminTip">首次设置管理密码:设置后所有写操作(增删账号/清空/配置)需输入密码。密码仅保存在本机浏览器。</div>
+      <label class="tip" style="display:block;margin-bottom:6px">管理员密码</label>
+      <input class="finput" id="adminPass" type="password" placeholder="输入密码" autocomplete="new-password">
+      <div id="adminPass2Wrap">
+        <label class="tip" style="display:block;margin:8px 0 6px">确认密码</label>
+        <input class="finput" id="adminPass2" type="password" placeholder="再次输入" autocomplete="new-password">
+      </div>
+      <div class="factions">
+        <button class="btn btn-g" onclick="closeAdmin()">取消</button>
+        <button class="btn btn-p" id="adminOk" onclick="confirmAdmin()">启用</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 <script>window.__BASE__ = (location.pathname.match(/^\/tool\/[^/]+/) || [""])[0];</script>
-<script src="./wb-gui.js"></script>
+<script src="./wb-gui.state.js?v=v1.4.24"></script>
+<script src="./wb-gui.core.js?v=v1.4.24"></script>
+<script src="./wb-gui.render.js?v=v1.4.24"></script>
+<script src="./wb-gui.chart.js?v=v1.4.24"></script>
+<script src="./wb-gui.ops.js?v=v1.4.24"></script>
+<script src="./wb-gui.sync.js?v=v1.4.24"></script>
+<script src="./wb-gui.actions.js?v=v1.4.24"></script>
 </body>
 </html>

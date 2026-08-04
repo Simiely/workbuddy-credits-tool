@@ -1,9 +1,23 @@
 @echo off
-rem ============================================================
-rem  wb-gui.bat - WorkBuddy multi-account credits dashboard
-rem  Opens a browser dashboard. Close this window to quit.
-rem  Add accounts via the dashboard button or wb-credits.bat save-current
-rem ============================================================
-chcp 65001 >nul
-"C:\Users\2504\.workbuddy\binaries\node\versions\22.22.2\node.exe" "D:\workbuddy\2026-08-03-09-29-43\tools\wb-gui.mjs"
+rem WorkBuddy credits dashboard launcher (desktop scheme: Edge CDP)
+rem Usage: double-click this file. Close the window to stop the server.
+cd /d "%~dp0"
+
+where node >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] Node.js not found in PATH. Please install Node.js 22 or later first.
+    pause
+    exit /b 1
+)
+
+echo Starting WorkBuddy credits dashboard...
+echo   URL:       http://127.0.0.1:8080
+echo   Collector: edge (Edge CDP) - keep Edge logged in
+echo   Data:      wb-*.json / credits.db in this folder
+echo.
+echo Close this window to stop the server.
+echo.
+node wb-gui.mjs
+echo.
+echo Server exited with code %errorlevel%
 pause

@@ -1,13 +1,13 @@
-// lib/query.js - 查询编排层:批量查询全部账号(CLI 与 GUI 共用)
-// 职责:并发控制、单账号容错、lastStatus 持久化、汇总生成。
-import { loadAccounts, saveAccounts } from "./accounts.js";
-import { fetchCredits, CredentialExpiredError } from "./workbuddy.js";
-import { summarize } from "./summarize.js";
-import { CONCURRENCY, FETCH_TIMEOUT_MS } from "./util.js";
+// src/compute/query.js - 查询编排层：批量查询全部账号（CLI 与 GUI 共用，原 lib/query.js）
+// 职责：并发控制、单账号容错、lastStatus 持久化、汇总生成。
+import { loadAccounts, saveAccounts } from "./store.js";
+import { fetchCredits, CredentialExpiredError } from "./client.js";
+import { summarize } from "./model.js";
+import { CONCURRENCY, FETCH_TIMEOUT_MS } from "../config.js";
 
 /**
- * 批量查询全部账号(带并发与容错,并持久化 lastStatus)。
- * @param {Array} [accounts] 账号池(缺省自动加载)
+ * 批量查询全部账号（带并发与容错，并持久化 lastStatus）。
+ * @param {Array} [accounts] 账号池（缺省自动加载）
  * @returns {Promise<Array<{account, data, summary, error, expired}>>} 与入参顺序一致
  */
 export async function fetchAllAccounts(accounts = loadAccounts()) {
@@ -29,13 +29,15 @@ export async function fetchAllAccounts(accounts = loadAccounts()) {
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, accounts.length) }, worker));
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, accounts.length) }, worker)
+  );
   saveAccounts(accounts); // 持久化状态
   return results;
 }
 
 /**
- * 单账号实时查询(带容错与状态更新),CLI 与 GUI 共用。
+ * 单账号实时查询（带容错与状态更新），CLI 与 GUI 共用。
  * @param {object} account 账号池中的账号对象
  * @returns {Promise<{account, data, summary, error, expired}>}
  */

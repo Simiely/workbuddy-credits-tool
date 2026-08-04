@@ -1,0 +1,14 @@
+# Keep credentials and local data out of the Docker image build context.
+# (Runtime still sees them via the docker-compose bind mount of the project dir.)
+.git
+.gitignore
+node_modules
+legacy
+docs
+rules
+*.log
+wb-accounts.json
+wb-sync.json
+wb-admin.json
+wb-last.json
+credits.db

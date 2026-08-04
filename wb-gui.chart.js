@@ -1,0 +1,155 @@
+// wb-gui.chart.js — 趋势图表层（柱状图渲染/每日窗口/图例交互/模式切换）
+// 依赖 wb-gui.state.js（LINE_COLORS/escAttr/acctName/dashMode/dashPer）与 render 层（$ 等工具）。
+// 纯渲染，自身不发起网络请求。v1.4.22 从 wb-gui.render.js 拆出（趋势图迭代频繁，独立成模块便于维护）。
+
+// 本地当天 00:00（归一化数据点：X 轴刻度按天对齐，否则数据点 ts 是快照时刻无法与日期刻度匹配）
+function dayZero(ts) { const d = new Date(ts); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
+// 「每日视图」动态窗口：按实际有数据的自然日天数取跨度，下限 3 天、上限 10 天
+// 以今天为中心对称分布（如 3 天窗口 = 昨天/今天/明天，数据点从最左开始）
+function dayWindow() {
+  const daySet = new Set();
+  for (const a of dashPer || []) {
+    for (const p of (a.series || [])) daySet.add(dayZero(p.t).toISOString().slice(0, 10));
+  }
+  const span = Math.min(10, Math.max(3, daySet.size || 1));
+  const half = Math.floor((span - 1) / 2);
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const days = [];
+  for (let i = -half; i <= span - 1 - half; i++) days.push(new Date(t0.getTime() + i * 86400000).toISOString());
+  return days;
+}
+
+// 柱状图：每个时间点（每日=天/每月=月）该组有数据的账号各一根柱；
+// 每组右侧隔一个柱宽画「当日/当月合计」灰柱（独立 g#line-total，不随图例显隐）；
+// 组内最高（单柱或合计柱）顶部标数字；账号柱/合计柱均带 data-pct（占该组总和的百分比，hover 浮层用）。
+function barChart(series, mode, xTicks) {
+  const all = series.flatMap((s) => s.pts);
+  if (!all.length) return '<div class="ph">暂无数据</div>';
+  const tickSet = new Set((xTicks || []).map((t) => String(t)));
+  for (const p of all) tickSet.add(p.t);
+  const times = [...tickSet].sort();
+  const w = 640, h = 220, L = 44, R = 14, T = 34, B = 28, iw = w - L - R, ih = h - T - B;
+  // 每天分组：该天有数据的账号各一根柱子；每组右侧隔一个柱宽画「当日合计」柱（独立组，不随图例隐藏）
+  const dayMap = new Map(times.map((t) => [t, []]));
+  for (const s of series) for (const p of s.pts) if (dayMap.has(p.t)) dayMap.get(p.t).push({ key: s.key, name: s.name, v: p.v });
+  // Y 轴最大值须覆盖「单柱峰值」与「组合计」，否则合计柱会超出顶部
+  const dayTotals = new Map([...dayMap].map(([t, d]) => [t, d.reduce((s, x) => s + x.v, 0)]));
+  const maxV = Math.max(...all.map((p) => p.v), ...dayTotals.values(), 1);
+  const colorOf = (key) => LINE_COLORS[Math.max(0, series.findIndex((s) => s.key === key)) % LINE_COLORS.length];
+  const TOTAL_COLOR = "#94a3b8"; // 合计柱：中性灰，与账号彩柱区分
+  const byKey = new Map(series.map((s) => [s.key, []]));
+  const groupW = iw / times.length;
+  let totals = ""; // 合计柱（当日/当月总计），独立渲染不参与图例显隐
+  // Y 轴刻度（0 ~ maxV）
+  let ticks = "";
+  for (let k = 0; k <= 3; k++) {
+    const v = (maxV * k) / 3, y = T + ih - (v / maxV) * ih;
+    ticks += `<line x1="${L - 6}" y1="${y.toFixed(1)}" x2="${L}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,.08)"/><text x="${L - 9}" y="${(y + 4).toFixed(1)}" font-size="10" fill="#6b7484" text-anchor="end">${Math.round(v)}</text>`;
+  }
+  // X 轴日期标签（两端 start/end 避免遮挡）
+  const step = Math.max(1, Math.ceil(times.length / 6));
+  const xAnchor = (i) => i === 0 ? "start" : (i === times.length - 1 ? "end" : "middle");
+  let xl = "";
+  times.forEach((t, i) => {
+    if (i % step === 0 || i === times.length - 1) {
+      const dd = new Date(t);
+      const x = L + (i + 0.5) * (iw / times.length);
+      xl += `<text x="${x.toFixed(1)}" y="${h - 8}" font-size="10" fill="#6b7484" text-anchor="${xAnchor(i)}">${mode === "month" ? (dd.getMonth() + 1) + "月" : (dd.getMonth() + 1) + "月" + dd.getDate() + "日"}</text>`;
+    }
+  });
+  // 绘制：账号柱 + 合计柱
+  times.forEach((t, i) => {
+    const day = dayMap.get(t) || [];
+    const bw = Math.max(2, Math.min(14, (groupW - 2) / Math.max(1, day.length)));
+    const startX = L + i * groupW + (groupW - bw * day.length) / 2;
+    const dayTotal = dayTotals.get(t) || 0;
+    // 组内最高（单柱或合计柱）只标一个数字
+    let maxItem = null, groupMax = -1;
+    if (dayTotal > groupMax) { groupMax = dayTotal; maxItem = { kind: "total" }; }
+    for (const d of day) if (d.v > groupMax) { groupMax = d.v; maxItem = { kind: "bar", d }; }
+    day.forEach((d, j) => {
+      const x = startX + j * bw;
+      const bh = Math.max(1, (d.v / maxV) * ih);
+      const isMax = maxItem && maxItem.kind === "bar" && d === maxItem.d;
+      const color = colorOf(d.key);
+      const pct = dayTotal > 0 ? ((d.v / dayTotal) * 100).toFixed(1) : "0";
+      const lbl = isMax
+        ? `<text x="${(x + bw / 2).toFixed(1)}" y="${(T + ih - bh - 4).toFixed(1)}" font-size="10" fill="${color}" text-anchor="middle" font-weight="700">${Math.round(d.v)}</text>`
+        : "";
+      byKey.get(d.key).push(`<rect x="${x.toFixed(1)}" y="${(T + ih - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="${color}" class="cpt" data-v="${Math.round(d.v)}" data-pct="${pct}" data-t="${t}" data-n="${escAttr(d.name)}"/>${lbl}`);
+    });
+    // 合计柱：右侧隔一个柱宽（bw）；顶部标数值 + 「合计」标签说明（若为组内最高则数值粗体）
+    if (dayTotal > 0) {
+      const tx = startX + day.length * bw + bw;
+      const tbh = Math.max(1, (dayTotal / maxV) * ih);
+      const ty = T + ih - tbh;
+      const isMaxTotal = maxItem && maxItem.kind === "total";
+      const num = isMaxTotal
+        ? `<text x="${(tx + bw / 2).toFixed(1)}" y="${(ty - 4).toFixed(1)}" font-size="10" fill="${TOTAL_COLOR}" text-anchor="middle" font-weight="700">${Math.round(dayTotal)}</text>`
+        : "";
+      const tag = `<text x="${(tx + bw / 2).toFixed(1)}" y="${(ty - 15).toFixed(1)}" font-size="9" fill="${TOTAL_COLOR}" text-anchor="middle">合计</text>`;
+      totals += `<rect x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" width="${bw.toFixed(1)}" height="${tbh.toFixed(1)}" rx="2" fill="${TOTAL_COLOR}" class="cpt" data-v="${Math.round(dayTotal)}" data-pct="100" data-t="${t}" data-n="${mode === "month" ? "当月合计" : "当日合计"}"/>${num}${tag}`;
+    }
+  });
+  let groups = "";
+  for (const [key, rects] of byKey) if (rects.length) groups += `<g id="line-${key}">${rects.join("")}</g>`;
+  if (totals) groups += `<g id="line-total">${totals}</g>`;
+  const note = `<text x="${w - R}" y="12" font-size="10" fill="#6b7484" text-anchor="end">单位:${mode === "month" ? "积分/月" : "积分/日"}</text>`;
+  const minW = window.innerWidth >= 640 ? 430 : 0;
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;min-width:${minW}px;display:block">${ticks}${groups}${xl}${note}</svg>`;
+}
+
+// 趋势渲染入口：读 dashPer 的 series（后端已按自然日算好每日消耗），day 模式归一化到当天 00:00 并按窗口裁剪
+function renderLines() {
+  const raw = dashPer.filter((a) => (a.series || []).length >= 1);
+  if (!raw.length) {
+    $("legend").innerHTML = "";
+    $("chart").innerHTML = '<div class="ph">暂无足够数据，多刷新几次后出现图表</div>';
+    return;
+  }
+  // day 模式：X 轴动态窗口（3~10 天）；all/month 用实际数据日期。窗口先算好供下方裁剪数据点
+  const xTicks = dashMode === "day" ? dayWindow() : null;
+  const winMin = xTicks ? xTicks[0] : null, winMax = xTicks ? xTicks[xTicks.length - 1] : null;
+  const lines = raw.map((a) => {
+    let pts = (a.series || []).slice().sort((a, b) => a.t < b.t ? -1 : 1);
+    if (dashMode === "month") {
+      const m = new Map();
+      for (const p of pts) {
+        const d = new Date(p.t), k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        m.set(k, (m.get(k) || 0) + p.v);
+      }
+      pts = [...m.keys()].sort().map((k) => ({ t: k, v: m.get(k) }));
+    } else if (dashMode === "day") {
+      // 每日视图：归一化到本地当天 00:00（与 X 轴刻度对齐），并裁剪到窗口内（窗口外历史点由「全部显示」查看）
+      pts = pts
+        .map((p) => ({ t: dayZero(p.t).toISOString(), v: p.v }))
+        .filter((p) => !winMin || (p.t >= winMin && p.t <= winMax));
+    }
+    return pts.length ? { key: a.uin, name: acctName(a), pts } : null;
+  }).filter(Boolean);
+  if (!lines.length) {
+    $("legend").innerHTML = "";
+    $("chart").innerHTML = '<div class="ph">暂无足够数据，多刷新几次后出现图表</div>';
+    return;
+  }
+  $("legend").innerHTML = raw.map((a, i) => `<div class="lg" data-key="${a.uin}" onclick="toggleLine('${a.uin}', this)"><i style="background:${LINE_COLORS[i % LINE_COLORS.length]}"></i>${acctName(a)}</div>`).join("");
+  $("chart").innerHTML = barChart(lines, dashMode, xTicks);
+}
+
+// 图例交互：单击=隐藏该账号，再点一次=重新显示（纯切换）
+function toggleLine(key, el) {
+  const p = document.getElementById("line-" + key);
+  if (!p) return;
+  p.style.display = p.style.display === "none" ? "" : "none";
+  if (el) el.classList.toggle("off", p.style.display === "none");
+}
+
+// 模式切换：每日 / 每月 / 全部显示（按钮态 + 重渲染）
+function changeMode(mode) {
+  dashMode = mode;
+  ["btnDay", "btnMonth", "btnAll"].forEach((id) => { const b = $(id); if (b) b.className = "btn btn-g"; });
+  const key = mode === "day" ? "btnDay" : mode === "month" ? "btnMonth" : "btnAll";
+  const b = $(key); if (b) b.classList.add("active");
+  renderLines();
+}

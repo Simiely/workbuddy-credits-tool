@@ -1,9 +1,10 @@
-// lib/daemon.js - 浏览器桥客户端(双模式)
-// 平台托管模式:被 tools-center 加载并声明 browser 能力 → 走平台浏览器桥(懒加载,见 PLAN-V2 M1)
+// src/collect/daemon-client.js - 浏览器桥客户端(双模式)
+// 平台托管模式:被 tools-center 加载并声明 browser 能力 → 走平台浏览器桥(懒加载)
 //   环境变量由平台装配器注入: CAP_ENSURE_EP(能力 ensure 端点) / CAP_BROWSER_BASE(能力基址)
 // 独立模式:无平台注入 → 直连本地 edge-daemon(DAEMON_PORT)
 // 两种模式 API 契约一致(tabs/cmd/eval),上层代码无需感知。
-import { DAEMON_PORT } from "./util.js";
+// (浏览器桥双模式来自远程 74c2a32,合并进 src/ 结构)
+import { DAEMON_PORT } from "../config.js";
 
 async function browserBase() {
   const ensureEp = process.env.CAP_ENSURE_EP;
@@ -37,6 +38,7 @@ export async function daemonCmd(targetId, method, params = {}) {
 export async function daemonEval(expr, targetIdx = 0) {
   const r = await fetch(`${await browserBase()}/eval?target=${targetIdx}&expr=${encodeURIComponent(expr)}`);
   const j = await r.json();
-  if (j.result && j.result.result && j.result.result.value !== undefined) return j.result.result.value;
+  if (j.result && j.result.result && j.result.result.value !== undefined)
+    return j.result.result.value;
   throw new Error("页面执行 JS 无返回值或失败");
 }

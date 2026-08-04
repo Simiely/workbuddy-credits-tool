@@ -1,0 +1,27 @@
+# WorkBuddy credits dashboard - one-click container startup
+#
+# Usage:
+#   docker compose up -d        -> open http://127.0.0.1:8080
+#   docker compose logs -f      -> follow logs
+#   docker compose down         -> stop (data stays on host)
+#
+# Scheme: WB_COLLECTOR=file (WebDAV sync). The project dir is bind-mounted to /app,
+# so the container and the desktop (Edge) scheme share the SAME data set
+# (wb-accounts.json / wb-sync.json / credits.db) - no migration needed.
+services:
+  credits:
+    build: .
+    image: wb-credits:latest
+    container_name: wb-credits
+    ports:
+      - "8080:8080"
+    environment:
+      WB_COLLECTOR: file
+      # Optional alert thresholds (defaults in src/config.js):
+      # WB_ALERT_LOW_PCT: "10"
+      # WB_ALERT_LOW_DAYS: "7"
+      # WB_ALERT_CRIT_DAYS: "3"
+      # WB_ALERT_EXPIRY_DAYS: "7"
+    volumes:
+      - .:/app
+    restart: unless-stopped

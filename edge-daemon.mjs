@@ -81,7 +81,11 @@ function send(method, params = {}, sessionId) {
   return new Promise((resolve) => {
     if (!connected || !ws) return resolve({ error: { message: "not connected" } });
     const id = ++msgId;
-    pending.set(id, resolve);
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      resolve({ error: { message: "CDP command timeout: " + method } });
+    }, 15000);
+    pending.set(id, (m) => { clearTimeout(timer); resolve(m); });
     ws.send(JSON.stringify(sessionId ? { id, method, params, sessionId } : { id, method, params }));
   });
 }
