@@ -5,6 +5,14 @@ import { parseAccountData, SHORT_PKG } from "../compute/model.js";
 
 export { SHORT_PKG };
 
+// 固定中国时区(+8)格式化当前时间：不依赖进程时区（容器 UTC 时 toLocaleString 会错位显示）
+// 与 derive.js 自然日口径一致，CLI/GUI 显示同一时刻
+export function cnNow() {
+  const d = new Date(Date.now() + 8 * 3600000); // 平移至 UTC+8 墙钟
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}/${p(d.getUTCMonth() + 1)}/${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+
 /** 账号对外摘要(不暴露 cookie,供 API/前端展示) */
 export function brief(a) {
   return {
@@ -37,7 +45,7 @@ export function renderSingleMarkdown(D, showExpired, account) {
   const active = m.active;
   const expired = m.expired;
   const sum = (arr, k) => arr.reduce((s, a) => s + (a[k] || 0), 0);
-  console.log(`# WorkBuddy 积分查询(${new Date().toLocaleString("zh-CN")})`);
+  console.log(`# WorkBuddy 积分查询(${cnNow()})`);
   if (account) console.log(`> 账号: ${displayName(account)} (${account.uin || "?"})`);
   console.log("");
   console.log("## 总览");
@@ -75,7 +83,7 @@ export function renderSingleMarkdown(D, showExpired, account) {
 
 /** 多账号总览 markdown(输出到控制台) */
 export function renderAllMarkdown(results) {
-  const t = new Date().toLocaleString("zh-CN");
+  const t = cnNow();
   const okN = results.filter((r) => r.data).length;
   console.log(`# WorkBuddy 多账号积分总览(${t})`);
   console.log("");
@@ -104,7 +112,7 @@ export function renderAllMarkdown(results) {
 
 /** 多账号 Markdown 报表(按账号分节,含总览+有效赠送包明细) */
 export function mdAll(results) {
-  const t = new Date().toLocaleString("zh-CN");
+  const t = cnNow();
   const okN = results.filter((r) => r.data).length;
   let out = `# WorkBuddy 积分报表(${t})\n\n> ${okN}/${results.length} 个账号查询成功\n\n`;
   results.forEach((r, i) => {

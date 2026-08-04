@@ -140,6 +140,14 @@ function syncCfg() {
   return { ...c, url: c.url || "http://192.168.2.1:6086/" };
 }
 
+// 固定中国时区(+8)格式化当前时间：不依赖进程时区（容器默认 UTC 时 toLocaleString 会错位显示）
+// 与 derive.js 的自然日口径一致，保证所有部署环境显示同一时刻
+function cnNow() {
+  const d = new Date(Date.now() + 8 * 3600000); // 平移至 UTC+8 墙钟
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}/${p(d.getUTCMonth() + 1)}/${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+
 // 读取请求体（含 1MB 上限保护）
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -257,7 +265,7 @@ const routes = [
         error: r.error,
         expired: r.expired,
       }));
-      const payload = { ok: true, fetchedAt: new Date().toLocaleString("zh-CN"), results };
+      const payload = { ok: true, fetchedAt: cnNow(), results };
       saveLastData({ fetchedAt: payload.fetchedAt, results }); // 本地缓存（离线可看）
       ctx.json(200, payload);
     },
@@ -366,7 +374,7 @@ const routes = [
           ? 200
           : 200,
         r.data
-          ? { ok: true, account: brief(a), summary: r.summary, data: r.data, fetchedAt: new Date().toLocaleString("zh-CN") }
+          ? { ok: true, account: brief(a), summary: r.summary, data: r.data, fetchedAt: cnNow() }
           : { ok: false, error: r.error, expired: r.expired, account: brief(a) }
       );
     },

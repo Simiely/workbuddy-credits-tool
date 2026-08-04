@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## v1.4.30 (2026-08-05) · 修复左上角时间显示(容器 UTC 错位)
+
+- 用户反馈:页面左上角(header「积分指挥中心」下)时间显示 `8/4 16:47`,实际本地是 `8/5 00:47`。
+- **根因**:与 v1.4.29 同源——`/api/all` 的 `fetchedAt` 用 `new Date().toLocaleString("zh-CN")` 依赖进程时区,Docker 容器(UTC)下显示 UTC 时刻。
+- **修复**:wb-gui.mjs 与 src/present/render.js 新增固定中国时区(+8)的 `cnNow()`,替换全部依赖进程时区的时间显示(Web UI fetchedAt 2 处 + CLI 渲染 3 处),与 derive 自然日口径一致。
+- 验证:模拟 `TZ=UTC` 运行 `cnNow()` 输出 `2026/08/05 00:49:29` 与本机一致;实跑 `/api/all` fetchedAt 正确。92 断言全过。
+
 ## v1.4.29 (2026-08-05) · 派生自然日固定中国时区(+8),修复容器 UTC 错位
 
 - **根因**:docker 容器(node:alpine)默认 UTC,而 derive 的自然日计算用"进程本地时区" → 容器里 8/3 数据被算成 8/2(趋势缺 8/3)、今日已用基线取到 8/4 晚间(800 多)。edge 桌面(Windows GMT+8)正常,所以"edge 对、docker 错"。
