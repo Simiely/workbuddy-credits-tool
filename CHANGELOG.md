@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## v1.4.29 (2026-08-05) · 派生自然日固定中国时区(+8),修复容器 UTC 错位
+
+- **根因**:docker 容器(node:alpine)默认 UTC,而 derive 的自然日计算用"进程本地时区" → 容器里 8/3 数据被算成 8/2(趋势缺 8/3)、今日已用基线取到 8/4 晚间(800 多)。edge 桌面(Windows GMT+8)正常,所以"edge 对、docker 错"。
+- **修复**:derive.js 的 `dayKeyOf`/`startOfToday`/`deriveGiftExpiry`(fmtD/dayKey/limit)全部改为**固定 UTC+8 口径**(cnWall/cnDay0 辅助),与部署环境时区无关;容器/桌面结果一致。
+- 双保险:docker-compose.yml、Dockerfile 加 `TZ=Asia/Shanghai`。
+- 验证:模拟容器 `TZ=UTC` 跑 derive → dailyUsed 正确含 8/3、todayUsed 7(原 800+)、expiring3d 正常。92 断言全过(沙箱 +8 行为不变)。
+- 版本戳 v1.4.29;服务已重启。
+
 ## v1.4.28 (2026-08-05) · WebDAV 网络超时自动重试 + 大文件超时放宽
 
 - 用户反馈云同步不稳定、间歇超时。实测 DDNSTO 连接 86~209ms、上传 3.16MB(wb-history.json,快照含赠送包明细导致 3.6MB)仅 7.3s——超时根因是 15s 临界 + 穿透抖动。

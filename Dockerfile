@@ -14,6 +14,7 @@ COPY src/ ./src/
 
 ENV WB_COLLECTOR=file
 ENV NODE_ENV=production
+ENV TZ=Asia/Shanghai
 EXPOSE 8080
 
 CMD ["node", "wb-gui.mjs"]

@@ -17,11 +17,7 @@ services:
       - "8080:8080"
     environment:
       WB_COLLECTOR: file
-      # Optional alert thresholds (defaults in src/config.js):
-      # WB_ALERT_LOW_PCT: "10"
-      # WB_ALERT_LOW_DAYS: "7"
-      # WB_ALERT_CRIT_DAYS: "3"
-      # WB_ALERT_EXPIRY_DAYS: "7"
+      TZ: Asia/Shanghai   # 容器默认 UTC;设置中国时区,配合 derive 固定 +8 口径,自然日不再错位
     volumes:
       - .:/app
     restart: unless-stopped

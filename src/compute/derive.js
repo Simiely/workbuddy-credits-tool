@@ -13,17 +13,25 @@ import { historyFor, loadLastData } from "./history.js";
 
 const pad = (n) => String(n).padStart(2, "0");
 
-/** 自然日键 YYYY-MM-DD（按本地时区） */
+// 中国时区(UTC+8)固定口径:容器(node:alpine 默认 UTC)与桌面(Windows GMT+8)进程时区不同,
+// 若按"进程本地时区"算自然日,容器会把 8/3 数据算成 8/2(错位一天,趋势缺日期、今日已用异常)。
+// 统一按 +8 计算,与部署环境无关。
+const TZ_MS = 8 * 3600 * 1000;
+const cnWall = (utcMs) => new Date(utcMs + TZ_MS); // 真实 UTC 时刻 → 中国墙上时间(UTC 视图)
+const cnDay0 = (utcMs) => {
+  const w = cnWall(utcMs);
+  return new Date(Date.UTC(w.getUTCFullYear(), w.getUTCMonth(), w.getUTCDate()) - TZ_MS); // 中国当天 00:00 的真实 UTC 时刻
+};
+
+/** 自然日键 YYYY-MM-DD（统一按中国时区 +8） */
 export function dayKeyOf(ts) {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const w = cnWall(new Date(ts).getTime());
+  return `${w.getUTCFullYear()}-${pad(w.getUTCMonth() + 1)}-${pad(w.getUTCDate())}`;
 }
 
-/** 本地时区今天 00:00 */
+/** 中国时区今天 00:00（真实 UTC 时刻） */
 export function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
+  return cnDay0(Date.now());
 }
 
 /**
@@ -41,13 +49,12 @@ export function deriveGiftExpiry(packs) {
     return isNaN(dt.getTime()) ? null : dt;
   };
   const t0 = startOfToday();
-  const fmtD = (d) => `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const dayKey = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const fmtD = (d) => { const w = cnWall(d.getTime()); return `${pad(w.getUTCMonth() + 1)}-${pad(w.getUTCDate())}`; };
+  const dayKey = (d) => cnDay0(d.getTime());
 
   // 近 n 天（含今天，按天比对）到期有效赠送包的剩余积分合计
   const expiringSum = (maxDays) => {
-    const limit = new Date(t0.getTime() + maxDays * 86400000);
-    limit.setHours(23, 59, 59, 999);
+    const limit = new Date(cnDay0(t0.getTime() + maxDays * 86400000).getTime() + 86399999); // 中国 (今天+maxDays) 23:59:59.999
     let s = 0;
     for (const p of clean) {
       const dt = parse(p.cycleEndTime);
