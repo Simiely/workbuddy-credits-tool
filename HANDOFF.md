@@ -1,6 +1,6 @@
-# HANDOFF · 交接与已知问题(2026-08-04 23:40)
+# HANDOFF · 交接与已知问题(2026-08-05 00:50)
 
-> 给下一位接手开发者/AI 的快速启动文档。当前版本 **v1.4.24**。
+> 给下一位接手开发者/AI 的快速启动文档。当前版本 **v1.4.30**。
 
 ## 1. 项目是什么
 
@@ -8,7 +8,8 @@
 - 后端 `wb-gui.mjs`(Node 零依赖 HTTP 服务,默认端口 8080,路由登记制;顶部有"文件地图"注释:A 基础设施/B 路由表/C 分发层/D 启动)
 - 前端 `wb-gui.html` + **7 个 classic script**(`state/core/render/chart/ops/sync/actions`,共 ~1100 行;无打包器,靠顶层 `const/let/function` 共享全局词法作用域;共享状态集中在 `wb-gui.state.js`;趋势图为**柱状图** + 当日合计柱)
 - 后端分层:`src/`(config/domain/collect/compute/store/present);compute 含 10 个模块(含 **`sample.js` 统一采样入口**)
-- **计算架构(v1.4.x 收敛)**:后端 `/api/dashboard/all` 是唯一计算源,按自然日(本地时区)聚合每日消耗;前端纯展示,0 计算
+- **计算架构(v1.4.x 收敛)**:后端 `/api/dashboard/all` 是唯一计算源,按自然日聚合每日消耗;前端纯展示,0 计算
+- **时区口径(重要)**:所有"自然日/时间显示"**固定中国时区(+8)**,不依赖进程时区——`src/compute/derive.js`(dayKeyOf/startOfToday/赠送包到期)与 `cnNow()`(wb-gui.mjs、src/present/render.js)统一 +8。原因:docker 容器默认 UTC,依赖进程时区会导致日期错位(8/3→8/2)、时间显示错(8/5 00:47→8/4 16:47),v1.4.29/30 修复
 - 数据真相源:`credits.db`(SQLite);`wb-*.json` 仅作 WebDAV 迁移桥接
 - 回归测试:`npm test`(4 个测试文件、90+ 断言,见 `test/`)
 
@@ -48,13 +49,19 @@ node --check wb-gui.mjs && node --check wb-gui.chart.js   # 语法校验
 
 ## 6. 已知问题 / 待办
 
-1. **容器一键起未在本机验收**:Dockerfile/docker-compose 已产出且 YAML 校验过,但本沙箱无 docker,需在有 Docker 的机器跑 `docker compose up -d`(任务 #9 待验收)
+1. **容器一键起未在本机验收**:Dockerfile/docker-compose 已产出且 YAML 校验过,但本沙箱无 docker,需在有 Docker 的机器跑 `docker compose up -d`(任务 #9 待验收)。注:Docker/tools-center 平台部署 = tools-center 平台容器托管,工具目录即数据目录,**删工具=删数据**,重装后需重新配 WebDAV 并「云同步下载」
 2. **历史快照长期增长**:SQLite readings 表持续累积;数据量大时可加"每天最多 N 条 + 只保留 90 天"(暂缓项)
 3. **edge-daemon**(8129):Windows 专用(读本机 Edge 登录态);Docker/NAS 上跑不了是**预期**,「添加当前账号」在 NAS 不可用,手动维护 wb-accounts.json 或从 WebDAV 下载
-4. **v1.4.2 ~ v1.4.24 大版本未单独提交**(合并为一个提交推送到 GitHub,见 git log)
+4. **v1.4.2 ~ v1.4.24 大版本未单独提交**(合并为一个提交推送到 GitHub,见 git log);v1.4.25+ 已逐版提交
 
 ## 7. 近期修复历史(浓缩,v1.4.x)
 
+- v1.4.30 左上角时间固定中国时区(+8)(fetchedAt 用 toLocaleString 依赖进程时区,容器 UTC 错位)
+- v1.4.29 **派生自然日固定中国时区(+8)**:容器 UTC 导致 8/3→8/2、今日已用基线错(800+);Dockerfile/compose 加 TZ=Asia/Shanghai
+- v1.4.28 WebDAV 网络超时自动重试 + 大文件(3.6MB)超时放宽 60s(原 15s 临界导致穿透抖动必超时)
+- v1.4.27 图例最右加「合计」标签(点击隐藏/显示合计柱);合计柱顶部去掉文字只留数字
+- v1.4.26 WebDAV 上传 423(资源锁)退避重试 3 次
+- v1.4.25 每日窗口改"数据对齐":跨度 clamp(数据天数,3,7),数据少从最早数据日向右延伸(2 天→8/3 8/4 8/5),多取最近 7 天;修 UTC 日期键错位(改用本地自然日)
 - v1.4.24/23 hover 浮层三段式(名字/数量/占当前百分比)、去时间
 - v1.4.22 趋势图表拆出 `chart.js`;合计柱标签;浮层加百分比
 - v1.4.21 柱状图每组右侧隔一个柱宽加「当日合计」柱(Y 轴纳入组合计)
