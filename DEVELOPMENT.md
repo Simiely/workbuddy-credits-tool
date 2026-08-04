@@ -13,7 +13,7 @@
 - **GUI**(`wb-gui.mjs`):本地 HTTP 服务 + API 路由,前端 `wb-gui.html/js` 每次请求实时读取
 - **子路径挂载自适应**:页面可运行在工具中心等平台 `/tool/<id>/` 子路径下——`__BASE__`(平台注入或自行检测)拼接到所有 `/api/*` 调用前,资源用相对路径;独立运行 `__BASE__=""` 行为不变
 
-关键数字:`CONCURRENCY=6`、单账号超时 8s、前端超时 12s、历史快照上限 500 条、同分钟去重、GUI 端口 8080(顺延 ≤8090)、edge-daemon 8129(HTTP API)/Edge 调试 9222、操作条按钮最多 2 行(超高纵向滚动)。
+关键数字:`CONCURRENCY=6`、单账号超时 8s、前端超时 12s、历史快照上限 500 条、同分钟去重、GUI 端口 8080(顺延 ≤8090)、edge-daemon 8129(HTTP API)/Edge 调试 9222。
 
 ## 二、架构说明(摘要)
 
@@ -44,7 +44,6 @@ wb-gui.mjs   ────┤
 | edge-daemon 连不上浏览器 | 读 DevToolsActivePort 残留文件,连不存在的 ws 永久挂起 | [edge-daemon连接发现机制.md](docs/问题记录/edge-daemon连接发现机制.md) |
 | 云同步快捷按钮一直显示 | `hidden` 属性被内联 `display:flex` 覆盖 | [hidden属性被内联样式覆盖.md](docs/问题记录/hidden属性被内联样式覆盖.md) |
 | 今日已用恒为 0 | 聚合 totals 被当天新加账号污染,差值变负 | [今日已用恒为0.md](docs/问题记录/今日已用恒为0.md) |
-| hero 卡片 1/2 行跳变 | auto-fit 在宽度临界值来回切 | v1.0.14 固定 repeat(4/2,1fr),详见 CHANGELOG |
 
 ## 四、每次改动的动作清单
 

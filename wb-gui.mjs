@@ -12,25 +12,17 @@ import { fetchAllAccounts, fetchOneAccount } from "./lib/query.js";
 import { saveCurrentFromEdge } from "./lib/account-ops.js";
 import { brief, mdAll } from "./lib/render.js";
 import { saveLastData, loadLastData, appendSnapshot, historyFor, loadHistory } from "./lib/history.js";
-import { loadSyncConfig, saveSyncConfig, uploadFile, downloadFile, testConnection, BACKUP_DIR, SYNC_FILES, SYNC_FILE } from "./lib/webdav.js";
+import { loadSyncConfig, saveSyncConfig, uploadFile, downloadFile, testConnection, BACKUP_DIR, SYNC_FILES } from "./lib/webdav.js";
 
 const HTML_FILE = path.join(TOOLS_DIR, "wb-gui.html");
 const JS_FILE = path.join(TOOLS_DIR, "wb-gui.js");
 const DAEMON_BASE = `http://127.0.0.1:${DAEMON_PORT}`;
 
-// dashboard/all 内存缓存 {mtime, payload}
-let dashCache = null;
-
 // ---------- HTTP 服务 ----------
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
   const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(obj)); };
-  const body = () => new Promise((resolve, reject) => {
-    let s = ""; let size = 0;
-    req.on("data", (c) => { s += c; size += c.length; if (size > 1024 * 1024) { reject(new Error("请求体过大")); req.destroy(); } });
-    req.on("end", () => resolve(s));
-    req.on("error", reject);
-  });
+  const body = () => new Promise((resolve) => { let s = ""; req.on("data", (c) => (s += c)); req.on("end", () => resolve(s)); });
   try {
     // 允许跨域(演示预览页/其他端口也能请求本服务)
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -46,11 +38,8 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/status") {
       let daemon = "down";
       try {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 2500);
-        const r = await fetch(`${DAEMON_BASE}/status`, { signal: ctrl.signal });
+        const r = await fetch(`${DAEMON_BASE}/status`);
         const j = await r.json();
-        clearTimeout(t);
         daemon = j.connected ? "ok" : "down";
       } catch {}
       return json(200, { ok: true, daemon });
@@ -65,7 +54,7 @@ const server = http.createServer(async (req, res) => {
       const raw = await fetchAllAccounts();
       const results = raw.map((r) => ({ account: brief(r.account), summary: r.summary, data: r.data, error: r.error, expired: r.expired }));
       const payload = { ok: true, fetchedAt: new Date().toLocaleString("zh-CN"), results };
-      // 本地缓存(完整数据,离线可看)+ 历史快照(消耗跟踪)—— 异步落盘,不阻塞响应
+      // 本地缓存(完整数据,离线可看)+ 历史快照(消耗跟踪)
       saveLastData({ fetchedAt: payload.fetchedAt, results });
       const entries = results.filter((r) => r.summary).map((r) => ({
         uin: r.account.uin, name: r.account.name, displayName: r.account.displayName,
@@ -90,17 +79,16 @@ const server = http.createServer(async (req, res) => {
       return json(200, { ok: true, account: brief(a), history: hist });
     }
     // 全部账号消耗仪表盘:总趋势 + 每账号当前状态
-    // 内存缓存:按 wb-history.json 的 mtime 失效(快照不变则结果不变,避免每次全量解析)
     if (url.pathname === "/api/dashboard/all") {
-      const histMtime = fs.existsSync(path.join(TOOLS_DIR, "wb-history.json"))
-        ? fs.statSync(path.join(TOOLS_DIR, "wb-history.json")).mtimeMs : 0;
-      // 缓存键 = 历史文件 mtime + 本地日期:跨午夜后即使历史未变(今天无新快照)也要重算 todayUsed
-      const cacheKey = histMtime + "|" + new Date().toDateString();
-      if (dashCache && dashCache.key === cacheKey) {
-        return json(200, { ok: true, ...dashCache.payload });
-      }
       const hist = loadHistory();
       const accounts = loadAccounts();
+      const totals = hist
+        .map((s) => ({
+          ts: s.ts,
+          total: s.entries.reduce((a, e) => a + (e.giftRemain || 0) + (e.baseRemain || 0), 0), // 总剩余 = 体验版 + 赠送
+          used: s.entries.reduce((a, e) => a + (e.giftUsed || 0) + (e.baseUsed || 0), 0),     // 累计已用 = 体验版 + 赠送
+        }))
+        .sort((a, b) => (a.ts < b.ts ? -1 : 1)); // 按时间升序,保证折线方向正确
       // 按账号分组历史(一次性遍历)
       const byUin = new Map();
       for (const s of hist) {
@@ -114,37 +102,19 @@ const server = http.createServer(async (req, res) => {
         const first = arr[0], last = arr[arr.length - 1];
         const rem = (x) => (x ? (x.giftRemain || 0) + (x.baseRemain || 0) : 0); // 总剩余
         const usd = (x) => (x ? (x.giftUsed || 0) + (x.baseUsed || 0) : 0);     // 累计已用
-        const pad = (n) => String(n).padStart(2, "0");
-        // 自然日(本地时区)分组的工具:所有"按天"计算统一走这里,标准唯一
-        const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
-        // 按自然日分组剩余序列
-        const byDay = new Map();
-        for (const x of arr) {
-          const k = dayKey(x.ts);
-          if (!byDay.has(k)) byDay.set(k, []);
-          byDay.get(k).push(x);
-        }
-        // 每日消耗 = 当天最早剩余 − 当天最晚剩余(自然日,本地时区)
-        const series = [...byDay.keys()].sort().map((k) => {
-          const pts = byDay.get(k).sort((a, b) => (a.ts < b.ts ? -1 : 1));
-          return { t: pts[pts.length - 1].ts, v: Math.round((rem(pts[0]) - rem(pts[pts.length - 1])) * 100) / 100 };
-        });
-        // 今日消耗 = 今天(自然日)最早剩余 − 最晚剩余;series 里今天的 v 即此值,保持一致
-        const todayKey = dayKey(new Date().toISOString());
-        const todayPt = series.find((x) => dayKey(x.t) === todayKey);
-        const todayUsed = todayPt ? todayPt.v : 0;
+        const series = arr
+          .map((x) => ({ t: x.ts, v: rem(x) }))
+          .sort((a, b) => (a.t < b.t ? -1 : 1)); // 每账号折线点(升序)
         return {
           uin: a.uin, name: a.name, displayName: a.displayName,
           currentRemain: last ? rem(last) : null,
           used: last ? usd(last) : null,
           consumed: arr.length > 1 ? rem(first) - rem(last) : 0,
-          todayUsed: todayUsed > 0 ? Math.round(todayUsed * 100) / 100 : 0,
           points: arr.length,
-          series, // 每日消耗序列(自然日),前端直接展示不再计算
+          series,
         };
       });
-      dashCache = { key: cacheKey, payload: { per } };
-      return json(200, { ok: true, per });
+      return json(200, { ok: true, totals, per });
     }
     if (url.pathname === "/api/credits") {
       const key = url.searchParams.get("account") || "";
@@ -214,12 +184,11 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/api/webdav/config" && req.method === "POST") {
       const { url, user, pass } = JSON.parse((await body()) || "{}");
-      const u = String(url || "").trim();
-      if (u && !/^https?:\/\//.test(u)) return json(400, { ok: false, error: "地址需以 http(s):// 开头" });
-      saveSyncConfig({ url: u, user: String(user || "").trim(), pass: String(pass || "") });
+      if (!/^https?:\/\//.test(url || "")) return json(400, { ok: false, error: "地址需以 http(s):// 开头" });
+      saveSyncConfig({ url: String(url).trim(), user: String(user || "").trim(), pass: String(pass || "") });
       return json(200, { ok: true });
     }
-    const syncCfg = () => { const c = loadSyncConfig(); if (!c || !c.user) throw new Error("未配置 WebDAV 账号,请先填写用户名密码并「保存配置」"); return { ...c, url: c.url || "http://192.168.2.1:6086/" }; };
+    const syncCfg = () => { const c = loadSyncConfig(); if (!c || !c.url) throw new Error("未配置 WebDAV,请先点「保存配置」"); return c; };
     if (url.pathname === "/api/webdav/test" && req.method === "POST") {
       const c = syncCfg();
       await testConnection(c.url, c.user, c.pass);
@@ -249,11 +218,6 @@ const server = http.createServer(async (req, res) => {
       if (!restored.length) return json(200, { ok: true, restored: [], message: "云端没有备份文件(先在其他电脑上传一次)" });
       return json(200, { ok: true, restored, message: `已下载 ${restored.length} 个文件并覆盖本地,请刷新查看` });
     }
-    // 清空本地 WebDAV 登录配置
-    if (url.pathname === "/api/webdav/clear" && req.method === "POST") {
-      fs.rmSync(SYNC_FILE, { force: true });
-      return json(200, { ok: true, message: "已清空云端配置" });
-    }
 
     json(404, { ok: false, error: "not found" });
   } catch (e) {
@@ -269,16 +233,15 @@ function listen(port, max) {
   server.listen(port, "127.0.0.1", () => {
     const addr = `http://127.0.0.1:${port}`;
     console.log("WorkBuddy 积分仪表盘已启动: " + addr);
-    // 仅 Windows 桌面场景自动打开浏览器;Linux/Docker 下不执行(无 cmd 命令,spawn 会崩溃)
-    if (process.platform === "win32") {
-      try {
-        const child = spawn("cmd", ["/c", "start", "", addr], { detached: true, stdio: "ignore" });
-        child.on("error", () => {}); // 吞掉 ENOENT 等,防止未处理 error 崩溃
-        child.unref();
-      } catch {}
-    }
+    console.log("关闭本窗口即退出。");
+    // 自动打开浏览器(仅桌面环境;Linux 容器/无 cmd 时静默跳过,不能崩)
+    try {
+      const win = process.platform === "win32";
+      const open = spawn(win ? "cmd" : "xdg-open", win ? ["/c", "start", "", addr] : [addr], { detached: true, stdio: "ignore" });
+      open.on("error", () => {}); // ENOENT 等静默吞掉,不影响服务
+      open.unref();
+    } catch {}
   });
 }
 
-const basePort = parseInt(process.argv[2] || String(GUI_PORT), 10) || GUI_PORT;
-listen(basePort, basePort + 20); // 被占用时最多顺延 20 个端口(旧版写死 8090,8123 永远顺延不了)
+listen(parseInt(process.argv[2] || String(GUI_PORT), 10), 8090);

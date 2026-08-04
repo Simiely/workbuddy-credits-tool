@@ -19,7 +19,22 @@
 - 端口规范:daemon HTTP API = **8129**(平台端口段内,可被 tools-center 托管);Edge 调试 = **9222**(默认,`EDGE_DEBUG_PORT` 或 argv[3] 可覆盖)
 - 全部 daemon 端口 9333 → 8129(`lib/util.js` / `lib/daemon.js` / `edge-daemon.mjs` / `edge-ctl.mjs`)
 
+## 补充:Edge 调试端口打不开(2026-08-03 新坑)
+
+即使改用标准 CDP 发现,`--remote-debugging-port=9222` 也可能不生效:
+
+1. **Startup Boost 抢跑**:Edge 关闭后后台进程仍在,新命令只打开新标签页,flag 被忽略。
+2. **默认目录被拒绝**:Edge 要求 `--user-data-dir` 指向非默认路径才能启用远程调试。
+
+正确启动方式:
+```bash
+taskkill /F /IM msedge.exe
+cp -r "%LOCALAPPDATA%/Microsoft/Edge/User Data" /tmp/edge-debug
+msedge --remote-debugging-port=9222 --user-data-dir="/tmp/edge-debug" https://www.workbuddy.cn/profile/plans-usage
+```
+
 ## 预防
 
 - 任何"读浏览器/进程状态文件"的逻辑都不可靠,优先用服务自身 HTTP 发现端点
 - **改 `lib/util.js` 常量后必须重启常驻子进程**(模块加载时读值,改文件不生效)——本轮 wb-gui 子进程因此短暂探测旧端口
+- Edge 调试端口不是开了就一劳永逸——**首次配好保留启动脚本**,勿每次手敲。
