@@ -60,12 +60,24 @@ export async function ensureDir(base, user, pass, dir = BACKUP_DIR) {
   }
 }
 
-/** 上传单个文件（PUT），自动建目录 */
+/** 上传单个文件（PUT），自动建目录。423(资源被锁,瞬时)退避重试 3 次 */
 export async function uploadFile(base, user, pass, dir, file, content) {
   await ensureDir(base, user, pass, dir);
-  const r = await req("PUT", fileUrl(base, dir, file), user, pass, content);
-  if (r.status >= 200 && r.status < 300) return;
-  throw new Error(`上传 ${file} 失败(HTTP ${r.status})`);
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await req("PUT", fileUrl(base, dir, file), user, pass, content);
+    if (r.status >= 200 && r.status < 300) return;
+    if (r.status === 423 && attempt < 2) {
+      await new Promise((res) => setTimeout(res, 1200 * (attempt + 1))); // 1.2s / 2.4s 退避
+      continue;
+    }
+    lastStatus = r.status;
+    break;
+  }
+  throw new Error(
+    `上传 ${file} 失败(HTTP ${lastStatus})` +
+      (lastStatus === 423 ? "：文件被服务器锁定(可能被其他程序/同步任务占用),请稍后重试" : "")
+  );
 }
 
 /** 下载单个文件（GET）；404 返回 null */

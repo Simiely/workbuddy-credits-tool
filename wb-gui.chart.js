@@ -2,21 +2,36 @@
 // 依赖 wb-gui.state.js（LINE_COLORS/escAttr/acctName/dashMode/dashPer）与 render 层（$ 等工具）。
 // 纯渲染，自身不发起网络请求。v1.4.22 从 wb-gui.render.js 拆出（趋势图迭代频繁，独立成模块便于维护）。
 
+const TOTAL_COLOR = "#94a3b8"; // 合计柱/合计图例：中性灰，与账号彩柱区分
+
 // 本地当天 00:00（归一化数据点：X 轴刻度按天对齐，否则数据点 ts 是快照时刻无法与日期刻度匹配）
 function dayZero(ts) { const d = new Date(ts); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
 
-// 「每日视图」动态窗口：按实际有数据的自然日天数取跨度，下限 3 天、上限 10 天
-// 以今天为中心对称分布（如 3 天窗口 = 昨天/今天/明天，数据点从最左开始）
+// 「每日视图」动态窗口：跨度 = 实际有数据的自然日天数，夹在 [3, 7]（下限 3 天、上限 7 天）
+// 窗口定位：数据天数 ≤ 跨度 → 从最早数据日开始向右延伸（补未来，折线有伸展空间，如 2 天数据 → 8/3 8/4 8/5）；
+//            数据天数 > 跨度 → 取最近 span 天（终点 = 最晚数据日，只看最新 7 天）
+// 注意：日期键用「本地自然日」(getFullYear/Month/Date)，不能用 toISOString().slice(0,10)（UTC 会错位一天）
 function dayWindow() {
+  const keyOf = (ts) => {
+    const z = dayZero(ts); // 本地 00:00
+    return `${z.getFullYear()}-${String(z.getMonth() + 1).padStart(2, "0")}-${String(z.getDate()).padStart(2, "0")}`;
+  };
   const daySet = new Set();
   for (const a of dashPer || []) {
-    for (const p of (a.series || [])) daySet.add(dayZero(p.t).toISOString().slice(0, 10));
+    for (const p of (a.series || [])) daySet.add(keyOf(p.t));
   }
-  const span = Math.min(10, Math.max(3, daySet.size || 1));
-  const half = Math.floor((span - 1) / 2);
-  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const sorted = [...daySet].sort();
+  if (!sorted.length) return [];
+  const n = sorted.length;
+  const span = Math.min(7, Math.max(3, n));
+  const parse = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }; // 本地 00:00
+  let start = parse(sorted[0]); // 默认从最早数据日开始
+  if (n > span) {
+    // 数据超过上限：窗口终点 = 最晚数据日，向前取 span 天
+    start = new Date(parse(sorted[n - 1]).getTime() - (span - 1) * 86400000);
+  }
   const days = [];
-  for (let i = -half; i <= span - 1 - half; i++) days.push(new Date(t0.getTime() + i * 86400000).toISOString());
+  for (let i = 0; i < span; i++) days.push(new Date(start.getFullYear(), start.getMonth(), start.getDate() + i).toISOString());
   return days;
 }
 
@@ -37,7 +52,6 @@ function barChart(series, mode, xTicks) {
   const dayTotals = new Map([...dayMap].map(([t, d]) => [t, d.reduce((s, x) => s + x.v, 0)]));
   const maxV = Math.max(...all.map((p) => p.v), ...dayTotals.values(), 1);
   const colorOf = (key) => LINE_COLORS[Math.max(0, series.findIndex((s) => s.key === key)) % LINE_COLORS.length];
-  const TOTAL_COLOR = "#94a3b8"; // 合计柱：中性灰，与账号彩柱区分
   const byKey = new Map(series.map((s) => [s.key, []]));
   const groupW = iw / times.length;
   let totals = ""; // 合计柱（当日/当月总计），独立渲染不参与图例显隐
@@ -79,7 +93,7 @@ function barChart(series, mode, xTicks) {
         : "";
       byKey.get(d.key).push(`<rect x="${x.toFixed(1)}" y="${(T + ih - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="${color}" class="cpt" data-v="${Math.round(d.v)}" data-pct="${pct}" data-t="${t}" data-n="${escAttr(d.name)}"/>${lbl}`);
     });
-    // 合计柱：右侧隔一个柱宽（bw）；顶部标数值 + 「合计」标签说明（若为组内最高则数值粗体）
+    // 合计柱：右侧隔一个柱宽（bw）；顶部只标数值（说明在图例区「合计」标签，柱上不重复写字）
     if (dayTotal > 0) {
       const tx = startX + day.length * bw + bw;
       const tbh = Math.max(1, (dayTotal / maxV) * ih);
@@ -88,8 +102,7 @@ function barChart(series, mode, xTicks) {
       const num = isMaxTotal
         ? `<text x="${(tx + bw / 2).toFixed(1)}" y="${(ty - 4).toFixed(1)}" font-size="10" fill="${TOTAL_COLOR}" text-anchor="middle" font-weight="700">${Math.round(dayTotal)}</text>`
         : "";
-      const tag = `<text x="${(tx + bw / 2).toFixed(1)}" y="${(ty - 15).toFixed(1)}" font-size="9" fill="${TOTAL_COLOR}" text-anchor="middle">合计</text>`;
-      totals += `<rect x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" width="${bw.toFixed(1)}" height="${tbh.toFixed(1)}" rx="2" fill="${TOTAL_COLOR}" class="cpt" data-v="${Math.round(dayTotal)}" data-pct="100" data-t="${t}" data-n="${mode === "month" ? "当月合计" : "当日合计"}"/>${num}${tag}`;
+      totals += `<rect x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" width="${bw.toFixed(1)}" height="${tbh.toFixed(1)}" rx="2" fill="${TOTAL_COLOR}" class="cpt" data-v="${Math.round(dayTotal)}" data-pct="100" data-t="${t}" data-n="${mode === "month" ? "当月合计" : "当日合计"}"/>${num}`;
     }
   });
   let groups = "";
@@ -133,7 +146,10 @@ function renderLines() {
     $("chart").innerHTML = '<div class="ph">暂无足够数据，多刷新几次后出现图表</div>';
     return;
   }
-  $("legend").innerHTML = raw.map((a, i) => `<div class="lg" data-key="${a.uin}" onclick="toggleLine('${a.uin}', this)"><i style="background:${LINE_COLORS[i % LINE_COLORS.length]}"></i>${acctName(a)}</div>`).join("");
+  // 图例 = 账号标签 + 最右侧「合计」标签（灰色，点击隐藏/显示合计柱，交互与账号一致）
+  $("legend").innerHTML = raw
+    .map((a, i) => `<div class="lg" data-key="${a.uin}" onclick="toggleLine('${a.uin}', this)"><i style="background:${LINE_COLORS[i % LINE_COLORS.length]}"></i>${acctName(a)}</div>`)
+    .join("") + `<div class="lg" data-key="total" onclick="toggleLine('total', this)"><i style="background:${TOTAL_COLOR}"></i>合计</div>`;
   $("chart").innerHTML = barChart(lines, dashMode, xTicks);
 }
 

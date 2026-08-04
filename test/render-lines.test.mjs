@@ -27,17 +27,17 @@ const w0 = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 20)
 const w1 = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 20);
 const label = (d) => `${d.getMonth() + 1}月${d.getDate()}日`;
 
-console.log("T1 每日视图: 数据 1 天 → 窗口下限 3 天(以今天为中心:昨天/今天/明天)");
-const d1 = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+console.log("T1 每日视图: 数据 1 天 → 窗口下限 3 天(从最早数据日=今天向右延伸:今天/明天/后天)");
 const dP1 = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-assert(`左边界 = 昨天(${label(d1)})`, dayHtml.includes(label(d1)));
-assert(`右边界 = 明天(${label(dP1)})`, dayHtml.includes(label(dP1)));
+const dP2 = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2);
+assert(`左边界 = 今天(${label(today)})`, dayHtml.includes(label(today)));
+assert(`右边界 = 今天+2(${label(dP2)})`, dayHtml.includes(label(dP2)));
 assert("不再补 ±20 天(7月15日不出现)", !dayHtml.includes("7月15日"));
 assert("柱状图渲染(存在柱 rect)", (dayHtml.match(/<rect/g) || []).length >= 1);
 assert("柱带 hover 数据(存在 cpt)", dayHtml.includes("class=\"cpt\""));
 assert("最高柱标注数值(10 出现)", dayHtml.includes('font-weight="700">10<'), dayHtml.slice(0, 400));
 
-console.log("T5 每日视图: 数据 15 天 → 窗口上限 10 天(今天-4 ~ 今天+5)");
+console.log("T5 每日视图: 数据 15 天 → 窗口上限 7 天(取最近 7 天:今天-6 ~ 今天)");
 const pts15 = [];
 for (let i = 14; i >= 0; i--) {
   const dt = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
@@ -49,12 +49,11 @@ run(`
   renderLines();
 `);
 const day15Html = run(`$("chart").innerHTML`);
-const dM4 = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 4);
-const dM5 = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 5);
-const dP5 = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 5);
-assert(`左边界 = 今天-4(${label(dM4)})`, day15Html.includes(label(dM4)));
-assert(`今天-5(${label(dM5)}) 超出窗口不出现`, !day15Html.includes(label(dM5)));
-assert(`右边界 = 今天+5(${label(dP5)})`, day15Html.includes(label(dP5)));
+const dM6 = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6);
+const dM7 = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7);
+assert(`左边界 = 今天-6(${label(dM6)})`, day15Html.includes(label(dM6)));
+assert(`今天-7(${label(dM7)}) 超出窗口不出现`, !day15Html.includes(label(dM7)));
+assert(`右边界 = 今天(${label(today)})`, day15Html.includes(label(today)));
 
 console.log("T2 全部显示模式: 不再补窗口刻度,只用实际数据日期");
 run(`changeMode("all")`);
@@ -123,8 +122,10 @@ run(`
   renderLines();
 `);
 const barHtml = run(`$("chart").innerHTML`);
+const legendHtml = run(`$("legend").innerHTML`);
 assert("合计柱渲染(灰色 data-n=当日合计)", barHtml.includes('data-n="当日合计"'));
-assert("合计柱顶部有「合计」标签说明", barHtml.includes(">合计<"), barHtml.slice(0, 500));
+assert("图例区最右有「合计」标签", legendHtml.includes(">合计<"), legendHtml.slice(0, 400));
+assert("柱子上不再写「合计」二字", !barHtml.includes(">合计<"), barHtml.slice(0, 500));
 assert("合计柱值 110 顶部标数字", barHtml.includes('font-weight="700">110<'));
 assert("单柱(80/30)不标数字", !barHtml.includes('font-weight="700">80<') && !barHtml.includes('font-weight="700">30<'));
 assert("组内标签恰好 1 个(合计 110)", (barHtml.match(/font-weight="700">110<\/text>/g) || []).length === 1);
