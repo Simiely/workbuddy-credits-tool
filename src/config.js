@@ -12,7 +12,6 @@ export const CONCURRENCY = 6;       // 批量查询并发数
 export const FETCH_TIMEOUT_MS = 8000; // 单账号请求 WorkBuddy 超时（毫秒）
 export const DAEMON_PORT = 8129;    // edge-daemon 端口
 export const GUI_PORT = 8080;       // GUI 服务端口
-export const HISTORY_LIMIT = 500;   // 历史快照上限
 
 // ---------- 安全：管理员密码（写类接口保护） ----------
 // 密码不再依赖环境变量，改为运行时由前端「首次设置密码」持久化到 wb-admin.json（默认未启用=开放）。

@@ -51,6 +51,15 @@ export function initSchema(db) {
       raw TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_readings_uin_ts ON readings(uin, ts);
+    CREATE TABLE IF NOT EXISTS day_summary (
+      uin TEXT NOT NULL,
+      day TEXT NOT NULL,
+      used REAL NOT NULL DEFAULT 0,
+      startRemain REAL,
+      endRemain REAL,
+      fixedAt TEXT,
+      PRIMARY KEY (uin, day)
+    );
   `);
 }
 

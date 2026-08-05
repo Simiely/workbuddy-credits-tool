@@ -1,12 +1,13 @@
 // src/compute/webdav.js - WebDAV 云同步（数据备份：上传/下载），原 lib/webdav.js
-// 将账号池 + 历史快照 + 最近缓存备份到用户指定的 WebDAV（坚果云/Nextcloud 等）。
+// 将账号池 + 历史快照备份到用户指定的 WebDAV（坚果云/Nextcloud 等）。
+// 注:wb-last-data.json(最近一次刷新缓存,展示数据副本)不属于"账本"数据,不参与备份(v1.4.31)。
 import fs from "node:fs";
 import path from "node:path";
 import { TOOLS_DIR } from "../config.js";
 
 export const SYNC_FILE = path.join(TOOLS_DIR, "wb-sync.json"); // 本地同步配置（含密码，仅本机）
 export const BACKUP_DIR = "workbuddy/workbuddy积分"; // WebDAV 上的备份目录（多级）
-export const SYNC_FILES = ["wb-accounts.json", "wb-history.json", "wb-last-data.json"]; // 备份哪些本地文件
+export const SYNC_FILES = ["wb-accounts.json", "wb-history.json"]; // 备份哪些本地文件(账本数据:账号池+历史)
 
 export function loadSyncConfig() {
   try {

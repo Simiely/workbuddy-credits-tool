@@ -9,7 +9,16 @@
 //   2. todayUsed 由「今日首个快照剩余 - 当前剩余」得到（相邻 Reading 之差），
 //      根治旧版「今日已用恒为0」（旧版每天只有一次快照导致首末相等→0；P1 采样器已让每天多条）。
 //   3. 不碰 IO，IO 仍在 history.js / db.js —— 本文件可独立单测。
-import { historyFor, loadLastData } from "./history.js";
+import {
+  historyFor,
+  loadLastData,
+  loadDaySummaries,
+  saveDaySummary,
+  readingsForDay,
+  oldDayKeys,
+  deleteReadingsBefore,
+  allSnapshotUins,
+} from "./history.js";
 
 const pad = (n) => String(n).padStart(2, "0");
 
@@ -27,6 +36,21 @@ const cnDay0 = (utcMs) => {
 export function dayKeyOf(ts) {
   const w = cnWall(new Date(ts).getTime());
   return `${w.getUTCFullYear()}-${pad(w.getUTCMonth() + 1)}-${pad(w.getUTCDate())}`;
+}
+
+// 消耗口径（v1.4.31 起，模块级供 deriveAccount 与 gcDaySummaries 共用）：
+// 对已按时间排序的快照序列，累计「已用」的正增量。
+// 旧口径「首剩余 - 末剩余」在官方赠送包数据调整日会失真：包消失/新增导致剩余漂移
+// （甚至增加），把今日消耗算成 0 或负值；改用已用字段后，包重置时已用回退会被跳过
+// （prev 同步到回退点），重置后重新从低值累加，能反映真实消耗。
+export function consumeByPos(arr) {
+  let v = 0, prev = null;
+  for (const s of arr) {
+    const u = (s.baseUsed || 0) + (s.giftUsed || 0);
+    if (prev !== null && u > prev) v += u - prev;
+    prev = u; // 回退时同步到回退点,后续增量从新基线计
+  }
+  return Math.round(v * 100) / 100;
 }
 
 /** 中国时区今天 00:00（真实 UTC 时刻） */
@@ -167,7 +191,7 @@ export function deriveAccount(uin, acct = {}) {
   const currentRemain = last ? last.totalRemain : 0;
   const used = last ? last.totalUsed : 0;
 
-  // 按自然日聚合：每天取最早/最晚快照，日消耗 = 首剩余 - 末剩余
+  // 按自然日聚合：每天按时间排序，日消耗 = 当天「已用」正增量累加
   const byDay = new Map();
   for (const s of series) {
     const k = dayKeyOf(s.ts);
@@ -181,7 +205,7 @@ export function deriveAccount(uin, acct = {}) {
     arr.sort((a, b) => (a.ts < b.ts ? -1 : 1));
     const d0 = arr[0];
     const d1 = arr[arr.length - 1];
-    const v = Math.max(0, Math.round((d0.totalRemain - d1.totalRemain) * 100) / 100);
+    const v = consumeByPos(arr);
     seriesOut.push({ t: d1.ts, v });
     // 明细表直接消费：起(首快照剩余)/终(末快照剩余)/日消耗,前端不再按日聚合重算
     dailyUsed.push({
@@ -194,18 +218,26 @@ export function deriveAccount(uin, acct = {}) {
   seriesOut.sort((a, b) => (a.t < b.t ? -1 : 1));
   dailyUsed.sort((a, b) => (a.day < b.day ? -1 : 1));
 
-  // 今日已用 = 今日最早快照剩余 - 当前剩余（相邻 Reading 之差）
+  // 历史固化后的旧日(早于保留窗口,原始快照已清)从 day_summary 摘要补齐：
+  // 快照能算出的日期优先(更新更准),摘要只补缺失日期。
+  const snapDays = new Set(dailyUsed.map((x) => x.day));
+  for (const s of loadDaySummaries(uin)) {
+    if (snapDays.has(s.day)) continue;
+    dailyUsed.push({
+      day: s.day,
+      used: s.used ?? 0,
+      startRemain: s.startRemain ?? null,
+      endRemain: s.endRemain ?? null,
+    });
+    seriesOut.push({ t: s.day + "T00:00:00.000Z", v: s.used ?? 0 }); // 摘要日无真实时刻,取该日 00:00 近似(前端会归一化到本地当天)
+  }
+  dailyUsed.sort((a, b) => (a.day < b.day ? -1 : 1));
+  seriesOut.sort((a, b) => (a.t < b.t ? -1 : 1));
+
+  // 今日已用 = 今日快照序列的「已用」正增量累加（旧口径"首条剩余-当前剩余"在官方包增减时失真）
   const today0 = startOfToday();
   const todayReadings = series.filter((s) => new Date(s.ts) >= today0);
-  let todayUsed = 0;
-  if (todayReadings.length) {
-    const baseline = todayReadings[0].totalRemain;
-    todayUsed = Math.max(0, Math.round((baseline - currentRemain) * 100) / 100);
-  }
-
-  // 累计消耗（自首次记录以来）
-  const consumed =
-    n > 1 ? Math.max(0, Math.round((first.totalRemain - last.totalRemain) * 100) / 100) : 0;
+  const todayUsed = todayReadings.length ? consumeByPos(todayReadings) : 0;
 
   // 赠送包到期派生（单派生源）：近1/3天过期积分、周桶、排序紧迫度
   const giftPacks = packagesFor(uin, lastFull);
@@ -218,7 +250,6 @@ export function deriveAccount(uin, acct = {}) {
     displayName: acct.displayName || acct.name || uin,
     currentRemain,
     used,
-    consumed,
     todayUsed,
     points: n,
     series: seriesOut,
@@ -248,4 +279,38 @@ export function deriveAccount(uin, acct = {}) {
 /** 批量派生（账号池顺序，保持展示稳定） */
 export function deriveAll(accounts) {
   return accounts.map((a) => deriveAccount(a.uin, a));
+}
+
+// ---------- 历史固化（v1.4.31 规划落地） ----------
+// 把「T-2 及更早」的每日原始快照压缩为 day_summary 摘要，然后删除原始明细，
+// 防止历史无限增长（原 wb-history.json 3.8MB 上传慢的根因）。
+// 幂等：某日摘要已存在则跳过；保留窗口 = 昨天(T-1)与今天（todayUsed/dailyUsed 现算需要）。
+export function gcDaySummaries() {
+  const nowMs = Date.now();
+  const todayKey = new Date(nowMs + TZ_MS).toISOString().slice(0, 10);
+  const today0Utc = new Date(todayKey + "T00:00:00Z").getTime() - TZ_MS; // 中国今天 00:00 的 UTC 时刻
+  const cutMs = today0Utc - 1 * 86400000; // 保留窗口起点 = 昨天 00:00；<cut 的旧日全部固化后删除
+  const accts = allSnapshotUins(); // 只处理有快照的账号（字符串数组，不依赖账号池）
+  let fixed = 0;
+  for (const uin of accts) {
+    const existing = new Set(loadDaySummaries(uin).map((s) => s.day)); // 幂等键
+    for (const day of oldDayKeys(uin, cutMs)) {
+      if (existing.has(day)) continue; // 已固化，跳过
+      const rows = readingsForDay(uin, day);
+      if (!rows.length) continue;
+      const v = consumeByPos(rows);
+      const first = rows[0];
+      const last = rows[rows.length - 1];
+      saveDaySummary(
+        uin,
+        day,
+        v,
+        first ? (first.baseRemain || 0) + (first.giftRemain || 0) : null,
+        last ? (last.baseRemain || 0) + (last.giftRemain || 0) : null
+      );
+      fixed++;
+    }
+  }
+  if (fixed > 0) deleteReadingsBefore(new Date(cutMs).toISOString()); // 有固化才清理（保留 T-1 与今天）
+  return { fixed };
 }

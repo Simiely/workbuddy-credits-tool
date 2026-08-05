@@ -11,6 +11,7 @@
 import { loadAccounts } from "./store.js";
 import { loadHistory } from "./history.js";
 import { sampleAll } from "./sample.js";
+import { gcDaySummaries } from "./derive.js";
 
 const DEFAULT_MIN = 15;
 const CRITICAL_REMAIN = 1000; // 剩余低于此视为偏紧
@@ -28,6 +29,7 @@ const S = {
 };
 
 let notifier = null;
+let _gcDay = null; // 历史固化按天节流:记录当天已执行固化的"今天日期键"
 
 /** 注入一个回调：每次成功采样后调用，用于驱动 SSE 广播 */
 export function setNotifier(fn) {
@@ -94,6 +96,12 @@ function scheduleNext() {
     if (!S.enabled) return;
     S.mode = "auto";
     try {
+      // 历史固化：每天执行一次（幂等；T-2 及更早压缩为 day_summary 摘要后清理明细）
+      const todayK = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+      if (_gcDay !== todayK) {
+        try { gcDaySummaries(); } catch (e) { /* 固化失败不阻断采样 */ }
+        _gcDay = todayK;
+      }
       await runOnce();
     } catch (e) {
       S.lastError = e.message || String(e);

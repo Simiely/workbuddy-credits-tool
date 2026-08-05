@@ -6,7 +6,7 @@
 // 对外函数签名与旧版一致，buildDashboard 逻辑原样保留（P2 才收口解析）。
 import fs from "node:fs";
 import path from "node:path";
-import { TOOLS_DIR, HISTORY_LIMIT } from "../config.js";
+import { TOOLS_DIR } from "../config.js";
 import { getDb } from "../store/db.js";
 
 const LAST_FILE = path.join(TOOLS_DIR, "wb-last-data.json"); // 离线缓存（仍保留为镜像）
@@ -137,13 +137,29 @@ export function latestReadingTs() {
 
 // ---------- WebDAV 镜像桥接（SQLite <-> 遗留 JSON） ----------
 
-/** 把 readings 导出为 wb-history.json 镜像 */
+/** 把 readings + day_summary 导出为 wb-history.json 镜像（固化后旧日只剩摘要，体积骤减） */
 export function exportLegacy() {
   try {
+    const hist = loadHistory();
+    // 剥离历史快照的 giftPackages（单条可 6.5KB 的体积大头；expiring 只读最新快照）——
+    // 仅最新一组保留完整，其余组剥离，镜像从 MB 级降到百 KB 级。
+    const n = hist.length;
+    const slim = hist.map((snap, i) => {
+      if (i === n - 1) return snap; // 最新组保留完整字段（含 giftPackages）
+      const entries = (snap.entries || []).map((e) => {
+        const { giftPackages, ...rest } = e;
+        return rest;
+      });
+      return { ...snap, entries };
+    });
     fs.writeFileSync(
       path.join(TOOLS_DIR, "wb-history.json"),
       JSON.stringify(
-        { updatedAt: new Date().toISOString(), snapshots: loadHistory() },
+        {
+          updatedAt: new Date().toISOString(),
+          snapshots: slim,
+          summaries: loadAllDaySummaries(),
+        },
         null,
         1
       ),
@@ -158,10 +174,90 @@ export function importLegacy() {
     const p = path.join(TOOLS_DIR, "wb-history.json");
     if (!fs.existsSync(p)) return;
     const j = JSON.parse(fs.readFileSync(p, "utf8"));
+    // 固化摘要先恢复（day_summary 幂等覆盖）
+    if (Array.isArray(j.summaries) && j.summaries.length) {
+      for (const s of j.summaries) {
+        saveDaySummary(s.uin, s.day, s.used, s.startRemain, s.endRemain);
+      }
+    }
     if (!j.snapshots || !j.snapshots.length) return;
     for (const snap of j.snapshots) {
       // 用快照原始 ts 追加(同分钟去重),而非导入时刻——否则历史全挤在当前分钟,且去重后只剩第一条
       appendSnapshot(snap.entries || [], { ts: snap.ts });
     }
   } catch {}
+}
+
+// ---------- 每日摘要（day_summary 表，历史固化后旧日派生的数据源） ----------
+
+/** 写入/覆盖某账号某日的固化摘要（幂等：重复调用仅覆盖同键） */
+export function saveDaySummary(uin, day, used, startRemain, endRemain) {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO day_summary (uin, day, used, startRemain, endRemain, fixedAt)
+     VALUES (?,?,?,?,?,?)
+     ON CONFLICT(uin, day) DO UPDATE SET used=excluded.used, startRemain=excluded.startRemain,
+       endRemain=excluded.endRemain, fixedAt=excluded.fixedAt`
+  ).run(uin, day, used ?? 0, startRemain ?? null, endRemain ?? null, new Date().toISOString());
+}
+
+/** 读取某账号全部固化摘要（按 day 升序），无则空数组 */
+export function loadDaySummaries(uin) {
+  const db = getDb();
+  return db
+    .prepare("SELECT day, used, startRemain, endRemain FROM day_summary WHERE uin=? ORDER BY day ASC")
+    .all(uin);
+}
+
+/** 读取全部固化摘要（备份镜像用） */
+export function loadAllDaySummaries() {
+  const db = getDb();
+  return db.prepare("SELECT uin, day, used, startRemain, endRemain FROM day_summary ORDER BY uin, day").all();
+}
+
+/** 清空固化摘要表（云镜像恢复时先清再导） */
+export function clearDaySummaries() {
+  const db = getDb();
+  db.prepare("DELETE FROM day_summary").run();
+}
+
+// ---------- 固化任务的数据访问（计算逻辑在 derive.js 的 gcDaySummaries，避免循环依赖） ----------
+
+const CN_TZ_MS = 8 * 3600 * 1000;
+
+/** 某账号某中国自然日(YYYY-MM-DD)的全部快照（按时间升序） */
+export function readingsForDay(uin, day) {
+  const db = getDb();
+  const startUtc = new Date(day + "T00:00:00Z").getTime() - CN_TZ_MS;
+  const endUtc = startUtc + 86400000;
+  return db
+    .prepare(
+      "SELECT ts, baseRemain, baseUsed, giftRemain, giftUsed FROM readings WHERE uin=? AND ts>=? AND ts<? ORDER BY ts ASC"
+    )
+    .all(uin, new Date(startUtc).toISOString(), new Date(endUtc).toISOString());
+}
+
+/** 某账号所有「中国日期」早于 cutUtcMs 的日期键（去重升序）——即待固化/待清理的旧日 */
+export function oldDayKeys(uin, cutUtcMs) {
+  const db = getDb();
+  const rows = db
+    .prepare("SELECT ts FROM readings WHERE uin=? AND ts < ? ORDER BY ts")
+    .all(uin, new Date(cutUtcMs).toISOString());
+  const days = new Set();
+  for (const r of rows) {
+    days.add(new Date(new Date(r.ts).getTime() + CN_TZ_MS).toISOString().slice(0, 10));
+  }
+  return [...days].sort();
+}
+
+/** 删除早于给定 ISO 时刻的全部快照（保留窗口内的不动） */
+export function deleteReadingsBefore(isoTs) {
+  const db = getDb();
+  db.prepare("DELETE FROM readings WHERE ts < ?").run(isoTs);
+}
+
+/** 所有有快照的账号 uin（固化任务用，不依赖账号池） */
+export function allSnapshotUins() {
+  const db = getDb();
+  return db.prepare("SELECT DISTINCT uin FROM readings").all().map((r) => r.uin);
 }
