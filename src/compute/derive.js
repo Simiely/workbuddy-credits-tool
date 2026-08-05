@@ -53,6 +53,28 @@ export function consumeByPos(arr) {
   return Math.round(v * 100) / 100;
 }
 
+// 今日签到检测（v1.4.33）：
+// 原理（数据实证）：WorkBuddy 每日签到 = 新增一个「到期日 = 领取日 + 1 自然月（对日）」的赠送包
+// （如 8/5 签到 → 新增 9/5 到期的包；8/4 签到 → 9/4 到期的包，逐日唯一）。
+// 检测：最新快照中存在「今日首条快照没有 + cycleEndTime 对日 = 今天+1月」的包。
+// - 对日匹配 → 昨天的签到包（昨天+1月）不会误判成今天
+// - 不要求满额 → 签到后已消耗（剩余 < 容量）仍能识别
+// - 对比首条 → 排除早已存在的同到期日包
+export function detectSignIn(firstPacks, lastPacks, todayKey) {
+  const last = Array.isArray(lastPacks) ? lastPacks : [];
+  if (!last.length) return false;
+  const [y, m, d] = todayKey.split("-").map(Number);
+  const t = new Date(y, m, d); // JS Date 自动进位（月末罕见边界按 JS 行为）
+  const target = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+  const firstKeys = new Set(
+    (Array.isArray(firstPacks) ? firstPacks : []).map((p) => String(p.cycleEndTime || "").slice(0, 10))
+  );
+  return last.some((p) => {
+    const end = String(p.cycleEndTime || "").slice(0, 10);
+    return end === target && !firstKeys.has(end);
+  });
+}
+
 /** 中国时区今天 00:00（真实 UTC 时刻） */
 export function startOfToday() {
   return cnDay0(Date.now());
@@ -239,6 +261,15 @@ export function deriveAccount(uin, acct = {}) {
   const todayReadings = series.filter((s) => new Date(s.ts) >= today0);
   const todayUsed = todayReadings.length ? consumeByPos(todayReadings) : 0;
 
+  // 今日签到检测（v1.4.33）：今日首条 vs 最新快照的赠送包,「新增 + 到期日对日=今天+1月」= 已签到
+  const todayKey = dayKeyOf(startOfToday().toISOString());
+  const todayFull = full.filter((r) => new Date(r.ts) >= today0);
+  const signedInToday = detectSignIn(
+    todayFull.length ? todayFull[0].giftPackages : [],
+    (lastFull && lastFull.giftPackages) || [],
+    todayKey
+  );
+
   // 赠送包到期派生（单派生源）：近1/3天过期积分、周桶、排序紧迫度
   const giftPacks = packagesFor(uin, lastFull);
   const gift = deriveGiftExpiry(giftPacks);
@@ -251,6 +282,7 @@ export function deriveAccount(uin, acct = {}) {
     currentRemain,
     used,
     todayUsed,
+    signedInToday,
     points: n,
     series: seriesOut,
     dailyUsed,
@@ -301,12 +333,18 @@ export function gcDaySummaries() {
       const v = consumeByPos(rows);
       const first = rows[0];
       const last = rows[rows.length - 1];
+      // 当天签到状态：该日首条 vs 末条快照的赠送包,「新增 + 到期日对日=当日+1月」= 当天已签到
+      const packsOf = (r) => {
+        try { return (JSON.parse(r.raw || "{}").giftPackages) || []; } catch { return []; }
+      };
+      const signedIn = detectSignIn(packsOf(first), packsOf(last), day) ? 1 : 0;
       saveDaySummary(
         uin,
         day,
         v,
         first ? (first.baseRemain || 0) + (first.giftRemain || 0) : null,
-        last ? (last.baseRemain || 0) + (last.giftRemain || 0) : null
+        last ? (last.baseRemain || 0) + (last.giftRemain || 0) : null,
+        signedIn
       );
       fixed++;
     }

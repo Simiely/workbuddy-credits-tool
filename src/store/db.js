@@ -57,10 +57,22 @@ export function initSchema(db) {
       used REAL NOT NULL DEFAULT 0,
       startRemain REAL,
       endRemain REAL,
+      signedIn INTEGER NOT NULL DEFAULT 0,
       fixedAt TEXT,
       PRIMARY KEY (uin, day)
     );
   `);
+  ensureColumns(db);
+}
+
+// 轻量列迁移：老库 day_summary 缺 signedIn 列时补上（CREATE IF NOT EXISTS 不会加列）
+function ensureColumns(db) {
+  try {
+    const cols = db.prepare("PRAGMA table_info(day_summary)").all().map((c) => c.name);
+    if (!cols.includes("signedIn")) {
+      db.exec("ALTER TABLE day_summary ADD COLUMN signedIn INTEGER NOT NULL DEFAULT 0");
+    }
+  } catch {}
 }
 
 // ---------- 遗留数据迁移（首次运行，库为空时自动执行，幂等） ----------

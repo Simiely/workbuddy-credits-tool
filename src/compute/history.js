@@ -177,7 +177,7 @@ export function importLegacy() {
     // 固化摘要先恢复（day_summary 幂等覆盖）
     if (Array.isArray(j.summaries) && j.summaries.length) {
       for (const s of j.summaries) {
-        saveDaySummary(s.uin, s.day, s.used, s.startRemain, s.endRemain);
+        saveDaySummary(s.uin, s.day, s.used, s.startRemain, s.endRemain, s.signedIn);
       }
     }
     if (!j.snapshots || !j.snapshots.length) return;
@@ -191,28 +191,28 @@ export function importLegacy() {
 // ---------- 每日摘要（day_summary 表，历史固化后旧日派生的数据源） ----------
 
 /** 写入/覆盖某账号某日的固化摘要（幂等：重复调用仅覆盖同键） */
-export function saveDaySummary(uin, day, used, startRemain, endRemain) {
+export function saveDaySummary(uin, day, used, startRemain, endRemain, signedIn = 0) {
   const db = getDb();
   db.prepare(
-    `INSERT INTO day_summary (uin, day, used, startRemain, endRemain, fixedAt)
-     VALUES (?,?,?,?,?,?)
+    `INSERT INTO day_summary (uin, day, used, startRemain, endRemain, signedIn, fixedAt)
+     VALUES (?,?,?,?,?,?,?)
      ON CONFLICT(uin, day) DO UPDATE SET used=excluded.used, startRemain=excluded.startRemain,
-       endRemain=excluded.endRemain, fixedAt=excluded.fixedAt`
-  ).run(uin, day, used ?? 0, startRemain ?? null, endRemain ?? null, new Date().toISOString());
+       endRemain=excluded.endRemain, signedIn=excluded.signedIn, fixedAt=excluded.fixedAt`
+  ).run(uin, day, used ?? 0, startRemain ?? null, endRemain ?? null, signedIn ? 1 : 0, new Date().toISOString());
 }
 
 /** 读取某账号全部固化摘要（按 day 升序），无则空数组 */
 export function loadDaySummaries(uin) {
   const db = getDb();
   return db
-    .prepare("SELECT day, used, startRemain, endRemain FROM day_summary WHERE uin=? ORDER BY day ASC")
+    .prepare("SELECT day, used, startRemain, endRemain, signedIn FROM day_summary WHERE uin=? ORDER BY day ASC")
     .all(uin);
 }
 
 /** 读取全部固化摘要（备份镜像用） */
 export function loadAllDaySummaries() {
   const db = getDb();
-  return db.prepare("SELECT uin, day, used, startRemain, endRemain FROM day_summary ORDER BY uin, day").all();
+  return db.prepare("SELECT uin, day, used, startRemain, endRemain, signedIn FROM day_summary ORDER BY uin, day").all();
 }
 
 /** 清空固化摘要表（云镜像恢复时先清再导） */
@@ -225,14 +225,14 @@ export function clearDaySummaries() {
 
 const CN_TZ_MS = 8 * 3600 * 1000;
 
-/** 某账号某中国自然日(YYYY-MM-DD)的全部快照（按时间升序） */
+/** 某账号某中国自然日(YYYY-MM-DD)的全部快照（按时间升序，含 raw 供签到检测） */
 export function readingsForDay(uin, day) {
   const db = getDb();
   const startUtc = new Date(day + "T00:00:00Z").getTime() - CN_TZ_MS;
   const endUtc = startUtc + 86400000;
   return db
     .prepare(
-      "SELECT ts, baseRemain, baseUsed, giftRemain, giftUsed FROM readings WHERE uin=? AND ts>=? AND ts<? ORDER BY ts ASC"
+      "SELECT ts, baseRemain, baseUsed, giftRemain, giftUsed, raw FROM readings WHERE uin=? AND ts>=? AND ts<? ORDER BY ts ASC"
     )
     .all(uin, new Date(startUtc).toISOString(), new Date(endUtc).toISOString());
 }
