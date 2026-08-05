@@ -36,7 +36,7 @@ function dayWindow() {
 }
 
 // 柱状图：每个时间点（每日=天/每月=月）该组有数据的账号各一根柱；
-// 每组右侧隔一个柱宽画「当日/当月合计」灰柱（独立 g#line-total，不随图例显隐）；
+// 每组右侧紧贴画「当日/当月合计」灰柱（独立 g#line-total，不随图例显隐），柱子组整体在组内居中，日期标签=组中心；
 // 组内最高（单柱或合计柱）顶部标数字；账号柱/合计柱均带 data-pct（占该组总和的百分比，hover 浮层用）。
 function barChart(series, mode, xTicks) {
   const all = series.flatMap((s) => s.pts);
@@ -45,7 +45,7 @@ function barChart(series, mode, xTicks) {
   for (const p of all) tickSet.add(p.t);
   const times = [...tickSet].sort();
   const w = 640, h = 220, L = 44, R = 14, T = 34, B = 28, iw = w - L - R, ih = h - T - B;
-  // 每天分组：该天有数据的账号各一根柱子；每组右侧隔一个柱宽画「当日合计」柱（独立组，不随图例隐藏）
+  // 每天分组：该天有数据的账号各一根柱子；末尾紧贴画「当日合计」柱（独立组，不随图例隐藏）
   const dayMap = new Map(times.map((t) => [t, []]));
   for (const s of series) for (const p of s.pts) if (dayMap.has(p.t)) dayMap.get(p.t).push({ key: s.key, name: s.name, v: p.v });
   // Y 轴最大值须覆盖「单柱峰值」与「组合计」，否则合计柱会超出顶部
@@ -61,23 +61,27 @@ function barChart(series, mode, xTicks) {
     const v = (maxV * k) / 3, y = T + ih - (v / maxV) * ih;
     ticks += `<line x1="${L - 6}" y1="${y.toFixed(1)}" x2="${L}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,.08)"/><text x="${L - 9}" y="${(y + 4).toFixed(1)}" font-size="10" fill="#6b7484" text-anchor="end">${Math.round(v)}</text>`;
   }
-  // X 轴日期标签（两端 start/end 避免遮挡）
+  // X 轴日期标签(v1.4.37:统一 middle 锚点——旧逻辑首尾用 start/end,文字中心偏离柱子组中心 16px;x 夹取防越界)
   const step = Math.max(1, Math.ceil(times.length / 6));
-  const xAnchor = (i) => i === 0 ? "start" : (i === times.length - 1 ? "end" : "middle");
   let xl = "";
   times.forEach((t, i) => {
     if (i % step === 0 || i === times.length - 1) {
       const dd = new Date(t);
-      const x = L + (i + 0.5) * (iw / times.length);
-      xl += `<text x="${x.toFixed(1)}" y="${h - 8}" font-size="10" fill="#6b7484" text-anchor="${xAnchor(i)}">${mode === "month" ? (dd.getMonth() + 1) + "月" : (dd.getMonth() + 1) + "月" + dd.getDate() + "日"}</text>`;
+      const cx = L + (i + 0.5) * (iw / times.length);
+      const x = Math.max(L + 16, Math.min(w - R - 16, cx)); // 文字半宽约 16px,夹取保证不压 Y 轴/右缘
+      xl += `<text x="${x.toFixed(1)}" y="${h - 8}" font-size="8" fill="#6b7484" text-anchor="middle">${mode === "month" ? (dd.getMonth() + 1) + "月" : (dd.getMonth() + 1) + "月" + dd.getDate() + "日"}</text>`;
     }
   });
   // 绘制：账号柱 + 合计柱
   times.forEach((t, i) => {
     const day = dayMap.get(t) || [];
-    const bw = Math.max(2, Math.min(14, (groupW - 2) / Math.max(1, day.length)));
-    const startX = L + i * groupW + (groupW - bw * day.length) / 2;
+    // 每根柱(含合计)一个槽位,各分 (groupW-2) 等宽; bw 上限 14 避免撑爆相邻组
+    const slotCount = day.length + (dayTotals.get(t) > 0 ? 1 : 0);
+    const bw = Math.max(2, Math.min(14, (groupW - 2) / Math.max(1, slotCount)));
     const dayTotal = dayTotals.get(t) || 0;
+    // 柱子组总宽 = 账号柱 + 合计柱(紧贴无间隔)；整体在组内居中 → 日期标签(组中心)与柱子组中心对齐
+    const totalW = day.length * bw + (dayTotal > 0 ? bw : 0);
+    const startX = L + i * groupW + Math.max(0, (groupW - totalW) / 2);
     // 组内最高（单柱或合计柱）只标一个数字
     let maxItem = null, groupMax = -1;
     if (dayTotal > groupMax) { groupMax = dayTotal; maxItem = { kind: "total" }; }
@@ -92,10 +96,12 @@ function barChart(series, mode, xTicks) {
         ? `<text x="${(x + bw / 2).toFixed(1)}" y="${(T + ih - bh - 4).toFixed(1)}" font-size="10" fill="${color}" text-anchor="middle" font-weight="700">${Math.round(d.v)}</text>`
         : "";
       byKey.get(d.key).push(`<rect x="${x.toFixed(1)}" y="${(T + ih - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="${color}" class="cpt" data-v="${Math.round(d.v)}" data-pct="${pct}" data-t="${t}" data-n="${escAttr(d.name)}"/>${lbl}`);
+      // v1.4.36 透明触发区：整列高(绘图区全高)同宽，鼠标移到柱子所在竖列任意高度都能触发浮层(矮柱子不再难 hover)
+      byKey.get(d.key).push(`<rect x="${x.toFixed(1)}" y="${T}" width="${bw.toFixed(1)}" height="${ih}" fill="transparent" class="cpt" data-v="${Math.round(d.v)}" data-pct="${pct}" data-t="${t}" data-n="${escAttr(d.name)}"/>`);
     });
-    // 合计柱：右侧隔一个柱宽（bw）；顶部只标数值（说明在图例区「合计」标签，柱上不重复写字）
+    // 合计柱：紧贴账号柱右侧（无间隔）；顶部只标数值（说明在图例区「合计」标签，柱上不重复写字）
     if (dayTotal > 0) {
-      const tx = startX + day.length * bw + bw;
+      const tx = startX + day.length * bw;
       const tbh = Math.max(1, (dayTotal / maxV) * ih);
       const ty = T + ih - tbh;
       const isMaxTotal = maxItem && maxItem.kind === "total";
@@ -103,12 +109,14 @@ function barChart(series, mode, xTicks) {
         ? `<text x="${(tx + bw / 2).toFixed(1)}" y="${(ty - 4).toFixed(1)}" font-size="10" fill="${TOTAL_COLOR}" text-anchor="middle" font-weight="700">${Math.round(dayTotal)}</text>`
         : "";
       totals += `<rect x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" width="${bw.toFixed(1)}" height="${tbh.toFixed(1)}" rx="2" fill="${TOTAL_COLOR}" class="cpt" data-v="${Math.round(dayTotal)}" data-pct="100" data-t="${t}" data-n="${mode === "month" ? "当月合计" : "当日合计"}"/>${num}`;
+      // v1.4.36 合计柱透明触发区（同上）
+      totals += `<rect x="${tx.toFixed(1)}" y="${T}" width="${bw.toFixed(1)}" height="${ih}" fill="transparent" class="cpt" data-v="${Math.round(dayTotal)}" data-pct="100" data-t="${t}" data-n="${mode === "month" ? "当月合计" : "当日合计"}"/>`;
     }
   });
   let groups = "";
   for (const [key, rects] of byKey) if (rects.length) groups += `<g id="line-${key}">${rects.join("")}</g>`;
   if (totals) groups += `<g id="line-total">${totals}</g>`;
-  const note = `<text x="${w - R}" y="12" font-size="10" fill="#6b7484" text-anchor="end">单位:${mode === "month" ? "积分/月" : "积分/日"}</text>`;
+  const note = `<text x="${w - R}" y="12" font-size="8" fill="#6b7484" text-anchor="end">单位:${mode === "month" ? "积分/月" : "积分/日"}</text>`;
   const minW = window.innerWidth >= 640 ? 430 : 0;
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;min-width:${minW}px;display:block">${ticks}${groups}${xl}${note}</svg>`;
 }
@@ -168,4 +176,33 @@ function changeMode(mode) {
   const key = mode === "day" ? "btnDay" : mode === "month" ? "btnMonth" : "btnAll";
   const b = $(key); if (b) b.classList.add("active");
   renderLines();
+}
+
+// ---- 图表悬浮提示(v1.4.38 从 actions.js 聚合归位;事件委托,由 actions 启动段调用) ----
+// hover 柱子/透明触发区(整列)显示三段式浮层:名字最上 → 数量 → 占当前百分比。
+// data-pct 由 barChart 渲染时算好(合计柱=100);委托挂在 document,柱子动态重建无需重绑。
+function initChartTip() {
+  const chartTip = $("chartTip");
+  if (!chartTip) return;
+  const chartBox = () => ($("chart").closest(".pbody.line") || document.body).getBoundingClientRect();
+  const placeTip = (e) => {
+    const box = chartBox(), w = chartTip.offsetWidth, h = chartTip.offsetHeight;
+    let lx = e.clientX - box.left + 14, ly = e.clientY - box.top - h - 8;
+    if (lx + w > box.width - 4) lx = e.clientX - box.left - w - 14;
+    if (ly < 4) ly = e.clientY - box.top + 18;
+    chartTip.style.left = lx + "px";
+    chartTip.style.top = ly + "px";
+  };
+  document.addEventListener("mouseover", (e) => {
+    const el = e.target.closest && e.target.closest(".cpt");
+    if (!el) return;
+    chartTip.hidden = false;
+    const pct = el.dataset.pct !== undefined ? `占当前 ${el.dataset.pct}%` : "";
+    chartTip.innerHTML = (el.dataset.n ? `<div class="ct-s">${el.dataset.n}</div>` : "") +
+      `<div class="ct-v">${el.dataset.v}</div>` +
+      (pct ? `<div class="ct-p">${pct}</div>` : "");
+    placeTip(e);
+  });
+  document.addEventListener("mousemove", (e) => { if (!chartTip.hidden) placeTip(e); });
+  document.addEventListener("mouseout", (e) => { if (e.target.closest && e.target.closest(".cpt")) chartTip.hidden = true; });
 }

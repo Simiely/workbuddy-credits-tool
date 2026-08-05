@@ -3,7 +3,7 @@
   "name": "积分仪表盘",
   "desc": "WorkBuddy 多账号积分监控（独立仓库，平台托管）",
   "group": "WorkBuddy",
-  "icon": "💎",
+  "icon": "📉",
   "type": "app",
   "cmd": ["node", "wb-gui.mjs", "8123"],
   "cwd": ".",

@@ -96,6 +96,26 @@ function setBusy(b) {
   }
 }
 
+// ---- 面板折叠(v1.4.38 从 state.js 归位):点击标题折叠/展开,状态存 localStorage ----
+const LS_FOLD = "wb_fold"; // {trend:bool, overview:bool}
+function toggleFold(head, ev) {
+  if (ev && ev.target.closest && ev.target.closest("button")) return; // 标题内按钮(模式切换等)不触发折叠
+  head.classList.toggle("folded");
+  try {
+    const st = JSON.parse(localStorage.getItem(LS_FOLD) || "{}");
+    st[head.dataset.fold] = head.classList.contains("folded");
+    localStorage.setItem(LS_FOLD, JSON.stringify(st));
+  } catch {}
+}
+function applyFold() { // 启动时恢复上次折叠状态(由 actions 启动段调用,副作用收敛)
+  try {
+    const st = JSON.parse(localStorage.getItem(LS_FOLD) || "{}");
+    document.querySelectorAll(".phead.foldable").forEach((el) => {
+      if (st[el.dataset.fold]) el.classList.add("folded");
+    });
+  } catch {}
+}
+
 // ---- 遮罩/小弹窗/确认 ----
 const openMask = (id) => $(id).classList.add("show");
 const closeMask = (id) => $(id).classList.remove("show");

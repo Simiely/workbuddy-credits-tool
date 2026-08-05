@@ -95,6 +95,12 @@ input,select{font:inherit;color:var(--text)}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:12px}
 .phead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
 .phead h2{font-size:14px;font-weight:800}
+/* v1.4.34 区域折叠:点击标题折叠/展开整个面板,无按钮,状态存 localStorage */
+.phead.foldable{cursor:pointer;user-select:none}
+.phead.foldable:hover{background:var(--card2)}
+.phead.foldable.folded{border-bottom-color:transparent}
+.phead.foldable.folded h2{opacity:.45}
+.phead.foldable.folded + .pbody{display:none}
 .pbody{padding:14px 16px}
 .pbody.line{position:relative}
 #chartTip{position:absolute;z-index:30;pointer-events:none;background:var(--card2);border:1px solid var(--line2);border-radius:12px;padding:8px 12px;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.35)}
@@ -288,7 +294,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <section class="hero" id="hero"></section>
 
   <section class="panel">
-    <div class="phead"><h2>📉 积分消耗趋势</h2>
+    <div class="phead foldable" data-fold="trend" onclick="toggleFold(this,event)" title="点击折叠/展开"><h2>📉 积分消耗趋势</h2>
       <div style="display:flex;gap:10px;align-items:center">
       <button class="btn btn-g" id="btnAll" onclick="changeMode('all')" style="min-height:30px;padding:4px 12px;font-size:12px">全部显示</button>
       <button class="btn btn-g active" id="btnDay" onclick="changeMode('day')" style="min-height:30px;padding:4px 12px;font-size:12px">每日</button>
@@ -298,7 +304,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </section>
 
   <section class="panel">
-    <div class="phead"><h2>📋 账号总览</h2><span class="hint" id="dashMeta"></span></div>
+    <div class="phead foldable" data-fold="overview" onclick="toggleFold(this,event)" title="点击折叠/展开"><h2>📋 账号总览</h2><span class="hint" id="dashMeta"></span></div>
     <div class="pbody">
       <div class="dash-cards" id="dashCards"></div>
       <div class="tbl dash-table"><table><thead><tr><th>#</th><th>账号</th><th>总剩余</th><th>累计已用</th><th>今日消耗</th><th>近1天过期</th><th>近2天过期</th><th>近3天过期</th><th>近7天过期</th></tr></thead><tbody id="dashTbody"></tbody></table></div>
@@ -393,12 +399,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 <div class="toast" id="toast"></div>
 <script>window.__BASE__ = (location.pathname.match(/^\/tool\/[^/]+/) || [""])[0];</script>
-<script src="./wb-gui.state.js?v=v1.4.33"></script>
-<script src="./wb-gui.core.js?v=v1.4.33"></script>
-<script src="./wb-gui.render.js?v=v1.4.33"></script>
-<script src="./wb-gui.chart.js?v=v1.4.33"></script>
-<script src="./wb-gui.ops.js?v=v1.4.33"></script>
-<script src="./wb-gui.sync.js?v=v1.4.33"></script>
-<script src="./wb-gui.actions.js?v=v1.4.33"></script>
+<script src="./wb-gui.state.js?v=v1.4.38"></script>
+<script src="./wb-gui.core.js?v=v1.4.38"></script>
+<script src="./wb-gui.render.js?v=v1.4.38"></script>
+<script src="./wb-gui.chart.js?v=v1.4.38"></script>
+<script src="./wb-gui.ops.js?v=v1.4.38"></script>
+<script src="./wb-gui.sync.js?v=v1.4.38"></script>
+<script src="./wb-gui.actions.js?v=v1.4.38"></script>
 </body>
 </html>

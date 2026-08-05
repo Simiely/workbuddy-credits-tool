@@ -176,34 +176,9 @@ $("renameInput") && $("renameInput").addEventListener("keydown", (e) => { if (e.
 $("syncPass") && $("syncPass").addEventListener("keydown", (e) => { if (e.key === "Enter") saveSyncCfg(); });
 $("adminPass") && $("adminPass").addEventListener("keydown", (e) => { if (e.key === "Enter") confirmAdmin(); if (e.key === "Escape") closeAdmin(); });
 
-// ---- 图表悬浮提示（事件委托，hover 柱子显示大数字/名字/占当前百分比）----
-const chartTip = $("chartTip");
-if (chartTip) {
-  const chartBox = () => ($("chart").closest(".pbody.line") || document.body).getBoundingClientRect();
-  const placeTip = (e) => {
-    const box = chartBox(), w = chartTip.offsetWidth, h = chartTip.offsetHeight;
-    let lx = e.clientX - box.left + 14, ly = e.clientY - box.top - h - 8;
-    if (lx + w > box.width - 4) lx = e.clientX - box.left - w - 14;
-    if (ly < 4) ly = e.clientY - box.top + 18;
-    chartTip.style.left = lx + "px";
-    chartTip.style.top = ly + "px";
-  };
-  document.addEventListener("mouseover", (e) => {
-    const el = e.target.closest && e.target.closest(".cpt");
-    if (!el) return;
-    chartTip.hidden = false;
-    // 浮层:三段式(名字最上 → 数量 → 占当前百分比)。data-pct 由 barChart 渲染时算好(合计柱=100)
-    const pct = el.dataset.pct !== undefined ? `占当前 ${el.dataset.pct}%` : "";
-    chartTip.innerHTML = (el.dataset.n ? `<div class="ct-s">${el.dataset.n}</div>` : "") +
-      `<div class="ct-v">${el.dataset.v}</div>` +
-      (pct ? `<div class="ct-p">${pct}</div>` : "");
-    placeTip(e);
-  });
-  document.addEventListener("mousemove", (e) => { if (!chartTip.hidden) placeTip(e); });
-  document.addEventListener("mouseout", (e) => { if (e.target.closest && e.target.closest(".cpt")) chartTip.hidden = true; });
-}
-
 // 流程:先本地缓存秒开 → 后台实时刷新 → 其余初始化并行
+applyFold(); // 恢复上次面板折叠状态(v1.4.34)
+initChartTip(); // 图表悬浮提示事件委托(v1.4.38 归位 chart.js,启动接线)
 refreshAll(false);
 checkDaemon();
 checkWebdavQuick();
