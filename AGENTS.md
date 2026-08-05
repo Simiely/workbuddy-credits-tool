@@ -3,7 +3,7 @@
 > 给 AI 与"未来的你"看的精简规则。核心约束尽量短,细节放 `rules/` 按需 @引用。
 >
 > **接手先读**:[`docs/交接说明.md`](docs/交接说明.md)(运行实例/端口/数据文件/待办的状态快照)。
-> 当前版本 **v1.4.30**(见 CHANGELOG)。
+> 当前版本 **v1.4.33**(见 CHANGELOG)。
 
 ## 技术栈
 
@@ -24,6 +24,9 @@
 8. **近1/2/3/7天过期口径**:有效(Status===0)且非"体验版"的赠送包,`CycleEndTime` 距今天 ≤n 天的 `CapacityRemain` 合计。已收口到 `src/compute/derive.js` 的 `deriveGiftExpiry()`(**单派生源**),`/api/dashboard/all` 返回 `expiring1d/2d/3d/7d/giftBuckets/expiryTier`,前端表格/卡片/排序全部消费派生结果
 9. **统一采样入口**:`src/compute/sample.js` 的 `sampleAll()` 是唯一"采集→落盘"路径,手动刷新(`/api/all`)与调度器(`scheduler`)都走它;新增写入 readings 的路径必须复用
 10. **前端文件清单改动(增删 script)必须同步 4 处**:`wb-gui.html` 引用 / `wb-gui.mjs` 静态路由 / `test/server-routes.test.mjs` 复制正则+断言 / `test/helpers/vm-env.mjs` FRONTEND_FILES——漏一处 `npm test` 就挂
+11. **消耗口径 = 已用正增量累加**(`consumeByPos`):官方赠送包数据调整(包消失/重置/新增)会让「首条剩余−当前剩余」漂移成 0,必须按时间扫描快照累计「已用」正增量,包重置时 prev 同步回退点重算(v1.4.31);`consumed` 死字段已删
+12. **历史固化(v1.4.32)**:`day_summary` 表(uin+day PK)+ `gcDaySummaries()` 幂等固化 T-2 及更早,保留昨天+今天+最新快照;derive 双源读取(快照日期优先+摘要补齐旧日);备份镜像 `{snapshots, summaries}` 且**剥离历史组 giftPackages 仅最新组保留**(镜像 3.8MB→294KB,上传 7.3s→0.4s);wb-last-data.json 非账本已移出 SYNC_FILES
+13. **签到检测(v1.4.33)**:官方签到接口被 APISIX 401 拦,用元数据推断——`detectSignIn()` = 最新快照存在「今日首条没有 + cycleEndTime 对日=今天+1自然月」的新增包即为已签到;day_summary.signedIn 固化历史签到,卡片 ✅/⏰ 徽标
 
 ## 约定
 
