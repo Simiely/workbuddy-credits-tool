@@ -18,6 +18,7 @@ export function getDb() {
   if (!_db) {
     _db = new DatabaseSync(DB_PATH);
     _db.exec("PRAGMA journal_mode=WAL;");
+    _db.exec("PRAGMA busy_timeout=5000;"); // 双进程(GUI+CLI)并发写时等待而非立即 SQLITE_BUSY(2026-08-06 审计加固)
     initSchema(_db);
     ensureMigrated(_db);
   }

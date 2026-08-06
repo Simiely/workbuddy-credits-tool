@@ -4,7 +4,7 @@
   "desc": "WorkBuddy 多账号积分监控（独立仓库，平台托管）",
   "group": "监控",
   "icon": "📉",
-  "version": "1.4.43",
+  "version": "1.4.44",
   "type": "app",
   "cmd": [
     "node",

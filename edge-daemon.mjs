@@ -10,18 +10,38 @@
 //   POST /cmd {method, params, targetId?} -> 任意 CDP 命令(targetId 自动 attach)
 //   GET  /newtab?url=...          -> 新开标签页
 import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
 
 const USER_DATA = "C:\\Users\\2504\\AppData\\Local\\Microsoft\\Edge\\User Data";
+const TOKEN_FILE = path.join(process.cwd(), "edge-daemon.token");
+
+/** 读取/生成 daemon 鉴权 token(2026-08-06 安全加固:防恶意网页跨域调用 /eval /cmd 窃取 cookie)。
+ * 优先显式传入;否则读 cwd/edge-daemon.token,不存在则生成随机 token 落盘。
+ * 客户端(daemon-client / wb-gui)从同一文件读取后以 X-Daemon-Token 头携带。
+ * 浏览器跨域 fetch 带自定义头会触发 preflight(OPTIONS),daemon 不处理 → 天然拦截。 */
+function loadOrCreateToken(explicit) {
+  if (explicit) return explicit;
+  try {
+    const t = fs.readFileSync(TOKEN_FILE, "utf8").trim();
+    if (t) return t;
+  } catch {}
+  const t = crypto.randomBytes(24).toString("hex");
+  try { fs.writeFileSync(TOKEN_FILE, t, "utf8"); } catch {}
+  return t;
+}
 
 /**
  * 创建 daemon HTTP server + 浏览器连接管理。
- * @param {{port?:number, debugPort?:number}} opts
+ * @param {{port?:number, debugPort?:number, token?:string}} opts
  * @returns {{server: import("node:http").Server, connect: () => void, getStatus: () => {connected:boolean, port:number}}}
  */
 export function createDaemonServer(opts = {}) {
   const PORT = opts.port ?? parseInt(process.argv[2] || "8129", 10);
   const DEBUG_PORT = opts.debugPort ?? parseInt(process.argv[3] || process.env.EDGE_DEBUG_PORT || "9222", 10);
   const CONNECT_TIMEOUT = 25000; // 超过则关闭重连(错过授权弹窗时重新触发)
+  const TOKEN = loadOrCreateToken(opts.token);
 
   let ws = null;
   let connected = false;
@@ -120,6 +140,11 @@ export function createDaemonServer(opts = {}) {
     };
     const handle = async () => {
       try {
+        // 鉴权(2026-08-06):/status 开放(无敏感信息,健康检查用);其余端点必须携带 X-Daemon-Token。
+        // 校验失败 401 —— 浏览器跨域带自定义头会 preflight 失败,恶意网页无法调用。
+        if (url.pathname !== "/status" && req.headers["x-daemon-token"] !== TOKEN) {
+          return json(401, { error: "unauthorized" });
+        }
         if (url.pathname === "/status") return json(200, { connected, port: PORT });
         if (url.pathname === "/tabs") {
           const pages = await getPages();

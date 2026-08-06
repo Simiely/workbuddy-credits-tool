@@ -91,6 +91,15 @@ function staticFile(name, fallback = "// missing") {
 const HTML_FILE = path.join(ROOT, "wb-gui.html");
 const DAEMON_BASE = `http://127.0.0.1:${DAEMON_PORT}`;
 
+// edge-daemon 鉴权头(2026-08-06 安全加固):读运行目录 edge-daemon.token,带 X-Daemon-Token;
+// /status 开放无需,其余 daemon 调用(/newtab 等)必须携带,否则 401。
+function daemonAuthHeaders() {
+  try {
+    const t = fs.readFileSync(path.join(process.cwd(), "edge-daemon.token"), "utf8").trim();
+    return t ? { "X-Daemon-Token": t } : {};
+  } catch { return {}; }
+}
+
 // dashboard/all 内存缓存 {key, payload}
 let dashCache = null;
 
@@ -213,7 +222,6 @@ const routes = [
         "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
-        "Access-Control-Allow-Origin": "*",
       });
       res.write("retry: 5000\n\n");
       sseClients.add(res);
@@ -253,13 +261,14 @@ const routes = [
     // 在调试 Edge 中打开 workbuddy.cn 登录页(配合「添加账号」收录 cookie,2026-08-06)
     method: "GET",
     path: "/api/open-workbuddy",
+    admin: true, // 有副作用(打开浏览器标签),设置密码后需鉴权(2026-08-06 安全加固)
     handler: async (ctx) => {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 5000);
       try {
         const r = await fetch(
           `${DAEMON_BASE}/newtab?url=${encodeURIComponent("https://www.workbuddy.cn")}`,
-          { signal: ctrl.signal }
+          { signal: ctrl.signal, headers: daemonAuthHeaders() }
         );
         const j = await r.json();
         clearTimeout(t);
@@ -600,9 +609,10 @@ const routes = [
     },
   },
   {
-    // 采样手动触发：不要求管理员（只读采样，且前端主动触发，无副作用风险）
+    // 采样手动触发:会写库,设置密码后需鉴权(2026-08-06 安全加固;前端 api() 自动带 X-Admin-Token)
     method: "POST",
     path: "/api/scheduler/run",
+    admin: true,
     handler: async (ctx) => {
       const r = await runSchedulerNow(); // 采样内部已通过 notifier 广播 refresh,此处不再重复推送
       ctx.json(200, { ok: true, ...r });
@@ -624,10 +634,15 @@ const routes = [
 // ==================== HTTP 服务（分发层） ====================
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
-  // 允许跨域（演示预览页/其他端口也能请求本服务）
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Admin-Token, Authorization");
+  // 仅允许同源/无 Origin(2026-08-06 安全加固):跨源请求不返回 CORS 头,浏览器同源策略拦截,
+  // 防恶意网页跨域读取本机 API(含账号 cookie 等敏感数据)。原 `*` 允许任意站点读取。
+  const host = String(req.headers.host || "");
+  const origin = String(req.headers.origin || "");
+  if (!origin || origin === "http://" + host || origin === "https://" + host) {
+    res.setHeader("Access-Control-Allow-Origin", origin || "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Admin-Token, Authorization");
+  }
   if (req.method === "OPTIONS") return res.end("ok");
 
   // 请求上下文：handler 通过 ctx.json / ctx.respondRaw 回写；responded 防重复写

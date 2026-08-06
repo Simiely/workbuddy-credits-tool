@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## v1.4.44 (2026-08-06) · 二轮审计安全加固(daemon 鉴权 / CORS 同源 / admin 写面)
+
+### 安全(高危)
+- **edge-daemon `/eval` `/cmd` 加 token 鉴权**(edge-daemon.mjs):启动生成随机 token 落盘 `edge-daemon.token`(cwd),除 `/status` 外所有端点必须携带 `X-Daemon-Token`,否则 401——**浏览器跨域带自定义头会 preflight 失败,恶意网页无法再对已登录 WorkBuddy 页面执行任意 JS 窃取 cookie**。`daemon-client.js`/`wb-gui.mjs` 请求自动读 token 文件携带;平台浏览器桥模式(CAP_ENSURE_EP)由平台代管不受影响。实测:无/错 token 401、正确 token 放行、/status 开放
+- **CORS `*` 收窄为同源**(wb-gui.mjs):跨源请求不再返回 `Access-Control-Allow-Origin`,浏览器同源策略拦截——防任意网页跨域读取本机 API(账号 cookie 等敏感数据)。实测跨源请求无 CORS 头
+- **未鉴权写面挂 admin**:`/api/scheduler/run`(写库)与 `/api/open-workbuddy`(打开浏览器,副作用)设置密码后需 `X-Admin-Token`(未设置密码仍开放)
+
+### 数据一致性
+- `db.js` 加 `PRAGMA busy_timeout=5000`(GUI+CLI 双进程并发写不再立即 SQLITE_BUSY)
+- `store.js saveAccounts` / `history.js appendSnapshot` 多步写包事务,失败回滚,避免半写状态
+
+### 验证
+- 8/8 测试全过;daemon 鉴权(无/错/对 token)、CORS 跨源拦截本地实测
+
 ## v1.4.43 (2026-08-06) · 消耗口径收口包级 + WebDAV 自动上传
 
 - **fix(口径最终方案:包级净增量)**:「今日已用 342、累计才 38」的根因——增量口径(`consumeByPos`)在官方**包失效日**把今日已用算得比累计还大:今天消耗集中发生在当天从 active 转失效(status≠0)的包上,失效包的 used 不再计入累计净值,增量口径却永久保留它们的正增量(2026-08-06 实测:张妈妈今日 342、累计 38)

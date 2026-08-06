@@ -25,14 +25,22 @@ export function saveAccounts(accounts) {
   const db = getDb();
   // 先清空再写入：否则 INSERT OR REPLACE 只覆盖"仍存在的"行，被删除的账号会残留在表中
   // （导致 /api/del 返回成功、但 /api/all 重读又把已删账号拉回来）。这里才是真正的全量覆盖。
-  db.prepare("DELETE FROM accounts").run();
-  const ins = db.prepare(
-    `INSERT OR REPLACE INTO accounts
-      (id,name,uin,cookieHeader,userAgent,sessionExpiresAt,displayName,lastStatus,source,addedAt,updatedAt,order_idx)
-     VALUES (@id,@name,@uin,@cookieHeader,@userAgent,@sessionExpiresAt,@displayName,@lastStatus,@source,@addedAt,@updatedAt,@order_idx)`
-  );
-  for (let i = 0; i < accounts.length; i++) {
-    ins.run(normalizeAccount(accounts[i], i));
+  // 2026-08-06 审计加固：DELETE+INSERT 包事务，中途失败自动回滚，避免半写状态。
+  db.exec("BEGIN");
+  try {
+    db.prepare("DELETE FROM accounts").run();
+    const ins = db.prepare(
+      `INSERT OR REPLACE INTO accounts
+        (id,name,uin,cookieHeader,userAgent,sessionExpiresAt,displayName,lastStatus,source,addedAt,updatedAt,order_idx)
+       VALUES (@id,@name,@uin,@cookieHeader,@userAgent,@sessionExpiresAt,@displayName,@lastStatus,@source,@addedAt,@updatedAt,@order_idx)`
+    );
+    for (let i = 0; i < accounts.length; i++) {
+      ins.run(normalizeAccount(accounts[i], i));
+    }
+    db.exec("COMMIT");
+  } catch (e) {
+    try { db.exec("ROLLBACK"); } catch {}
+    throw e;
   }
 }
 

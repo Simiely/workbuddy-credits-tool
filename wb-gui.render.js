@@ -72,7 +72,7 @@ function renderCards() {
   const rs = (S && S.results) || [];
   if (!rs.length) {
     $("grid").innerHTML = '<div class="empty"><div class="big">📭</div>账号池为空<br>点「＋ 添加当前账号」或命令行 wb-credits.bat save-current</div>';
-    $("foot").textContent = "v1.4.43 · 数据来自 WorkBuddy 网页版接口 · 暂无账号数据(可「添加当前账号」或从 WebDAV 下载)";
+    $("foot").textContent = "v1.4.44 · 数据来自 WorkBuddy 网页版接口 · 暂无账号数据(可「添加当前账号」或从 WebDAV 下载)";
     return;
   }
   $("grid").innerHTML = rs.map((r, i) => {
@@ -90,7 +90,7 @@ function renderCards() {
     const bp = s.baseSize ? Math.min(100, (s.baseUsed / s.baseSize) * 100) : 0;
     const gp = s.giftSize ? Math.min(100, (s.giftUsed / s.giftSize) * 100) : 0;
     const baseNote = s.baseCycleEnd ? `(至 ${s.baseCycleEnd.slice(5, 10)})` : "";
-    // 签到标记（v1.4.43）：由后端 derive 检测今日首条 vs 最新快照的新增满额包推断，见 detectSignIn
+    // 签到标记（v1.4.44）：由后端 derive 检测今日首条 vs 最新快照的新增满额包推断，见 detectSignIn
     const signed = (r.derived && r.derived.signedInToday)
       ? `<span class="signed" title="今日已签到">✅ 已签到</span>`
       : `<span class="signed no" title="今日未签到">⏰ 未签到</span>`;
@@ -106,7 +106,7 @@ function renderCards() {
       </div></div>`;
   }).join("");
   initDrag();
-  $("foot").textContent = "v1.4.43 · 数据来自 WorkBuddy 网页版接口 · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新登录后「添加当前账号」 · 卡片可拖动排序";
+  $("foot").textContent = "v1.4.44 · 数据来自 WorkBuddy 网页版接口 · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新登录后「添加当前账号」 · 卡片可拖动排序";
 }
 
 // ---- 卡片拖拽排序(顺序随账号池持久化,经 /api/reorder 保存) ----

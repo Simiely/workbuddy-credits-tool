@@ -48,16 +48,24 @@ export function appendSnapshot(entries, opts = {}) {
     `INSERT INTO readings (uin,ts,baseRemain,baseUsed,giftRemain,giftUsed,raw)
      VALUES (?,?,?,?,?,?,?)`
   );
-  for (const e of entries) {
-    ins.run(
-      e.uin || "",
-      ts,
-      e.baseRemain ?? null,
-      e.baseUsed ?? null,
-      e.giftRemain ?? null,
-      e.giftUsed ?? null,
-      JSON.stringify(e)
-    );
+  // 2026-08-06 审计加固：多行插入包事务，中途失败回滚，避免部分快照
+  db.exec("BEGIN");
+  try {
+    for (const e of entries) {
+      ins.run(
+        e.uin || "",
+        ts,
+        e.baseRemain ?? null,
+        e.baseUsed ?? null,
+        e.giftRemain ?? null,
+        e.giftUsed ?? null,
+        JSON.stringify(e)
+      );
+    }
+    db.exec("COMMIT");
+  } catch (err) {
+    try { db.exec("ROLLBACK"); } catch {}
+    throw err;
   }
 }
 
