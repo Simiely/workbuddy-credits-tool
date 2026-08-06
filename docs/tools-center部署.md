@@ -2,6 +2,8 @@
 
 > **本工具的平台版 = [tools-center](https://github.com/Simiely/tools-center) 统一宿主托管版本。**
 > tools-center 是"轻量工具统一宿主":把你的工具以 **放目录 + 写 `tool.json`** 的方式挂载,平台统一托管进程、健康检查、崩溃自动拉起、日志聚合、`/tool/<id>` 反向代理,常驻 NAS。
+>
+> **双向标注**:tools-center 侧文档亦已标注本工具 —— `tools-center/README.md`「接入的工具」与 `docs/使用指南.md` 第十章「已接入示例:积分仪表盘(wb-credits)」。
 
 ---
 
