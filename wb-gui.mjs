@@ -504,18 +504,21 @@ const routes = [
     handler: (ctx) => {
       const { accounts, history, cache } = ctx.bodyObj;
       const cleared = [];
+      // 数据文件删除一律容错(2026-08-06 修复):rmSync 可能被沙箱/占用拦截,
+      // 删除失败不应让整个清空 500(此前导致"半清空+报失败",数据已删但提示失败)
+      const safeRm = (p) => { try { fs.rmSync(p, { force: true }); } catch {} };
       if (accounts) {
         clearAccounts();
-        fs.rmSync(ACCOUNTS_FILE, { force: true }); // 同步清理遗留镜像
+        safeRm(ACCOUNTS_FILE); // 同步清理遗留镜像
         cleared.push("账号池");
       }
       if (history) {
         clearReadings();
-        fs.rmSync(path.join(TOOLS_DIR, "wb-history.json"), { force: true });
+        safeRm(path.join(TOOLS_DIR, "wb-history.json"));
         cleared.push("历史快照");
       }
       if (cache) {
-        fs.rmSync(LAST_FILE, { force: true });
+        safeRm(LAST_FILE);
         cleared.push("最近缓存");
       }
       ctx.json(200, { ok: true, cleared });
@@ -592,7 +595,7 @@ const routes = [
     path: "/api/webdav/clear",
     admin: true,
     handler: (ctx) => {
-      fs.rmSync(SYNC_FILE, { force: true });
+      try { fs.rmSync(SYNC_FILE, { force: true }); } catch {} // 删除失败不致命(容错)
       ctx.json(200, { ok: true, message: "已清空云端配置" });
     },
   },
