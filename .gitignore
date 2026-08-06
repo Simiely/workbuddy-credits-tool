@@ -44,3 +44,4 @@ wb-*.bak.json
 # 数据备份(串号/清洗修复前快照,勿提交)
 credits.db.bak*
 
+.tmp-platform-pack/
