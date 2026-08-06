@@ -8,5 +8,6 @@
   "cmd": ["node", "wb-gui.mjs", "8123"],
   "cwd": ".",
   "port": 8123,
-  "health": "/api/status"
+  "health": "/api/status",
+  "dataFiles": ["*.db", "*.db-wal", "*.db-shm", "wb-*.json", "data/**"]
 }
