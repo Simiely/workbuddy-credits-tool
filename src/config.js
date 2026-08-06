@@ -2,10 +2,13 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// config.js 位于 <root>/src/，向上一级即项目根（wb-gui.mjs / wb-*.json 所在）
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const ROOT = path.resolve(__dirname, "..");
-export const TOOLS_DIR = ROOT; // 数据文件与旧版一致，仍在项目根
+// 路径双兼容:原生 ESM 用 import.meta.url(config.js 在 <root>/src/ 向上跳一级=项目根);
+// SEA 单文件 exe(CJS bundle)用 __filename(指向 exe 路径,数据目录 = exe 所在目录,不再上跳)
+const isSEA = typeof __filename !== "undefined";
+const HERE = isSEA ? __filename : fileURLToPath(import.meta.url);
+const __dirname = path.dirname(HERE);
+export const ROOT = isSEA ? __dirname : path.resolve(__dirname, "..");
+export const TOOLS_DIR = ROOT; // 数据文件与旧版一致,仍在项目根(exe 版 = exe 所在目录)
 
 // ---------- 运行常量 ----------
 export const CONCURRENCY = 6;       // 批量查询并发数

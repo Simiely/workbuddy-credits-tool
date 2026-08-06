@@ -77,6 +77,17 @@ import {
   setNotifier as setSchedulerNotifier,
 } from "./src/compute/scheduler.js";
 
+// 前端文件内嵌(SEA 单文件 exe 用,由构建脚本生成 build/frontend-files.mjs);
+// 原生运行时若该文件缺失则静默回退磁盘读取。加载在文件末尾 listen 前完成(见底部)。
+let FRONTEND_FILES = {};
+
+/** 读取前端静态文件:内嵌内存优先,回退磁盘(缺失返回 fallback) */
+function staticFile(name, fallback = "// missing") {
+  const embedded = FRONTEND_FILES && FRONTEND_FILES[name];
+  if (embedded !== undefined) return embedded;
+  return fs.existsSync(path.join(ROOT, name)) ? fs.readFileSync(path.join(ROOT, name), "utf8") : fallback;
+}
+
 const HTML_FILE = path.join(ROOT, "wb-gui.html");
 const DAEMON_BASE = `http://127.0.0.1:${DAEMON_PORT}`;
 
@@ -178,7 +189,7 @@ const routes = [
       ctx.respondRaw(
         200,
         { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
-        fs.existsSync(HTML_FILE) ? fs.readFileSync(HTML_FILE, "utf8") : "<h1>wb-gui.html 缺失</h1>"
+        staticFile("wb-gui.html", "<h1>wb-gui.html 缺失</h1>")
       ),
   },
   // 前端拆分为 7 个 classic <script>（共享全局词法作用域，按 state→core→render→chart→ops→sync→actions 顺序加载）
@@ -189,7 +200,7 @@ const routes = [
       ctx.respondRaw(
         200,
         { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-store" },
-        fs.existsSync(path.join(ROOT, f)) ? fs.readFileSync(path.join(ROOT, f), "utf8") : "// missing"
+        staticFile(f)
       ),
   })),
   {
@@ -671,8 +682,31 @@ function listen(port, max) {
     setSchedulerNotifier((meta) => broadcastRefresh(meta));
     startScheduler();
     console.log("[启动] 采样调度器已启动（后台周期采集,实时推送）");
+    // 内嵌 edge-daemon（单文件 exe/桌面一体:同一进程同时提供 GUI + 8129 浏览器代理）
+    // 8129 若被外部 daemon 占用则静默跳过;edge-daemon.mjs 缺失时降级(不影响 GUI)
+    (async () => {
+      try {
+        const { createDaemonServer } = await import("./edge-daemon.mjs");
+        const daemon = createDaemonServer({ port: DAEMON_PORT });
+        daemon.server.once("error", (err) => {
+          if (err.code !== "EADDRINUSE") console.log("[启动] edge-daemon 内嵌失败: " + err.message);
+        });
+        daemon.server.listen(DAEMON_PORT, "127.0.0.1", () => {
+          console.log("[启动] 内嵌 edge-daemon 已就绪: http://127.0.0.1:" + DAEMON_PORT);
+          daemon.connect();
+        });
+      } catch (e) {
+        console.log("[启动] edge-daemon 内嵌跳过: " + e.message);
+      }
+    })();
   });
 }
 
 const basePort = parseInt(process.argv[2] || String(GUI_PORT), 10) || GUI_PORT;
-listen(basePort, basePort + 20); // 被占用时最多顺延 20 个端口
+// 前端内嵌加载完成后启动(SEA 单文件 exe:内嵌模块随 bundle 打包;原生运行缺失时静默回退磁盘)
+(async () => {
+  try {
+    ({ FRONTEND_FILES } = await import("./build/frontend-files.mjs"));
+  } catch {}
+  listen(basePort, basePort + 20); // 被占用时最多顺延 20 个端口
+})();

@@ -36,5 +36,11 @@ README-wb-credits.md
 .DS_Store
 Thumbs.db
 node_modules/
+# SEA 单文件 exe 构建产物(前端内嵌,勿提交)
+build/
 # 临时备份(如 wb-history.bak.json)
 wb-*.bak.json
+
+# 数据备份(串号/清洗修复前快照,勿提交)
+credits.db.bak*
+

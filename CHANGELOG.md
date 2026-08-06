@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## v1.4.39 (2026-08-06) · 全账号查询恢复 + 串号防护 + 签到基线修正 + SEA 单文件 exe
+
+- **修复账号查询全部失败(400 Cookie Too Large)**:采集端 `Network.getAllCookies` → `Network.getCookies({urls})` 精确采集(治本);查询端新增 `sanitizeCookieHeader()`(剔除 KC_RESTART 等一次性令牌/广告跟踪 cookie + 同名去重 + 超 7KB 降级认证白名单),历史脏数据即时生效(治标)。详见 `docs/问题记录/账号查询400-CookieTooLarge.md`
+- **修复账号串号**:`sanitizeCookieHeader` 同名去重"保留最后一份"在多会话混合的脏数据下把"爸爸"的凭证换成"鲁妈妈"会话;`src/compute/query.js` 新增 `assertOwner()` —— 接口返回 Uin ≠ 登记 Uin 即报错不落库(防再次污染);已修复数据并清理串号期 10 条污染快照。详见 `docs/问题记录/账号串号-清洗后爸爸查到鲁妈妈.md`
+- **修复签到检测误判**:`detectSignIn` 基线由「今日首条快照」改为「昨日最后一条快照」(用户清晨签到早于首条快照时误判未签到;签到包只在签到当天新增);`gcDaySummaries` 同因修正,新增 `dayOfOffset()`。详见 `docs/问题记录/签到检测误判-首条快照晚于签到.md`
+- **SEA 单文件 exe 支持**(免装 Node 双击即用):
+  - `src/config.js` 路径双兼容(原生 ESM `import.meta.url` / SEA bundle `__filename`=exe 路径,数据目录=exe 所在目录)
+  - `edge-daemon.mjs` 重构为 `createDaemonServer()` 可导入模块 + 独立运行入口;`wb-gui.mjs` 启动时内嵌 daemon(一个进程同时提供 GUI 8080 + 浏览器代理 8129)
+  - `wb-gui.mjs` 前端文件内嵌(`build/frontend-files.mjs`,构建产物,已 gitignore),静态路由内存优先、磁盘回退
+  - 构建脚本 `build-sea.mjs`(esbuild bundle → SEA blob → postject),产物 `WorkBuddy-Credits-Monitor.exe`(Windows 单文件,~83MB)
+- **文档**:新增 `docs/新手使用手册.md`(面向新手的完整使用说明,含 exe 方式)
+- 验证：7/7 回归测试通过；6/6 账号归属校验通过；签到 6/6 与快照签到包逐一吻合
+
 ## v1.4.38 (2026-08-05) · 前端结构优化（折叠/图表交互归位）
 
 - 折叠逻辑 `toggleFold/applyFold` 从 state.js 归位 **core.js**（UI 基础设施），state.js 恢复纯状态/helper

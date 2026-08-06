@@ -23,8 +23,17 @@ export class EdgeCollector extends Collector {
     const tab = tabs.find((t) => t.url.includes("workbuddy.cn")) || tabs[0];
     if (!tab)
       throw new Error("浏览器里没有 workbuddy 页面,请先在 Edge 打开 https://www.workbuddy.cn 并登录");
-    const r = await daemonCmd(tab.targetId, "Network.getAllCookies");
+    // 用 Network.getCookies 按当前页面 URL 精确取"浏览器真正会发送的 cookie":
+    // 自动按 domain/path/secure 过滤并按名去重,不会混入 KC_RESTART(登录端点一次性令牌)、
+    // 广告/埋点跟踪 cookie、其他会话残留 —— 旧实现 getAllCookies 会全量拼接导致
+    // 请求头超限(stgw 400 Request Header Or Cookie Too Large,2026-08-06)。
+    const r = await daemonCmd(tab.targetId, "Network.getCookies", { urls: [tab.url] });
     const cookies = (r.result && r.result.cookies) || [];
+    if (!cookies.length) {
+      // 兜底:getCookies 异常时回退 getAllCookies(仍会被 client.js 清洗)
+      const r2 = await daemonCmd(tab.targetId, "Network.getAllCookies");
+      cookies.push(...((r2.result && r2.result.cookies) || []));
+    }
     const filtered = cookies.filter(
       (c) => c.domain.includes("workbuddy.cn") || c.domain.includes("codebuddy.cn")
     );

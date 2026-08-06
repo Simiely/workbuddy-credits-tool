@@ -38,6 +38,13 @@ export function dayKeyOf(ts) {
   return `${w.getUTCFullYear()}-${pad(w.getUTCMonth() + 1)}-${pad(w.getUTCDate())}`;
 }
 
+/** 自然日偏移:day('YYYY-MM-DD') 加/减 offsetDays,仍按中国时区自然日 */
+export function dayOfOffset(day, offsetDays) {
+  const [y, m, d] = day.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d) + offsetDays * 86400000);
+  return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`;
+}
+
 // 消耗口径（v1.4.31 起，模块级供 deriveAccount 与 gcDaySummaries 共用）：
 // 对已按时间排序的快照序列，累计「已用」的正增量。
 // 旧口径「首剩余 - 末剩余」在官方赠送包数据调整日会失真：包消失/新增导致剩余漂移
@@ -261,11 +268,20 @@ export function deriveAccount(uin, acct = {}) {
   const todayReadings = series.filter((s) => new Date(s.ts) >= today0);
   const todayUsed = todayReadings.length ? consumeByPos(todayReadings) : 0;
 
-  // 今日签到检测（v1.4.33）：今日首条 vs 最新快照的赠送包,「新增 + 到期日对日=今天+1月」= 已签到
+  // 今日签到检测（v1.4.33，基线修正 2026-08-06）：
+  // 基线 = 昨天最后一条快照,目标 = 最新快照,「新增 + 到期日对日=今天+1月」= 已签到。
+  // 原基线"今日首条"在用户清晨/凌晨签到早于今日首个快照时失效(首条已含签到包→误判未签到);
+  // 签到包只在签到当天新增,昨日最后一条为更稳基线(取不到时退化为今日首条)。
   const todayKey = dayKeyOf(startOfToday().toISOString());
   const todayFull = full.filter((r) => new Date(r.ts) >= today0);
+  const beforeToday = full.filter((r) => new Date(r.ts) < today0);
+  const baseFull = beforeToday.length
+    ? beforeToday[beforeToday.length - 1]
+    : todayFull.length
+      ? todayFull[0]
+      : lastFull;
   const signedInToday = detectSignIn(
-    todayFull.length ? todayFull[0].giftPackages : [],
+    (baseFull && baseFull.giftPackages) || [],
     (lastFull && lastFull.giftPackages) || [],
     todayKey
   );
@@ -333,11 +349,16 @@ export function gcDaySummaries() {
       const v = consumeByPos(rows);
       const first = rows[0];
       const last = rows[rows.length - 1];
-      // 当天签到状态：该日首条 vs 末条快照的赠送包,「新增 + 到期日对日=当日+1月」= 当天已签到
+      // 当天签到状态：基线 = 前一天最后一条快照 vs 当日末条,「新增 + 到期日对日=当日+1月」= 当天已签到
+      // (基线修正 2026-08-06,与今日签到同因:当日首条可能已含签到包;取不到前一天则退化当日首条)
       const packsOf = (r) => {
         try { return (JSON.parse(r.raw || "{}").giftPackages) || []; } catch { return []; }
       };
-      const signedIn = detectSignIn(packsOf(first), packsOf(last), day) ? 1 : 0;
+      const prevRows = readingsForDay(uin, dayOfOffset(day, -1)); // 前一天快照(可能为空)
+      const basePacks = prevRows.length
+        ? packsOf(prevRows[prevRows.length - 1])
+        : packsOf(first);
+      const signedIn = detectSignIn(basePacks, packsOf(last), day) ? 1 : 0;
       saveDaySummary(
         uin,
         day,

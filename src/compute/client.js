@@ -13,6 +13,67 @@ export class CredentialExpiredError extends Error {
   }
 }
 
+// ---------- cookie 清洗(2026-08-06 新增) ----------
+// 背景:edge-collector 曾用 Network.getAllCookies 把 workbuddy.cn 域下全部 cookie 拼进 header,
+// 混入 Keycloak 一次性登录令牌(KC_RESTART/KC_STATE_CHECKER,单个 1KB+)、广告/埋点跟踪 cookie
+// (_gcl_au/sensorsdata/_TDID_CK/trafficParams/qcloud_* 等),且多次登录残留同名 cookie 多份,
+// 总长可达 14KB,超过 stgw 网关请求头上限 → HTTP 400 "Request Header Or Cookie Too Large",全部账号查询失败。
+// 修复:查询前清洗 —— 剔除已知垃圾 cookie + 同名去重;仍超限则降级为认证核心白名单。
+// 实验验证(2026-08-06):认证核心集合(KEYCLOAK_IDENTITY/KEYCLOAK_SESSION/AUTH_SESSION_ID/session/session_2)
+// 请求成功(code=0),仅 KEYCLOAK_IDENTITY 会 401。
+
+/** 已知无用且巨大的一次性登录/跟踪 cookie 名前缀(直接剔除) */
+const JUNK_COOKIE_PREFIX = [
+  "KC_RESTART",       // Keycloak 登录重启令牌(一次性,API 不需要,1KB+)
+  "KC_STATE_CHECKER", // Keycloak 状态校验(登录流程用)
+  "9c412d6095037d16", // 风控指纹
+  "_TDID_CK",         // 腾讯 TDID 跟踪
+  "_gcl_au",          // Google 广告
+  "trafficParams",    // 流量参数
+  "sensorsdata",      // 神策埋点
+  "qcloud_",          // 腾讯云埋点(qcloud_from/qcloud_visitId)
+  "i18next",          // 国际化语言偏好
+  "login_risk_state", // 登录风控状态
+];
+
+/** 认证核心 cookie 白名单(验证可用;超长兜底时使用) */
+const AUTH_COOKIE_WHITELIST = [
+  "KEYCLOAK_IDENTITY",
+  "KEYCLOAK_SESSION",
+  "AUTH_SESSION_ID",
+  "session",
+  "session_2",
+];
+
+/** stgw 网关请求头约 8KB 上限,留 1KB 余量(Referer/UA 等占位) */
+const MAX_COOKIE_BYTES = 7000;
+
+/**
+ * 清洗 cookieHeader:剔除垃圾 cookie、同名去重(保留最后一份)、超长降级白名单。
+ * 幂等;输入为空/无 ';' 时原样返回,不影响旧格式。
+ * @param {string} cookieHeader
+ * @returns {string}
+ */
+export function sanitizeCookieHeader(cookieHeader) {
+  if (!cookieHeader || typeof cookieHeader !== "string") return cookieHeader;
+  const parts = cookieHeader.split(";").map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) return cookieHeader;
+  const byName = new Map();
+  for (const p of parts) {
+    const eq = p.indexOf("=");
+    const name = eq > 0 ? p.slice(0, eq) : p;
+    if (JUNK_COOKIE_PREFIX.some((j) => name.startsWith(j))) continue;
+    byName.set(name, p); // 同名保留最后一份
+  }
+  let cleaned = [...byName.values()].join("; ");
+  if (cleaned.length > MAX_COOKIE_BYTES) {
+    cleaned = [...byName.values()]
+      .filter((p) => AUTH_COOKIE_WHITELIST.some((n) => p.startsWith(n + "=")))
+      .join("; ");
+  }
+  return cleaned;
+}
+
 /**
  * HTTPS POST（JSON 请求），强制 IPv4。
  * 很多 NAS/家用网络 DNS 返回 AAAA 但 IPv6 实际不通，默认会优先 IPv6 挂起超时。
@@ -50,6 +111,7 @@ function httpsPost(url, { headers, body, timeoutMs }) {
  * @throws {CredentialExpiredError|Error}
  */
 export async function fetchCredits(cookieHeader, timeoutMs = FETCH_TIMEOUT_MS) {
+  cookieHeader = sanitizeCookieHeader(cookieHeader); // 防 400 Cookie Too Large(2026-08-06)
   let res;
   try {
     res = await httpsPost(API, {
