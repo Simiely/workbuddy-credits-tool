@@ -25,10 +25,11 @@ const dayStartUtc = (key) => new Date(key + "T00:00:00Z").getTime() - TZ_MS; // 
 const yesterdayKey = cnDateOf(dayStartUtc(todayKey) - 86400000);
 const at = (key, hour) => new Date(dayStartUtc(key) + hour * 3600 * 1000).toISOString();
 
-const mk = (uin, ts, bR, bU, gR, gU) => ({
+const mk = (uin, ts, bR, bU, gR, gU, packs = []) => ({
   uin, ts,
   baseRemain: bR, baseUsed: bU, giftRemain: gR, giftUsed: gU,
   summary: { baseRemain: bR, baseUsed: bU, giftRemain: gR, giftUsed: gU },
+  giftPackages: packs, // 包级消耗口径(consumeByPack)读它;不带则降级为增量口径
 });
 
 try {
@@ -44,6 +45,7 @@ try {
   let d = derive.deriveAccount("u1");
   assert("今日已用 = 60", d.todayUsed === 60, "got " + d.todayUsed);
   assert("dailyUsed 今日 = 60", (d.dailyUsed.find((x) => x.day === todayKey) || {}).used === 60);
+  assert("累计已用 consumed = 60(历史每日消耗之和)", d.consumed === 60, "got " + d.consumed);
 
   console.log("T2 官方包重置(used 回退后再涨) → 重置前 26 + 重置后 40 = 66");
   hist.appendSnapshot([mk("u2", at(todayKey, 2.1), 500, 0, 3250, 270)], { ts: at(todayKey, 2.1) });
@@ -79,6 +81,29 @@ try {
   hist.appendSnapshot([mk("u4", at(todayKey, 14.1), 500, 0, 1900, 60)], { ts: at(todayKey, 14.1) });
   d = derive.deriveAccount("u4");
   assert("今日已用 = 0", d.todayUsed === 0, "got " + d.todayUsed);
+
+  console.log("T6 包失效日(用户实况:今日消耗集中在失效包) → 包级口径 今日 <= 累计");
+  const pk = (end, st, used) => ({ packageName: "P", status: st, capacityUsed: used, capacityRemain: 100 - used, capacitySize: 100, cycleEndTime: end });
+  // u5:今天 包A(9/1到期)用 5→8;包B(今天到期)用 3 后转 status=3(失效)
+  hist.appendSnapshot([mk("u5", at(todayKey, 4.1), 500, 0, 8, 8, [pk("2026-09-01", 0, 5), pk("2026-08-06", 0, 3)])], { ts: at(todayKey, 4.1) });
+  hist.appendSnapshot([mk("u5", at(todayKey, 5.1), 500, 0, 8, 8, [pk("2026-09-01", 0, 8), pk("2026-08-06", 3, 3)])], { ts: at(todayKey, 5.1) });
+  d = derive.deriveAccount("u5");
+  assert("今日已用 = 3(只算存活包A增量,失效包B不计)", d.todayUsed === 3, "got " + d.todayUsed);
+  assert("今日(3) <= 累计(8)", d.todayUsed <= d.used, `got today=${d.todayUsed} used=${d.used}`);
+
+  console.log("T7 包失效日的消耗归属(8/5 场景) → 昨日计入昨日,今日不抹 0");
+  // u6:昨天 包C(8/6到期)用 5→10 + 包D 用 0→2;今天 包C 失效,包D 用 2→5
+  hist.appendSnapshot([mk("u6", at(yesterdayKey, 1.3), 500, 0, 12, 5, [pk("2026-08-06", 0, 5), pk("2026-09-01", 0, 0)])], { ts: at(yesterdayKey, 1.3) });
+  hist.appendSnapshot([mk("u6", at(yesterdayKey, 8.3), 500, 0, 12, 12, [pk("2026-08-06", 0, 10), pk("2026-09-01", 0, 2)])], { ts: at(yesterdayKey, 8.3) });
+  hist.appendSnapshot([mk("u6", at(todayKey, 2.2), 500, 0, 2, 2, [pk("2026-08-06", 3, 10), pk("2026-09-01", 0, 2)])], { ts: at(todayKey, 2.2) });
+  hist.appendSnapshot([mk("u6", at(todayKey, 3.3), 500, 0, 5, 5, [pk("2026-08-06", 3, 10), pk("2026-09-01", 0, 5)])], { ts: at(todayKey, 3.3) });
+  d = derive.deriveAccount("u6");
+  const yD = d.dailyUsed.find((x) => x.day === yesterdayKey);
+  const tD = d.dailyUsed.find((x) => x.day === todayKey);
+  assert("昨日消耗 = 7(失效包C 昨日消耗计入昨日,不抹 0)", yD && yD.used === 7, "got " + (yD && yD.used));
+  assert("今日消耗 = 3(只算存活包D)", tD && tD.used === 3, "got " + (tD && tD.used));
+  assert("今日(3) <= 累计(5)", d.todayUsed <= d.used, `got today=${d.todayUsed} used=${d.used}`);
+  assert("累计已用 consumed = 10(7+3,历史累计远大于今日)", d.consumed === 10, "got " + d.consumed);
 } catch (e) {
   console.log("  FAIL 测试执行异常: " + e.message);
   failed++;

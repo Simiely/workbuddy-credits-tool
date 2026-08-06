@@ -8,7 +8,9 @@ const isSEA = typeof __filename !== "undefined";
 const HERE = isSEA ? __filename : fileURLToPath(import.meta.url);
 const __dirname = path.dirname(HERE);
 export const ROOT = isSEA ? __dirname : path.resolve(__dirname, "..");
-export const TOOLS_DIR = ROOT; // 数据文件与旧版一致,仍在项目根(exe 版 = exe 所在目录)
+// 数据目录:默认=项目根(exe 版 = exe 所在目录);可用环境变量 WB_TOOLS_DIR 覆盖
+// (本地预览/测试指向别的运行实例数据目录用,生产不设即原行为)
+export const TOOLS_DIR = process.env.WB_TOOLS_DIR || ROOT;
 
 // ---------- 运行常量 ----------
 export const CONCURRENCY = 6;       // 批量查询并发数

@@ -1,4 +1,4 @@
-// wb-gui.actions.js — 生命周期 / 自动刷新(SSE) / 管理员状态 / 启动接线（拆分第 4 部分，须最后加载）
+// wb-gui.actions.js — 生命周期 / 自动刷新(SSE) / 管理员状态 / 启动接线（须最后加载）
 // 依赖 wb-gui.state.js（状态/helper）、wb-gui.core.js（api/遮罩/管理员）、wb-gui.render.js（render*）、
 // wb-gui.ops.js（账号与数据操作）、wb-gui.sync.js（WebDAV 同步）。
 // 职责：页面刷新编排(缓存秒开→实时覆盖) · 自动刷新策略(轮询/SSE/兜底) · 🔒 管理按钮状态 · 启动事件绑定。
@@ -96,13 +96,9 @@ function mergeDerived() {
 }
 
 // ---- 自动刷新 / 实时推送(SSE) ----
+// 状态灯已移除(v1.4.43 改滑块),streamOk 仍用于刷新策略判断(pickStrategy)
 function setStreamStatus(ok) {
   streamOk = ok;
-  const dot = $("streamDot");
-  if (dot) {
-    dot.className = "sdot " + (ok ? "on" : "off");
-    dot.title = ok ? "实时推送已连接(新数据自动刷新)" : "实时推送断开(已降级为定时刷新)";
-  }
 }
 // 建立 SSE 连接:服务端有新快照时主动推送 refresh 事件,前端静默刷新
 function connectStream() {
@@ -122,7 +118,7 @@ function pickStrategy() {
 }
 function applyAuto() {
   clearInterval(autoTimer); autoTimer = null;
-  const btn = $("btnAuto"); if (btn) btn.textContent = autoOn ? "开" : "关";
+  const c = $("autoOnChk"); if (c) c.checked = autoOn;
   if ($("autoMin")) $("autoMin").value = autoMin;
   const strategy = pickStrategy();
   if (strategy === "poll") {
@@ -136,24 +132,16 @@ function toggleAuto() {
   autoOn = !autoOn;
   localStorage.setItem(LS_ON, autoOn ? "1" : "0");
   applyAuto();
-  toast(autoOn ? `自动刷新:每 ${autoMin} 分钟` : "自动刷新已关闭");
+  toast(autoOn ? `页面自动刷新:每 ${autoMin} 分钟` : "页面自动刷新已关闭");
 }
 
-// 启动时询问服务端是否启用管理员密码,并据状态显示 🔒 按钮
+// 据启用状态更新按钮文案/提示(实现已归位 core.js,此处仅保留启动检查)
 async function checkAdminStatus() {
   try {
     const j = await api(__BASE__ + "/api/admin/status");
     adminEnabled = !!(j.ok && j.enabled);
     updateAdminBtn();
   } catch {}
-}
-// 据启用状态更新按钮文案/提示(始终可见:未启用时点击可设置密码,启用后点击输入当前密码即清除)
-function updateAdminBtn() {
-  const b = $("btnAdmin");
-  if (!b) return;
-  b.hidden = false;
-  if (adminEnabled) { b.textContent = "🔒 管理"; b.title = "点击清除管理密码(危险操作需先验证一次密码)"; }
-  else { b.textContent = "🔒 设置密码"; b.title = "点击设置管理密码(启用后危险操作需验证一次)"; }
 }
 
 // ==================== 启动 + 顶层事件绑定（须在所有函数定义之后） ====================
@@ -164,14 +152,8 @@ document.addEventListener("click", (e) => {
     try { localStorage.setItem(LS_DAEMON_HIDE, "1"); } catch {}
   }
 });
-$("autoMin") && $("autoMin").addEventListener("change", () => {
-  const v = parseInt($("autoMin").value, 10);
-  if (!v || v < 1) { $("autoMin").value = autoMin; return; }
-  autoMin = v > 1440 ? 1440 : v;
-  localStorage.setItem(LS_MIN, String(autoMin));
-  applyAuto();
-  toast(`间隔已设为 ${autoMin} 分钟`);
-});
+bindIntervalInput("autoMin", () => autoMin, (v) => { autoMin = v; }, 1440, LS_MIN, applyAuto, (v) => `间隔已设为 ${v} 分钟`);
+bindIntervalInput("autoUpH", () => autoUpH, (v) => { autoUpH = v; }, 168, LS_UP_H, applyAutoUp, (v) => `自动上传间隔已设为 ${v} 小时`);
 $("renameInput") && $("renameInput").addEventListener("keydown", (e) => { if (e.key === "Enter") confirmSmall(); if (e.key === "Escape") closeSmall(); });
 $("syncPass") && $("syncPass").addEventListener("keydown", (e) => { if (e.key === "Enter") saveSyncCfg(); });
 $("adminPass") && $("adminPass").addEventListener("keydown", (e) => { if (e.key === "Enter") confirmAdmin(); if (e.key === "Escape") closeAdmin(); });
@@ -185,4 +167,5 @@ checkDaemon();
 checkWebdavQuick();
 checkAdminStatus(); // 是否需要管理员密码
 applyAuto();
+applyAutoUp(); // 恢复自动上传状态(WebDAV 已配置时到点自动备份)
 connectStream(); // 建立 SSE 实时推送(替代前端轮询)

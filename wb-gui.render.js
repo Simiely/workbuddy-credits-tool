@@ -31,7 +31,7 @@ function renderHero() {
   const okN = rs.filter((r) => r.summary).length;
   const failN = rs.length - okN;
   const total = rs.reduce((s, r) => s + (r.summary ? totalOf(r.summary) : 0), 0);
-  const used = rs.reduce((s, r) => s + (r.summary ? (r.summary.baseUsed ?? 0) + r.summary.giftUsed : 0), 0);
+  const used = rs.reduce((s, r) => s + (((r.derived || {}).consumed) || 0), 0); // 累计已用=历史每日消耗之和(derived.consumed)
   // 近3天过期 / 今日已用：直接消费账号对象上的 derived（单一来源，不再 patch dashPer 到 hero）
   const exp3d = rs.reduce((s, r) => s + (((r.derived || {}).expiring3d) || 0), 0);
   const totalUsed = rs.reduce((s, r) => s + (((r.derived || {}).todayUsed) || 0), 0);
@@ -72,7 +72,7 @@ function renderCards() {
   const rs = (S && S.results) || [];
   if (!rs.length) {
     $("grid").innerHTML = '<div class="empty"><div class="big">📭</div>账号池为空<br>点「＋ 添加当前账号」或命令行 wb-credits.bat save-current</div>';
-    $("foot").textContent = "v1.4.42 · 数据来自 WorkBuddy 网页版接口 · 暂无账号数据(可「添加当前账号」或从 WebDAV 下载)";
+    $("foot").textContent = "v1.4.43 · 数据来自 WorkBuddy 网页版接口 · 暂无账号数据(可「添加当前账号」或从 WebDAV 下载)";
     return;
   }
   $("grid").innerHTML = rs.map((r, i) => {
@@ -90,7 +90,7 @@ function renderCards() {
     const bp = s.baseSize ? Math.min(100, (s.baseUsed / s.baseSize) * 100) : 0;
     const gp = s.giftSize ? Math.min(100, (s.giftUsed / s.giftSize) * 100) : 0;
     const baseNote = s.baseCycleEnd ? `(至 ${s.baseCycleEnd.slice(5, 10)})` : "";
-    // 签到标记（v1.4.42）：由后端 derive 检测今日首条 vs 最新快照的新增满额包推断，见 detectSignIn
+    // 签到标记（v1.4.43）：由后端 derive 检测今日首条 vs 最新快照的新增满额包推断，见 detectSignIn
     const signed = (r.derived && r.derived.signedInToday)
       ? `<span class="signed" title="今日已签到">✅ 已签到</span>`
       : `<span class="signed no" title="今日未签到">⏰ 未签到</span>`;
@@ -106,7 +106,7 @@ function renderCards() {
       </div></div>`;
   }).join("");
   initDrag();
-  $("foot").textContent = "v1.4.42 · 数据来自 WorkBuddy 网页版接口 · 自动刷新 " + autoMin + " 分钟 · 查询失败可重新登录后「添加当前账号」 · 卡片可拖动排序";
+  $("foot").textContent = "v1.4.43 · 数据来自 WorkBuddy 网页版接口 · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新登录后「添加当前账号」 · 卡片可拖动排序";
 }
 
 // ---- 卡片拖拽排序(顺序随账号池持久化,经 /api/reorder 保存) ----
@@ -144,7 +144,6 @@ function initDrag() {
   });
 }
 
-// 账号卡底部告警条（已随告警功能下线）
 // renderDash 是纯渲染函数：只读 dashPer（S.results 的投影，已含凭证状态与派生指标），不发起网络请求。
 // 数据获取与 derived 合并统一在 actions.js 的 doRefresh/mergeDerived 完成，避免多源竞态。
 function renderDash() {
@@ -179,7 +178,7 @@ function renderDashTable() {
       <div class="dremain"><div class="dr-v">${fmt(a.currentRemain ?? "-")}</div><div class="dr-l">💎 总剩余</div></div>
       <div class="dgrid">
         ${cell("今日消耗", fmt(tu), "", "plain", false)}
-        ${cell("累计已用", fmt(a.used ?? "-"), "", "plain", false)}
+        ${cell("累计已用", fmt(a.consumed ?? "-"), "", "plain", false)}
         ${cell("近2天过期", fmt(e2), e2 > 0 ? "warn" : "", e2 > 0 ? "warn" : "ok", e2 > 0)}
         ${cell("近3天过期", fmt(e3), e3 > 0 ? "warn" : "", e3 > 0 ? "warn" : "ok", e3 > 0)}
         ${cell("近7天过期", fmt(e7), e7 > 0 ? "warn" : "", e7 > 0 ? "warn" : "ok", e7 > 0)}
@@ -197,7 +196,7 @@ function renderDashTable() {
     <div class="dhead"><div class="dname num-b">📊 合计</div></div>
     <div class="dgrid">
       ${cell("今日消耗", fmt(sumTu), "", "plain", false)}
-      ${cell("累计已用", fmt(sum("used")), "", "plain", false)}
+      ${cell("累计已用", fmt(sum("consumed")), "", "plain", false)}
       ${cell("近2天过期", fmt(sumExp2d), sumExp2d > 0 ? "warn" : "", sumExp2d > 0 ? "warn" : "ok", sumExp2d > 0)}
       ${cell("近3天过期", fmt(sumExp3d), sumExp3d > 0 ? "warn" : "", sumExp3d > 0 ? "warn" : "ok", sumExp3d > 0)}
       ${cell("近7天过期", fmt(sumExp7d), sumExp7d > 0 ? "warn" : "", sumExp7d > 0 ? "warn" : "ok", sumExp7d > 0)}
@@ -210,7 +209,7 @@ function renderDashTable() {
     const e1 = a.expiring1d || 0, e2 = a.expiring2d || 0, e3 = a.expiring3d || 0, e7 = a.expiring7d || 0;
     return `<tr>
     <td class="num t-faint">${i + 1}</td><td>${acctName(a)}</td>
-    <td class="num"><b>${a.currentRemain ?? "-"}</b></td><td class="num">${a.used ?? "-"}</td>
+    <td class="num"><b>${a.currentRemain ?? "-"}</b></td><td class="num">${a.consumed ?? "-"}</td>
     <td class="num">${a.todayUsed > 0 ? fmt(a.todayUsed) : "0"}</td>
     <td class="num" style="color:var(--${e1 > 0 ? 'warn' : 'faint'})">${fmt(e1)}</td>
     <td class="num" style="color:var(--${e2 > 0 ? 'warn' : 'faint'})${e2 > 0 ? ';font-weight:800' : ''}">${fmt(e2)}</td>
@@ -218,7 +217,7 @@ function renderDashTable() {
     <td class="num" style="color:var(--${e7 > 0 ? 'warn' : 'faint'})${e7 > 0 ? ';font-weight:800' : ''}">${fmt(e7)}</td></tr>`;
   }).join("");
   $("dashTbody").innerHTML = rows + `<tr class="row-total">
-    <td></td><td>合计</td><td class="num">${fmt(sum("currentRemain"))}</td><td class="num">${fmt(sum("used"))}</td>
+    <td></td><td>合计</td><td class="num">${fmt(sum("currentRemain"))}</td><td class="num">${fmt(sum("consumed"))}</td>
     <td class="num">${fmt(sumTu)}</td><td class="num">${fmt(sumExp1d)}</td><td class="num">${fmt(sumExp2d)}</td><td class="num">${fmt(sumExp3d)}</td><td class="num">${fmt(sumExp7d)}</td></tr>`;
 }
 // ===== 趋势图表（柱状图/每日窗口/图例交互/模式切换）已拆分到 wb-gui.chart.js =====

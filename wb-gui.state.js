@@ -1,6 +1,7 @@
 // wb-gui.state.js — 共享状态 + 纯函数/常量（wb-gui 拆分第 1 部分）
-// 约定：本文件与 wb-gui.core.js / wb-gui.render.js / wb-gui.actions.js 同为 classic <script>，
-// 按 state → core → render → actions 顺序加载，共享同一全局词法作用域（顶层 const/let/function 跨文件可见）。
+// 约定：本文件与 wb-gui.core.js / wb-gui.render.js / wb-gui.chart.js / wb-gui.ops.js / wb-gui.sync.js /
+//       wb-gui.actions.js 同为 classic <script>，按 state → core → render → chart → ops → sync → actions
+//       顺序加载，共享同一全局词法作用域（顶层 const/let/function 跨文件可见）。
 // 本文件只放声明，不放置会触发副作用的顶层语句（副作用集中在 wb-gui.actions.js 的启动段）。
 
 const __BASE__ = window.__BASE__ || "";
@@ -18,6 +19,9 @@ let dashMode = "day";
 let autoTimer = null;
 let autoOn = localStorage.getItem("wb_auto_on") !== "0";
 let autoMin = parseInt(localStorage.getItem("wb_auto_min") || "5", 10) || 5;
+let autoUpTimer = null;                                 // 自动上传定时器(WebDAV,默认 12 小时一次)
+let autoUpOn = localStorage.getItem("wb_auto_up_on") === "1";
+let autoUpH = parseInt(localStorage.getItem("wb_auto_up_h") || "12", 10) || 12;
 let lastSfp = null;
 let dragId = null;
 let suppressClick = false; // 拖拽后抑制一次点击,避免误开明细
@@ -27,7 +31,9 @@ let syncBusy = false;
 let adminEnabled = false; // 管理员密码是否已启用(据 /api/admin/status 启动时赋值;启用后写操作需密码)
 
 const LS_ON = "wb_auto_on", LS_MIN = "wb_auto_min";
+const LS_UP_ON = "wb_auto_up_on", LS_UP_H = "wb_auto_up_h"; // 自动上传(WebDAV):开关 + 间隔(小时)
 const LS_DAEMON_HIDE = "wb_daemon_hide"; // 用户手动隐藏过 daemon 提示后不再打扰
+const LS_FOLD = "wb_fold"; // 面板折叠状态 {trend:bool, overview:bool}
 
 // 属性转义（innerHTML 注入用）
 const escAttr = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");

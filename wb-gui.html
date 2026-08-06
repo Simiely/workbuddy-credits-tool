@@ -62,9 +62,14 @@ input,select{font:inherit;color:var(--text)}
 .auto .lbl{display:inline}
 .auto input{width:50px;border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:5px 7px;font-size:12px;text-align:center;outline:none}
 .auto input:focus{border-color:var(--brand)}
-.sdot{width:8px;height:8px;border-radius:50%;background:#777;flex-shrink:0;display:inline-block;transition:background .2s,box-shadow .2s}
-.sdot.on{background:#2ecc71;box-shadow:0 0 6px #2ecc71}
-.sdot.off{background:#e07b39}
+.auto-box{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:4px 10px}
+/* iOS 风格滑块开关 */
+.switch{position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0;vertical-align:middle}
+.switch input{opacity:0;width:0;height:0;margin:0}
+.switch .sl{position:absolute;cursor:pointer;inset:0;background:#454d5c;border:1px solid var(--line);border-radius:999px;transition:background .2s,border-color .2s}
+.switch .sl::before{content:"";position:absolute;width:20px;height:20px;left:2px;top:2px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.switch input:checked + .sl{background:var(--ok);border-color:transparent}
+.switch input:checked + .sl::before{transform:translateX(20px)}
 
 .warn{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.3);color:var(--bad);padding:10px 14px;border-radius:12px;margin-bottom:12px;font-size:13px}
 .warn.d{background:rgba(247,163,92,.08);border-color:rgba(247,163,92,.3);color:var(--warn)}
@@ -285,6 +290,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <button class="btn btn-g" title="测试连接" onclick="syncAct('test')"><span class="em">🔌</span><span class="txt">测试连接</span></button>
       <button class="btn btn-g" title="上传数据" onclick="syncAct('upload')"><span class="em">⬆️</span><span class="txt">上传数据</span></button>
       <button class="btn btn-g" title="下载数据" onclick="syncAct('download')"><span class="em">⬇️</span><span class="txt">下载数据</span></button>
+      <span class="auto auto-box">⏫ <span class="lbl">自动上传</span> <input type="number" id="autoUpH" min="1" max="168" value="12" title="每多少小时自动上传一次到 WebDAV"> <span class="lbl">小时</span> <label class="switch" title="自动上传开关"><input type="checkbox" id="autoUpOnChk" onchange="toggleAutoUp()"><span class="sl"></span></label></span>
     </span>
   </div>
 
@@ -319,7 +325,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <button class="btn btn-g" onclick="sortByTotal()"><span class="em">📊</span><span class="txt">剩余排序</span></button>
     <button class="btn btn-g" onclick="openClear()"><span class="em">🧹</span><span class="txt">清空</span></button>
     <button class="btn btn-g" onclick="exportMd()"><span class="em">📝</span><span class="txt">导出 MD</span></button>
-    <span class="auto" style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:4px 10px">⏱ <span class="lbl">自动刷新</span> <input type="number" id="autoMin" min="1" max="1440" value="5"> <span class="lbl">分钟</span> <button class="btn btn-g" id="btnAuto" onclick="toggleAuto()" style="min-height:30px;padding:4px 12px">开</button><span id="streamDot" class="sdot off" title="实时推送"></span></span>
+    <span class="auto auto-box">⏱ <span class="lbl">页面自动刷新</span> <input type="number" id="autoMin" min="1" max="1440" value="5"> <span class="lbl">分钟</span> <label class="switch" title="页面自动刷新开关"><input type="checkbox" id="autoOnChk" onchange="toggleAuto()"><span class="sl"></span></label></span>
   </div>
 
   <div class="grid" id="grid"></div>
@@ -400,12 +406,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 <div class="toast" id="toast"></div>
 <script>window.__BASE__ = (location.pathname.match(/^\/tool\/[^/]+/) || [""])[0];</script>
-<script src="./wb-gui.state.js?v=v1.4.42"></script>
-<script src="./wb-gui.core.js?v=v1.4.42"></script>
-<script src="./wb-gui.render.js?v=v1.4.42"></script>
-<script src="./wb-gui.chart.js?v=v1.4.42"></script>
-<script src="./wb-gui.ops.js?v=v1.4.42"></script>
-<script src="./wb-gui.sync.js?v=v1.4.42"></script>
-<script src="./wb-gui.actions.js?v=v1.4.42"></script>
+<script src="./wb-gui.state.js?v=v1.4.43"></script>
+<script src="./wb-gui.core.js?v=v1.4.43"></script>
+<script src="./wb-gui.render.js?v=v1.4.43"></script>
+<script src="./wb-gui.chart.js?v=v1.4.43"></script>
+<script src="./wb-gui.ops.js?v=v1.4.43"></script>
+<script src="./wb-gui.sync.js?v=v1.4.43"></script>
+<script src="./wb-gui.actions.js?v=v1.4.43"></script>
 </body>
 </html>

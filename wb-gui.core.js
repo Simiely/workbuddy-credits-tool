@@ -96,8 +96,7 @@ function setBusy(b) {
   }
 }
 
-// ---- 面板折叠(v1.4.38 从 state.js 归位):点击标题折叠/展开,状态存 localStorage ----
-const LS_FOLD = "wb_fold"; // {trend:bool, overview:bool}
+// ---- 面板折叠:点击标题折叠/展开,状态存 localStorage(LS_FOLD 常量在 state.js 归位) ----
 function toggleFold(head, ev) {
   if (ev && ev.target.closest && ev.target.closest("button")) return; // 标题内按钮(模式切换等)不触发折叠
   head.classList.toggle("folded");
@@ -177,6 +176,33 @@ function openAdmin(mode) {
   }, 60);
 }
 function closeAdmin() { closeMask("adminMask"); rejectAdminGate("已取消"); }
+
+// 据启用状态更新 🔒 按钮文案/提示(UI 基础设施,归位 core;actions 的 checkAdminStatus 调用它)
+function updateAdminBtn() {
+  const b = $("btnAdmin");
+  if (!b) return;
+  b.hidden = false;
+  if (adminEnabled) { b.textContent = "🔒 管理"; b.title = "点击清除管理密码(危险操作需先验证一次密码)"; }
+  else { b.textContent = "🔒 设置密码"; b.title = "点击设置管理密码(启用后危险操作需验证一次)"; }
+}
+
+// 间隔输入(change)通用绑定:校验 1..max → 存 localStorage → 应用并提示。
+// 页面自动刷新(autoMin)与自动上传(autoUpH)共用,避免两个监听器复制粘贴(v1.4.43 审计修复)
+function bindIntervalInput(elId, getVal, setVal, max, storeKey, applyFn, msg) {
+  const el = $(elId);
+  if (!el) return;
+  el.addEventListener("change", () => {
+    const v = parseInt(el.value, 10);
+    if (!v || v < 1) { el.value = getVal(); return; }
+    const nv = v > max ? max : v;
+    setVal(nv);
+    localStorage.setItem(storeKey, String(nv));
+    el.value = String(nv);
+    applyFn();
+    toast(msg(nv));
+  });
+}
+
 async function confirmAdmin() {
   const v = (($("adminPass") || {}).value || "").trim();
   if (!v) return toast("请输入密码");

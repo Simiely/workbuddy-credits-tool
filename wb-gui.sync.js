@@ -42,12 +42,15 @@ async function syncAct(action, silent) {
     if (action === "clear" && !await cfm("确认清空本地保存的 WebDAV 登录配置?")) { setSyncStatus("已取消"); return; }
     const j = await api(__BASE__ + "/api/webdav/" + action, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
     if (action === "test") { showSyncQuick(); } // 登录成功 → 操作条云同步右侧出现上传/下载
-    if (action === "clear") { const q = $("syncQuick"); if (q) q.hidden = true; closeSync(); }
+    if (action === "clear") {
+      const q = $("syncQuick"); if (q) q.hidden = true; closeSync();
+      autoUpOn = false; localStorage.setItem(LS_UP_ON, "0"); applyAutoUp(); // 配置已清空,联动关闭自动上传
+    }
     if (!silent) toast("✅ " + j.message);
     setSyncStatus("✅ " + j.message + (action === "download" && j.restored && j.restored.length ? ",请点「刷新全部」查看" : ""));
     if (action === "download" && j.restored && j.restored.length) refreshAll(false);
   } catch (e) {
-    if (!silent) toast("❌ " + e.message);
+    toast("❌ " + e.message); // 失败总是提示(silent 只静默成功;自动上传失败必须可见)
     setSyncStatus("❌ " + e.message);
   } finally { syncBusy = false; }
 }
@@ -58,4 +61,37 @@ async function checkWebdavQuick() {
     const j = await api(__BASE__ + "/api/webdav/config");
     if (j.has) showSyncQuick();
   } catch {}
+}
+
+// ---- 自动上传(WebDAV,登录后可用;v1.4.43) ----
+// 与「页面自动刷新」同构:前端定时触发上传(静默成功、失败必报,复用 syncAct("upload") 单一路径)。
+// 间隔单位=小时(默认 12),localStorage 持久化,exe/GUI 常驻时到点自动备份。
+async function autoUpload() {
+  if (syncBusy) return; // 与手动上传互斥
+  // 配置被清空后自动关闭开关,避免周期性失败骚扰
+  try {
+    const c = await api(__BASE__ + "/api/webdav/config");
+    if (!c.has) {
+      autoUpOn = false;
+      localStorage.setItem(LS_UP_ON, "0");
+      applyAutoUp();
+      toast("⚠️ 未配置 WebDAV,自动上传已自动关闭");
+      return;
+    }
+  } catch { return; }
+  await syncAct("upload", true);
+}
+function applyAutoUp() {
+  clearInterval(autoUpTimer); autoUpTimer = null;
+  const c = $("autoUpOnChk"); if (c) c.checked = autoUpOn;
+  const inp = $("autoUpH"); if (inp) inp.value = autoUpH;
+  if (autoUpOn && autoUpH > 0) {
+    autoUpTimer = setInterval(() => autoUpload(), autoUpH * 3600 * 1000);
+  }
+}
+function toggleAutoUp() {
+  autoUpOn = !autoUpOn;
+  localStorage.setItem(LS_UP_ON, autoUpOn ? "1" : "0");
+  applyAutoUp();
+  toast(autoUpOn ? `自动上传:每 ${autoUpH} 小时` : "自动上传已关闭");
 }

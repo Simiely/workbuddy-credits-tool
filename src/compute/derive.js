@@ -60,6 +60,39 @@ export function consumeByPos(arr) {
   return Math.round(v * 100) / 100;
 }
 
+// 消耗口径 v2（v1.4.43 起,今日/单日消耗的最终口径,供 todayUsed/dailyUsed/固化共用）：
+// 包级净增量 —— 只统计「末快照仍 active(status=0)」的包的 used 增量
+//（首快照**全部包**(不过滤 status)为基线,首快照没有则从 0 起;负数截 0;末快照无包数据降级 consumeByPos）。
+// 为什么:
+//   ①增量口径(consumeByPos)在官方「包失效日」会把今日已用算得比累计还大
+//     (2026-08-06 实测:张妈妈今日已用 342、累计净值仅 38——消耗集中在当天失效的包上)。
+//   ②基线必须含首快照全部包(含 status≠0):小陈(330100595762)首快照所有包 status=3、
+//     末快照恢复 status=0,若基线也过滤 status,这些包会被当成"今天新增"→ 今日已用虚高 1789(实测)。
+// 效果:失效包当天消耗不计入今日(已随包回收)→ 今日已用 ≤ 累计已用;历史日(8/5)不被抹成 0。
+export function consumeByPack(arr) {
+  if (!arr || !arr.length) return 0;
+  const packsOf = (r) => {
+    if (Array.isArray(r.giftPackages)) return r.giftPackages;
+    try { return JSON.parse(r.raw || "{}").giftPackages || []; } catch { return []; }
+  };
+  const first = packsOf(arr[0]) || []; // 基线:首快照全部包(不过滤 status,防状态波动导致"伪新增"虚高)
+  const last = (packsOf(arr[arr.length - 1]) || []).filter((p) => (p.status ?? 0) === 0);
+  if (!first.length || !last.length) return consumeByPos(arr); // 首/末任一无包数据(采集异常/旧快照)降级为增量口径
+  const key = (p) => (p.cycleEndTime || "") + "|" + (p.packageName || "") + "|" + (p.capacitySize || 0);
+  const fMap = new Map();
+  for (const p of first) fMap.set(key(p), (fMap.get(key(p)) || 0) + (p.capacityUsed || 0));
+  let v = 0;
+  const seen = new Set();
+  for (const p of last) {
+    const k = key(p);
+    if (seen.has(k)) continue; // 同键多包(同日同容量)只算一次,避免重复
+    seen.add(k);
+    const d = (p.capacityUsed || 0) - (fMap.get(k) || 0);
+    if (d > 0) v += d;
+  }
+  return Math.round(v * 100) / 100;
+}
+
 // 今日签到检测（v1.4.33）：
 // 原理（数据实证）：WorkBuddy 每日签到 = 新增一个「到期日 = 领取日 + 1 自然月（对日）」的赠送包
 // （如 8/5 签到 → 新增 9/5 到期的包；8/4 签到 → 9/4 到期的包，逐日唯一）。
@@ -210,6 +243,7 @@ export function deriveAccount(uin, acct = {}) {
       giftUsed: r.giftUsed ?? 0,
       totalRemain: r.totalRemain ?? 0,
       totalUsed: r.totalUsed ?? 0,
+      giftPackages: r.giftPackages, // 包级消耗口径 consumeByPack 需要(status/cycleEndTime/used)
     }))
     .sort((a, b) => (a.ts < b.ts ? -1 : 1));
 
@@ -234,7 +268,7 @@ export function deriveAccount(uin, acct = {}) {
     arr.sort((a, b) => (a.ts < b.ts ? -1 : 1));
     const d0 = arr[0];
     const d1 = arr[arr.length - 1];
-    const v = consumeByPos(arr);
+    const v = consumeByPack(arr);
     seriesOut.push({ t: d1.ts, v });
     // 明细表直接消费：起(首快照剩余)/终(末快照剩余)/日消耗,前端不再按日聚合重算
     dailyUsed.push({
@@ -263,10 +297,16 @@ export function deriveAccount(uin, acct = {}) {
   dailyUsed.sort((a, b) => (a.day < b.day ? -1 : 1));
   seriesOut.sort((a, b) => (a.t < b.t ? -1 : 1));
 
-  // 今日已用 = 今日快照序列的「已用」正增量累加（旧口径"首条剩余-当前剩余"在官方包增减时失真）
+  // 今日已用 = 今日快照序列的包级净增量(consumeByPack,失效包当天消耗不计)
   const today0 = startOfToday();
   const todayReadings = series.filter((s) => new Date(s.ts) >= today0);
-  const todayUsed = todayReadings.length ? consumeByPos(todayReadings) : 0;
+  const todayUsed = todayReadings.length ? consumeByPack(todayReadings) : 0;
+
+  // 累计已用 = 历史每日消耗之和(Σ dailyUsed.used,含固化摘要日)。
+  // 语义修正(v1.4.43):旧值取最新快照 used 净值,在包失效日会远小于真实历史消耗
+  // (2026-08-06 实测:张妈妈今日 42、旧累计仅 42,历史累计实为 991),用户无法接受"累计 < 今日";
+  // 现改为「历史累计消耗」,必然 ≥ 今日已用。
+  const consumed = Math.round(dailyUsed.reduce((s, x) => s + (x.used || 0), 0) * 100) / 100;
 
   // 今日签到检测（v1.4.33，基线修正 2026-08-06）：
   // 基线 = 昨天最后一条快照,目标 = 最新快照,「新增 + 到期日对日=今天+1月」= 已签到。
@@ -297,6 +337,7 @@ export function deriveAccount(uin, acct = {}) {
     displayName: acct.displayName || acct.name || uin,
     currentRemain,
     used,
+    consumed, // 累计已用(历史每日消耗之和,前端"累计已用"展示位统一读它,v1.4.43)
     todayUsed,
     signedInToday,
     points: n,
@@ -346,7 +387,7 @@ export function gcDaySummaries() {
       if (existing.has(day)) continue; // 已固化，跳过
       const rows = readingsForDay(uin, day);
       if (!rows.length) continue;
-      const v = consumeByPos(rows);
+      const v = consumeByPack(rows);
       const first = rows[0];
       const last = rows[rows.length - 1];
       // 当天签到状态：基线 = 前一天最后一条快照 vs 当日末条,「新增 + 到期日对日=当日+1月」= 当天已签到
