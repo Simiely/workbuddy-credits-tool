@@ -689,8 +689,10 @@ function listen(port, max) {
   server.listen(port, "127.0.0.1", () => {
     const addr = `http://127.0.0.1:${port}`;
     console.log("WorkBuddy 积分仪表盘已启动: " + addr);
-    // 仅 Windows 桌面场景自动打开浏览器；Linux/Docker 下不执行
-    if (process.platform === "win32") {
+    // 仅 Windows 桌面场景自动打开浏览器；Linux/Docker 下不执行。
+    // 修复(2026-08-06):平台版(file 采集,容器/tools-center 托管)即使跑在 Windows 上也不自动开浏览器——
+    // 否则平台每次添加/启动工具都会弹浏览器。桌面版(edge 采集,源码/单文件 exe)保持自动打开。
+    if (process.platform === "win32" && collectorStatus().scheme !== "file") {
       try {
         const child = spawn("cmd", ["/c", "start", "", addr], { detached: true, stdio: "ignore" });
         child.on("error", () => {});
