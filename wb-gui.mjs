@@ -250,6 +250,28 @@ const routes = [
     },
   },
   {
+    // 在调试 Edge 中打开 workbuddy.cn 登录页(配合「添加账号」收录 cookie,2026-08-06)
+    method: "GET",
+    path: "/api/open-workbuddy",
+    handler: async (ctx) => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 5000);
+      try {
+        const r = await fetch(
+          `${DAEMON_BASE}/newtab?url=${encodeURIComponent("https://www.workbuddy.cn")}`,
+          { signal: ctrl.signal }
+        );
+        const j = await r.json();
+        clearTimeout(t);
+        if (j && j.error) ctx.json(200, { ok: false, error: "浏览器代理未连接(Edge 需以调试模式启动)" });
+        else ctx.json(200, { ok: true });
+      } catch (e) {
+        clearTimeout(t);
+        ctx.json(200, { ok: false, error: "浏览器代理(edge-daemon)不可用,请先启动它" });
+      }
+    },
+  },
+  {
     method: "GET",
     path: "/api/accounts",
     handler: (ctx) => {

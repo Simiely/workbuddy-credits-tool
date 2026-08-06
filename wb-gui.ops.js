@@ -147,6 +147,16 @@ async function saveCurrent() {
   } catch (e) { toast("❌ " + e.message); }
   finally { b.disabled = false; b.textContent = "＋ 添加当前账号"; }
 }
+// 打开登录页:经 edge-daemon 在调试 Edge 中打开 workbuddy.cn(登录后点「添加账号」收录 cookie)
+async function openLoginPage() {
+  const b = $("btnOpenWeb"); b.disabled = true;
+  try {
+    const j = await api(__BASE__ + "/api/open-workbuddy");
+    if (j && j.ok === false) toast("⚠️ " + (j.error || "打开失败"));
+    else toast("🌐 已在 Edge 打开 workbuddy.cn,登录后点「添加账号」");
+  } catch (e) { toast("❌ " + e.message); }
+  finally { b.disabled = false; }
+}
 function exportMd() { window.location.href = __BASE__ + "/api/export.md"; }
 
 // ---- daemon 探测 ----

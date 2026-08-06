@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## v1.4.40 (2026-08-06) · 「打开网页」按钮(登录收录 cookie 一键直达)
+
+- GUI「＋ 添加账号」旁新增 **「🌐 打开网页」** 按钮:一键经 edge-daemon 在调试 Edge 中打开 `workbuddy.cn` 登录页,登录后直接点「添加账号」收录 cookie(免手动开浏览器)
+- 后端新增 `GET /api/open-workbuddy`(调 daemon `/newtab`,daemon 不可用时返回明确提示);前端 `openLoginPage()` 处理
+- 实测:调用后在调试 Edge 中成功新开 `https://www.workbuddy.cn/` 标签页
+- 验证：7/7 回归测试通过
+
 ## v1.4.39 (2026-08-06) · 全账号查询恢复 + 串号防护 + 签到基线修正 + SEA 单文件 exe
 
 - **修复账号查询全部失败(400 Cookie Too Large)**:采集端 `Network.getAllCookies` → `Network.getCookies({urls})` 精确采集(治本);查询端新增 `sanitizeCookieHeader()`(剔除 KC_RESTART 等一次性令牌/广告跟踪 cookie + 同名去重 + 超 7KB 降级认证白名单),历史脏数据即时生效(治标)。详见 `docs/问题记录/账号查询400-CookieTooLarge.md`
