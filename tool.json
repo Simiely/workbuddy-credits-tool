@@ -4,11 +4,21 @@
   "desc": "WorkBuddy 多账号积分监控（独立仓库，平台托管）",
   "group": "监控",
   "icon": "📉",
-  "version": "1.4.41",
+  "version": "1.4.42",
   "type": "app",
-  "cmd": ["node", "wb-gui.mjs", "8123"],
+  "cmd": [
+    "node",
+    "wb-gui.mjs",
+    "8123"
+  ],
   "cwd": ".",
   "port": 8123,
   "health": "/api/status",
-  "dataFiles": ["*.db", "*.db-wal", "*.db-shm", "wb-*.json", "data/**"]
+  "dataFiles": [
+    "*.db",
+    "*.db-wal",
+    "*.db-shm",
+    "wb-*.json",
+    "data/**"
+  ]
 }
