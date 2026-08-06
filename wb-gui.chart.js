@@ -38,7 +38,8 @@ function dayWindow() {
 // 柱状图：每个时间点（每日=天/每月=月）该组有数据的账号各一根柱；
 // 每组右侧紧贴画「当日/当月合计」灰柱（独立 g#line-total，不随图例显隐），柱子组整体在组内居中，日期标签=组中心；
 // 组内最高（单柱或合计柱）顶部标数字；账号柱/合计柱均带 data-pct（占该组总和的百分比，hover 浮层用）。
-function barChart(series, mode, xTicks) {
+// v1.4.41 soloKey:点击柱子独显该账号(每天只画它)或 total(只画合计);null=全部。点击空白恢复(见 initChartSolo)。
+function barChart(series, mode, xTicks, soloKey) {
   const all = series.flatMap((s) => s.pts);
   if (!all.length) return '<div class="ph">暂无数据</div>';
   const tickSet = new Set((xTicks || []).map((t) => String(t)));
@@ -74,11 +75,13 @@ function barChart(series, mode, xTicks) {
   });
   // 绘制：账号柱 + 合计柱
   times.forEach((t, i) => {
-    const day = dayMap.get(t) || [];
+    const dayRaw = dayMap.get(t) || [];
+    // solo 模式:点账号 → 每天只画它;点合计 → 每天只画合计
+    const day = soloKey === "total" ? [] : (soloKey ? dayRaw.filter((d) => d.key === soloKey) : dayRaw);
+    const dayTotal = soloKey === "total" ? (dayTotals.get(t) || 0) : (soloKey ? 0 : (dayTotals.get(t) || 0));
     // 每根柱(含合计)一个槽位,各分 (groupW-2) 等宽; bw 上限 14 避免撑爆相邻组
-    const slotCount = day.length + (dayTotals.get(t) > 0 ? 1 : 0);
+    const slotCount = day.length + (dayTotal > 0 ? 1 : 0);
     const bw = Math.max(2, Math.min(14, (groupW - 2) / Math.max(1, slotCount)));
-    const dayTotal = dayTotals.get(t) || 0;
     // 柱子组总宽 = 账号柱 + 合计柱(紧贴无间隔)；整体在组内居中 → 日期标签(组中心)与柱子组中心对齐
     const totalW = day.length * bw + (dayTotal > 0 ? bw : 0);
     const startX = L + i * groupW + Math.max(0, (groupW - totalW) / 2);
@@ -95,9 +98,9 @@ function barChart(series, mode, xTicks) {
       const lbl = isMax
         ? `<text x="${(x + bw / 2).toFixed(1)}" y="${(T + ih - bh - 4).toFixed(1)}" font-size="10" fill="${color}" text-anchor="middle" font-weight="700">${Math.round(d.v)}</text>`
         : "";
-      byKey.get(d.key).push(`<rect x="${x.toFixed(1)}" y="${(T + ih - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="${color}" class="cpt" data-v="${Math.round(d.v)}" data-pct="${pct}" data-t="${t}" data-n="${escAttr(d.name)}"/>${lbl}`);
+      byKey.get(d.key).push(`<rect x="${x.toFixed(1)}" y="${(T + ih - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="${color}" class="cpt" data-key="${d.key}" data-v="${Math.round(d.v)}" data-pct="${pct}" data-t="${t}" data-n="${escAttr(d.name)}"/>${lbl}`);
       // v1.4.36 透明触发区：整列高(绘图区全高)同宽，鼠标移到柱子所在竖列任意高度都能触发浮层(矮柱子不再难 hover)
-      byKey.get(d.key).push(`<rect x="${x.toFixed(1)}" y="${T}" width="${bw.toFixed(1)}" height="${ih}" fill="transparent" class="cpt" data-v="${Math.round(d.v)}" data-pct="${pct}" data-t="${t}" data-n="${escAttr(d.name)}"/>`);
+      byKey.get(d.key).push(`<rect x="${x.toFixed(1)}" y="${T}" width="${bw.toFixed(1)}" height="${ih}" fill="transparent" class="cpt" data-key="${d.key}" data-v="${Math.round(d.v)}" data-pct="${pct}" data-t="${t}" data-n="${escAttr(d.name)}"/>`);
     });
     // 合计柱：紧贴账号柱右侧（无间隔）；顶部只标数值（说明在图例区「合计」标签，柱上不重复写字）
     if (dayTotal > 0) {
@@ -108,9 +111,9 @@ function barChart(series, mode, xTicks) {
       const num = isMaxTotal
         ? `<text x="${(tx + bw / 2).toFixed(1)}" y="${(ty - 4).toFixed(1)}" font-size="10" fill="${TOTAL_COLOR}" text-anchor="middle" font-weight="700">${Math.round(dayTotal)}</text>`
         : "";
-      totals += `<rect x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" width="${bw.toFixed(1)}" height="${tbh.toFixed(1)}" rx="2" fill="${TOTAL_COLOR}" class="cpt" data-v="${Math.round(dayTotal)}" data-pct="100" data-t="${t}" data-n="${mode === "month" ? "当月合计" : "当日合计"}"/>${num}`;
+      totals += `<rect x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" width="${bw.toFixed(1)}" height="${tbh.toFixed(1)}" rx="2" fill="${TOTAL_COLOR}" class="cpt" data-key="total" data-v="${Math.round(dayTotal)}" data-pct="100" data-t="${t}" data-n="${mode === "month" ? "当月合计" : "当日合计"}"/>${num}`;
       // v1.4.36 合计柱透明触发区（同上）
-      totals += `<rect x="${tx.toFixed(1)}" y="${T}" width="${bw.toFixed(1)}" height="${ih}" fill="transparent" class="cpt" data-v="${Math.round(dayTotal)}" data-pct="100" data-t="${t}" data-n="${mode === "month" ? "当月合计" : "当日合计"}"/>`;
+      totals += `<rect x="${tx.toFixed(1)}" y="${T}" width="${bw.toFixed(1)}" height="${ih}" fill="transparent" class="cpt" data-key="total" data-v="${Math.round(dayTotal)}" data-pct="100" data-t="${t}" data-n="${mode === "month" ? "当月合计" : "当日合计"}"/>`;
     }
   });
   let groups = "";
@@ -158,7 +161,7 @@ function renderLines() {
   $("legend").innerHTML = raw
     .map((a, i) => `<div class="lg" data-key="${a.uin}" onclick="toggleLine('${a.uin}', this)"><i style="background:${LINE_COLORS[i % LINE_COLORS.length]}"></i>${acctName(a)}</div>`)
     .join("") + `<div class="lg" data-key="total" onclick="toggleLine('total', this)"><i style="background:${TOTAL_COLOR}"></i>合计</div>`;
-  $("chart").innerHTML = barChart(lines, dashMode, xTicks);
+  $("chart").innerHTML = barChart(lines, dashMode, xTicks, soloKey);
 }
 
 // 图例交互：单击=隐藏该账号，再点一次=重新显示（纯切换）
@@ -205,4 +208,26 @@ function initChartTip() {
   });
   document.addEventListener("mousemove", (e) => { if (!chartTip.hidden) placeTip(e); });
   document.addEventListener("mouseout", (e) => { if (e.target.closest && e.target.closest(".cpt")) chartTip.hidden = true; });
+}
+
+// ---- 点击柱子独显 / 点击空白恢复(v1.4.41) ----
+// 点击某账号的柱子 → 每天只显示该账号(独显该柱数据);点击合计柱 → 每天只显示合计;
+// 点击图表空白处 → 恢复全部柱子一起显示。soloKey 由 renderLines 传给 barChart。
+let soloKey = null;
+function initChartSolo() {
+  document.addEventListener("click", (e) => {
+    const el = e.target.closest && e.target.closest(".cpt");
+    if (el && el.dataset.key) {
+      const k = el.dataset.key;
+      soloKey = soloKey === k ? null : k; // 再点同一柱子=取消独显(等价点空白)
+      renderLines();
+      return;
+    }
+    // 点击图表区域内非柱子(空白)→ 恢复全部
+    const chart = $("chart");
+    if (soloKey && chart && chart.contains(e.target)) {
+      soloKey = null;
+      renderLines();
+    }
+  });
 }

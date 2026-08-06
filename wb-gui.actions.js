@@ -179,6 +179,7 @@ $("adminPass") && $("adminPass").addEventListener("keydown", (e) => { if (e.key 
 // 流程:先本地缓存秒开 → 后台实时刷新 → 其余初始化并行
 applyFold(); // 恢复上次面板折叠状态(v1.4.34)
 initChartTip(); // 图表悬浮提示事件委托(v1.4.38 归位 chart.js,启动接线)
+initChartSolo(); // 点击柱子独显/点击空白恢复(v1.4.41)
 refreshAll(false);
 checkDaemon();
 checkWebdavQuick();
