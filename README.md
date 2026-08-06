@@ -3,6 +3,8 @@
 多账号采集 **WorkBuddy 积分**,提供命令行(CLI)与本地网页仪表盘(GUI)两种入口。
 直接调用 WorkBuddy 网页版内部接口,无需开浏览器(仅"添加账号"时需要 Edge)。
 
+> **平台版标注**:本工具可作为 **[tools-center](https://github.com/Simiely/tools-center)(轻量工具统一宿主)** 的托管工具部署(NAS 常驻),平台声明见 `tool.json`(app 型,端口 8123,`/api/status` 健康检查)。接入规范、目录结构、数据目录与升级步骤见 **`docs/tools-center部署.md`**;桌面/容器通用部署见 `docs/部署.md`。
+
 ## 功能特性
 
 - **多账号池**:每个账号独立 cookie 凭证,一键批量查询,单账号失败不影响其他
@@ -82,6 +84,7 @@ node --check wb-gui.mjs   # 语法校验
 | [`CHANGELOG.md`](CHANGELOG.md) | 所有人 | 版本变更记录(v1.4.2 起为 SQLite/统一采样/7 文件前端时代) |
 | [`docs/架构.md`](docs/架构.md) | 开发者 | 完整模块架构、数据流、维护指南 |
 | [`docs/部署.md`](docs/部署.md) | 运维 | 桌面 / Docker 两种部署方案 |
+| [`docs/tools-center部署.md`](docs/tools-center部署.md) | 运维 | **平台版标注**:tools-center 托管接入规范(目录/tool.json/数据/升级) |
 | [`docs/交接说明.md`](docs/交接说明.md) | 接手者 | 快速上手与状态快照 |
 | [`docs/问题记录/`](docs/问题记录/) | 开发者 | 踩坑与解决(一坑一篇) |
 
