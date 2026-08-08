@@ -44,6 +44,7 @@ wb-gui.mjs   ────┤
 | edge-daemon 连不上浏览器 | 读 DevToolsActivePort 残留文件,连不存在的 ws 永久挂起 | [edge-daemon连接发现机制.md](docs/问题记录/edge-daemon连接发现机制.md) |
 | 云同步快捷按钮一直显示 | `hidden` 属性被内联 `display:flex` 覆盖 | [hidden属性被内联样式覆盖.md](docs/问题记录/hidden属性被内联样式覆盖.md) |
 | 今日已用恒为 0 | 聚合 totals 被当天新加账号污染,差值变负 | [今日已用恒为0.md](docs/问题记录/今日已用恒为0.md) |
+| 同步清空云端 | 清空账号池误写墓碑→同步删除传播→上传空库覆盖云端 | [v1.4.48](CHANGELOG.md) 清空不写墓碑+清空保护 |
 
 ## 四、每次改动的动作清单
 

@@ -9,7 +9,7 @@ import { execFileSync } from "node:child_process";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
-const PY = "C:/Users/2504/.workbuddy/binaries/python/versions/3.13.12/python.exe";
+const PY = process.env.WB_PY || "C:/Users/wandou/.workbuddy/binaries/python/versions/3.13.12/python.exe";
 const OUT_DIR = process.argv[2] || "E:/desktop";
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 const VER = pkg.version;

@@ -1,33 +1,32 @@
-# HANDOFF · 交接与已知问题(2026-08-05 00:50)
+# HANDOFF · 交接与已知问题(2026-08-09 00:45)
 
-> 给下一位接手开发者/AI 的快速启动文档。当前版本 **v1.4.30**。
+> 给下一位接手开发者/AI 的快速启动文档。当前版本 **v1.4.49**。
 
 ## 1. 项目是什么
 
-**workbuddy-credits-tool** = WorkBuddy 积分监控仪表盘(多账号积分查询/消耗趋势/到期明细/WebDAV 云同步)。
-- 后端 `wb-gui.mjs`(Node 零依赖 HTTP 服务,默认端口 8080,路由登记制;顶部有"文件地图"注释:A 基础设施/B 路由表/C 分发层/D 启动)
-- 前端 `wb-gui.html` + **7 个 classic script**(`state/core/render/chart/ops/sync/actions`,共 ~1100 行;无打包器,靠顶层 `const/let/function` 共享全局词法作用域;共享状态集中在 `wb-gui.state.js`;趋势图为**柱状图** + 当日合计柱)
-- 后端分层:`src/`(config/domain/collect/compute/store/present);compute 含 10 个模块(含 **`sample.js` 统一采样入口**)
-- **计算架构(v1.4.x 收敛)**:后端 `/api/dashboard/all` 是唯一计算源,按自然日聚合每日消耗;前端纯展示,0 计算
-- **时区口径(重要)**:所有"自然日/时间显示"**固定中国时区(+8)**,不依赖进程时区——`src/compute/derive.js`(dayKeyOf/startOfToday/赠送包到期)与 `cnNow()`(wb-gui.mjs、src/present/render.js)统一 +8。原因:docker 容器默认 UTC,依赖进程时区会导致日期错位(8/3→8/2)、时间显示错(8/5 00:47→8/4 16:47),v1.4.29/30 修复
+**workbuddy-credits-tool** = WorkBuddy 积分监控仪表盘(多账号积分查询/消耗趋势/到期明细/WebDAV 一键同步)。
+- 后端 `wb-gui.mjs`(Node 零依赖 HTTP 服务,默认端口 8080,被占顺延;路由登记制,顶部有"文件地图"注释)
+- 前端 `wb-gui.html` + **7 个 classic script**(`state/core/render/chart/ops/sync/actions`,共享全局词法作用域;无打包器)
+- 后端分层:`src/`(config/domain/collect/compute/store/present)
+- **计算架构**:后端 `/api/dashboard/all` 是唯一计算源;派生纯函数 `derive.js`,`consumeByPack` 包级口径(只统计末快照 active 包的 used 增量,首末快照必须带 giftPackages)
+- **时区口径(重要)**:所有"自然日/时间显示"**固定中国时区(+8)**,不依赖进程时区;前端跑在浏览器(用户 +8)与后端 +8 自洽,**勿把前端本地时区改成 +8**(2026-08-08 走查确认,见 docs/问题记录/时区分析教训)
 - 数据真相源:`credits.db`(SQLite);`wb-*.json` 仅作 WebDAV 迁移桥接
-- 回归测试:`npm test`(4 个测试文件、90+ 断言,见 `test/`)
+- 回归测试:`npm test`(11 个测试文件,含 webdav-sync 单元 + e2e mock 同步全链路)
 
-## 2. 部署副本清单(2026-08-04 快照)
-
-当前唯一活跃副本:
+## 2. 部署副本清单(2026-08-09 快照)
 
 | 位置 | 用途 |
 |---|---|
-| `D:\workbuddy\2026-08-04-10-33-45\workbuddy-credits-tool\` | **git 仓库根 + 运行副本**(当前 8080 实例跑的就是它,改这里并 push) |
+| `Z:\Configs\tools-center\tools\wb-credits\` | **NAS tools-center 托管运行副本**(v1.4.44 旧代码,完整数据 credits.db 17.8MB;Z: 只读挂载,更新需 tools-center 平台重传工具包) |
+| `D:\workbuddy\2026-08-08-22-58-55\workbuddy-credits-tool\` | **git 仓库根 + 本地开发副本**(v1.4.49,改这里并 push) |
+| NAS WebDAV `http://192.168.2.1:6086/workbuddy/workbuddy积分/` | 云端备份(已恢复完整版:每天首末快照含 giftPackages) |
 
-历史遗留旧副本(`D:\workbuddy\2026-08-03-*`)是 SQLite 迁移前的文件模式数据源,**不要再当运行副本用**;其中的 `wb-history.json` 曾用于恢复 8/3 历史(已并入 credits.db)。
+历史遗留旧副本(`D:\workbuddy\2026-08-04-*`)已不存在。
 
 ## 3. 版本戳机制(改了前端必须做)
 
-- `wb-gui.html` 里 **7 个** `<script src="./wb-gui.{state,core,render,chart,ops,sync,actions}.js?v=vX.Y.Z">` 与 `wb-gui.render.js` footer 的 `vX.Y.Z · 数据来自…` 必须**同步更新**,否则浏览器缓存旧 JS
-- 用户判断版本方法:页面底部 footer 的版本号
-- 前端文件清单改动(增删 script)还要同步:后端静态路由(`wb-gui.mjs`)+ `test/server-routes.test.mjs` + `test/helpers/vm-env.mjs`(见 AGENTS.md 关键坑 10)
+- `wb-gui.html` 里 **7 个** `<script src="./wb-gui.{state,core,render,chart,ops,sync,actions}.js?v=vX.Y.Z">` 与 `wb-gui.render.js` footer 的版本号必须**同步更新**,否则浏览器缓存旧 JS
+- 前端文件清单改动(增删 script)还要同步:后端静态路由(`wb-gui.mjs`)+ `test/server-routes.test.mjs` + `test/helpers/vm-env.mjs`
 
 ## 4. 常用命令
 
@@ -49,31 +48,35 @@ node --check wb-gui.mjs && node --check wb-gui.chart.js   # 语法校验
 
 ## 6. 已知问题 / 待办
 
-1. **容器一键起未在本机验收**:Dockerfile/docker-compose 已产出且 YAML 校验过,但本沙箱无 docker,需在有 Docker 的机器跑 `docker compose up -d`(任务 #9 待验收)。注:Docker/tools-center 平台部署 = tools-center 平台容器托管,工具目录即数据目录,**删工具=删数据**,重装后需重新配 WebDAV 并「云同步下载」
-2. **历史快照长期增长**:SQLite readings 表持续累积;数据量大时可加"每天最多 N 条 + 只保留 90 天"(暂缓项)
-3. **edge-daemon**(8129):Windows 专用(读本机 Edge 登录态);Docker/NAS 上跑不了是**预期**,「添加当前账号」在 NAS 不可用,手动维护 wb-accounts.json 或从 WebDAV 下载
-4. **v1.4.2 ~ v1.4.24 大版本未单独提交**(合并为一个提交推送到 GitHub,见 git log);v1.4.25+ 已逐版提交
+1. **NAS tools-center 运行副本代码未更新**:`Z:\Configs\tools-center\tools\wb-credits\` 还是 v1.4.44(旧剥离策略),需在 tools-center 平台重传 v1.4.49 工具包;更新前**勿手动点旧版「上传」**(会把云端备份又覆盖成剥离版)
+2. **容器一键起未在本机验收**:Dockerfile/docker-compose 已产出且 YAML 校验过,但本沙箱无 docker,需在有 Docker 的机器跑 `docker compose up -d`。注:Docker/tools-center 平台部署 = 工具目录即数据目录,**删工具=删数据**,重装后需重新配 WebDAV 并「一键同步」
+3. **历史快照长期增长**:readings 由 `gcDaySummaries` 固化(T-2 及更早浓缩为 day_summary),已缓解;仍可观察
+4. **edge-daemon**(8129):Windows 专用;Docker/NAS 上「添加当前账号」不可用,靠 WebDAV 同步账号
+5. **双设备同时点同步 → 后写覆盖**(理论竞态,单用户不触发);同步按钮无进行中反馈(🟡 UX)
 
 ## 7. 近期修复历史(浓缩,v1.4.x)
 
-- v1.4.30 左上角时间固定中国时区(+8)(fetchedAt 用 toLocaleString 依赖进程时区,容器 UTC 错位)
-- v1.4.29 **派生自然日固定中国时区(+8)**:容器 UTC 导致 8/3→8/2、今日已用基线错(800+);Dockerfile/compose 加 TZ=Asia/Shanghai
-- v1.4.28 WebDAV 网络超时自动重试 + 大文件(3.6MB)超时放宽 60s(原 15s 临界导致穿透抖动必超时)
-- v1.4.27 图例最右加「合计」标签(点击隐藏/显示合计柱);合计柱顶部去掉文字只留数字
-- v1.4.26 WebDAV 上传 423(资源锁)退避重试 3 次
-- v1.4.25 每日窗口改"数据对齐":跨度 clamp(数据天数,3,7),数据少从最早数据日向右延伸(2 天→8/3 8/4 8/5),多取最近 7 天;修 UTC 日期键错位(改用本地自然日)
-- v1.4.24/23 hover 浮层三段式(名字/数量/占当前百分比)、去时间
-- v1.4.22 趋势图表拆出 `chart.js`;合计柱标签;浮层加百分比
-- v1.4.21 柱状图每组右侧隔一个柱宽加「当日合计」柱(Y 轴纳入组合计)
-- v1.4.20 每组最高柱标数字
-- v1.4.19 卡片改名/删除按钮真正与「今日消耗」同行靠右(.arow flex 修复)
-- v1.4.17 每日窗口以今天为中心对称(3~10 天)
-- v1.4.15 **告警/耗尽预测全量下线**(删 alerts.js);卡片按钮移到今日消耗行
-- v1.4.13 **凭证过期全量下线** + 近2天过期列 + 使用排序
-- v1.4.12 今日已用环比昨日(自然日)
-- v1.4.8 bug 筛查:拆分后漏静态路由(严重)+ 派生缓存键 + 只读采样误弹密码
+- v1.4.49 **场景走查修复:同步/测试前端超时放宽**(sync 90s/test 30s,原 15s 慢网络误报)
+- v1.4.48 **紧急修复:清空账号池不写墓碑 + 同步清空保护**(防云端被清空事故)
+- v1.4.47 **备份剥离策略修复:每天保留首末快照 giftPackages**(consumeByPack 依赖,防同步后口径降级虚高)
+- v1.4.46 **WebDAV 一键同步**(先拉后传 + smart 合并 + 墓碑删除传播 + 自动同步;上传/下载按钮合并为「同步」)
+- v1.4.45 **前端 XSS 转义收口**(acctName/错误信息 5 处注入点 + escAttr 补 > ')
+- v1.4.44 **二轮审计安全加固**:daemon token 鉴权 / CORS 同源 / admin 写面 / busy_timeout
+- v1.4.43 **消耗口径收口包级(consumeByPack)**:今日已用 ≤ 累计;consumed = Σ dailyUsed;WebDAV 自动上传
+- v1.4.42 平台版不自动弹浏览器 + tool.json 声明 version/group
+- v1.4.41 趋势图点击柱子独显 / 点击空白恢复
+- v1.4.40 「打开网页」按钮(登录收录 cookie 一键直达)
+- v1.4.39 全账号查询恢复(400 Cookie Too Large)+ 串号防护 + 签到基线修正 + SEA exe
+- v1.4.38 前端结构优化(折叠归位 core、图表 hover 归位 chart)
+- v1.4.33 每日签到检测(元数据推断 + day_summary.signedIn)
+- v1.4.32 历史固化(day_summary)+ 备份瘦身(剥离历史 giftPackages——**注意:与包级口径冲突,已被 v1.4.47 修正**)
+- v1.4.31 消耗口径改「已用正增量累加(consumeByPos)」
+- v1.4.29/30 派生自然日/时间显示固定中国时区(+8)
+- v1.4.28 WebDAV 网络超时自动重试 + 大文件超时放宽 60s
+- v1.4.25 每日窗口数据对齐(3~7 天)
+- v1.4.22 趋势图表拆出 `chart.js`;合计柱
+- v1.4.15 **告警/耗尽预测全量下线**
+- v1.4.13 **凭证过期全量下线** + 近2天过期列
 - v1.4.7 前端拆 6 文件 + test/ 骨架
-- v1.4.6 修复删除密码窗被挡 + 下载数据后今日消耗变 0(合并导入)
-- v1.4.5 管理员逻辑简化(设置/清除/会话验证三态)
 - v1.4.3 采样入口统一 `sampleAll`
-- v1.4.2 清除密码必须重输 + 阻止浏览器自动填充
+

@@ -26,10 +26,13 @@
 9. **统一采样入口**:`src/compute/sample.js` 的 `sampleAll()` 是唯一"采集→落盘"路径,手动刷新(`/api/all`)与调度器(`scheduler`)都走它;新增写入 readings 的路径必须复用
 10. **前端文件清单改动(增删 script)必须同步 4 处**:`wb-gui.html` 引用 / `wb-gui.mjs` 静态路由 / `test/server-routes.test.mjs` 复制正则+断言 / `test/helpers/vm-env.mjs` FRONTEND_FILES——漏一处 `npm test` 就挂
 11. **消耗口径 = 已用正增量累加**(`consumeByPos`):官方赠送包数据调整(包消失/重置/新增)会让「首条剩余−当前剩余」漂移成 0,必须按时间扫描快照累计「已用」正增量,包重置时 prev 同步回退点重算(v1.4.31);`consumed` 死字段已删
-12. **历史固化(v1.4.32)**:`day_summary` 表(uin+day PK)+ `gcDaySummaries()` 幂等固化 T-2 及更早,保留昨天+今天+最新快照;derive 双源读取(快照日期优先+摘要补齐旧日);备份镜像 `{snapshots, summaries}` 且**剥离历史组 giftPackages 仅最新组保留**(镜像 3.8MB→294KB,上传 7.3s→0.4s);wb-last-data.json 非账本已移出 SYNC_FILES
+12. **历史固化(v1.4.32)**:`day_summary` 表(uin+day PK)+ `gcDaySummaries()` 幂等固化 T-2 及更早,保留昨天+今天+最新快照;derive 双源读取(快照日期优先+摘要补齐旧日);备份镜像 `{snapshots, summaries}`;**剥离策略(v1.4.47 修)**:每天保留首末快照组 giftPackages(consumeByPack 只读首末)、中间组剥离(勿改回"仅最新组保留"——会致恢复后包级口径降级、今日已用虚高);wb-last-data.json 非账本已移出 SYNC_FILES
 13. **签到检测(v1.4.33)**:官方签到接口被 APISIX 401 拦,用元数据推断——`detectSignIn()` = 最新快照存在「今日首条没有 + cycleEndTime 对日=今天+1自然月」的新增包即为已签到;day_summary.signedIn 固化历史签到,卡片 ✅/⏰ 徽标
 14. **前端结构约定(v1.4.38 归位)**:折叠(toggleFold/applyFold)归 core.js(UI 基建),图表 hover 委托(initChartTip)归 chart.js,**副作用一律收敛在 actions.js 启动段**(其余文件只声明函数);改前端后必须 bump wb-gui.html 全部 ?v= 版本戳(一次 bump 到新号,别复用旧号——浏览器强缓存会拦"同名 URL")
 15. **图表布局要点(v1.4.34~37)**:日期标签统一 text-anchor="middle" 且 x 夹取防越界(首尾 start/end 锚点会偏 16px);合计柱紧贴账号柱、柱子组整体居中于组;矮柱子靠透明整列触发区(fill="transparent" .cpt)保证 hover 命中
+16. **一键同步(v1.4.46)**:`POST /api/webdav/sync` = 先拉(账号 smart 合并 `mergeAccountsSmart` + 历史合并导入)→ 再传(导出全量覆盖);404=首次只传;拉取失败(非 404)中止不上传;**清空保护(v1.4.48)**:远端有账号但合并后本地为空 → 拒绝上传(防云端被清空)
+17. **墓碑(v1.4.46,删除跨设备)**:`tombstones(uin, deletedAt)` 表;/api/del 写墓碑随备份传播(远端账号 updatedAt≤deletedAt 不复活、新数据>deletedAt 复活、本地≤deletedAt 删除传播);**清空账号池(/api/clear-data)不写墓碑**(v1.4.48,本地重置不传播);TTL 30 天清理
+18. **同步/测试前端超时(v1.4.49)**:syncAct 按动作放宽 timeout(sync=90s/test=30s)——后端下载/上传各 60s,默认 15s 会误报超时;新增长耗时接口必须显式传 timeout
 
 ## 约定
 
