@@ -67,6 +67,12 @@ node wb-credits.mjs --account 1 --json           # 查询单个账号(原始 JSO
 - 备份/迁移用 GUI「☁️ 云同步」(上传/下载,存到你的 WebDAV)
 - 查询不依赖浏览器,仅需网络直连 `www.workbuddy.cn`
 
+## 平台托管说明（tool.json 能力声明）
+
+- 本工具**未声明 `capabilities`**(无「💾 存储」等能力徽标),数据直接写在工具目录,通过 **`dataFiles`** 声明保护:平台按 glob(`*.db`、`*.db-wal`、`*.db-shm`、`wb-*.json`、`data/**`)识别这些为"数据",**升级工具时保留不被覆盖**
+- `dataFiles` vs `capabilities:["storage"]` 两种数据保护方案二选一即可:前者数据留工具目录、按 glob 识别保留;后者数据放平台数据区(`CAP_STORAGE_DIR`)、平台兜底备份。本工具选 `dataFiles`(数据文件多、结构自定义,且 WebDAV 备份已自管)
+- 平台顶部能力筛选 Tab 仅当能力种类 ≥2 时显示(tools-center v0.12.5 起单能力自动隐藏),与分类(本工具 `group:"监控"`)互不影响
+
 ## 开发与测试
 
 ```bash
