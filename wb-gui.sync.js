@@ -36,6 +36,9 @@ async function saveSyncCfg() {
 async function syncAct(action, silent) {
   if (syncBusy) return;
   syncBusy = true;
+  // v1.4.49:同步链路=下载(60s)+合并+导出+上传(60s),默认 15s 会在慢速穿透下误报超时
+  // (后端 handler 不随前端断开取消,用户会看到"失败"但实际已同步)→ 按动作放宽超时
+  const timeout = action === "sync" ? 90000 : action === "test" ? 30000 : undefined;
   setSyncStatus(
     action === "test" ? "测试中…" :
     action === "sync" ? "同步中(拉取合并+上传)…" :
@@ -45,7 +48,7 @@ async function syncAct(action, silent) {
     // 一键同步为无损合并(双向取最新+墓碑删除传播),无需删除确认;download 保留旧接口兼容
     if (action === "download" && !await cfm("下载会覆盖本地的账号池/历史数据,确定继续吗?")) { setSyncStatus("已取消"); return; }
     if (action === "clear" && !await cfm("确认清空本地保存的 WebDAV 登录配置?")) { setSyncStatus("已取消"); return; }
-    const j = await api(__BASE__ + "/api/webdav/" + action, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    const j = await api(__BASE__ + "/api/webdav/" + action, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}), ...(timeout ? { timeout } : {}) });
     if (action === "test" || action === "sync") { showSyncQuick(); } // 连通/同步成功 → 操作条出现 🔄 快捷同步
     if (action === "clear") {
       const q = $("syncQuick"); if (q) q.hidden = true; closeSync();
