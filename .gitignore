@@ -9,6 +9,8 @@ wb-history.json
 wb-last-data.json
 # 管理员密码(明文,严禁上传)
 wb-admin.json
+# edge-daemon 随机 token(启动生成,鉴权用,勿提交)
+edge-daemon.token
 # SQLite 唯一真相源(含账号凭证 + 历史快照)
 credits.db
 credits.db-wal
