@@ -19,7 +19,7 @@ let dashMode = "day";
 let autoTimer = null;
 let autoOn = localStorage.getItem("wb_auto_on") !== "0";
 let autoMin = parseInt(localStorage.getItem("wb_auto_min") || "5", 10) || 5;
-let autoUpTimer = null;                                 // 自动上传定时器(WebDAV,默认 12 小时一次)
+let autoUpTimer = null;                                 // 自动同步定时器(WebDAV,默认 12 小时一次)
 let autoUpOn = localStorage.getItem("wb_auto_up_on") === "1";
 let autoUpH = parseInt(localStorage.getItem("wb_auto_up_h") || "12", 10) || 12;
 let lastSfp = null;
@@ -31,7 +31,7 @@ let syncBusy = false;
 let adminEnabled = false; // 管理员密码是否已启用(据 /api/admin/status 启动时赋值;启用后写操作需密码)
 
 const LS_ON = "wb_auto_on", LS_MIN = "wb_auto_min";
-const LS_UP_ON = "wb_auto_up_on", LS_UP_H = "wb_auto_up_h"; // 自动上传(WebDAV):开关 + 间隔(小时)
+const LS_UP_ON = "wb_auto_up_on", LS_UP_H = "wb_auto_up_h"; // 自动同步(WebDAV):开关 + 间隔(小时)
 const LS_DAEMON_HIDE = "wb_daemon_hide"; // 用户手动隐藏过 daemon 提示后不再打扰
 const LS_FOLD = "wb_fold"; // 面板折叠状态 {trend:bool, overview:bool}
 

@@ -19,8 +19,8 @@ async function openSync() {
     $("syncUser").value = j.user || "";
     $("syncPass").value = "";
     $("syncPass").placeholder = j.has ? "留空则保留原密码" : "请输入 WebDAV 密码";
-    if (j.has) { setSyncStatus("已保存配置,可直接上传/下载(如需改配置点「保存配置」)"); showSyncQuick(); }
-    else setSyncStatus("尚未配置,填写后点「保存配置」");
+    if (j.has) { setSyncStatus("已保存配置,点「🔄 一键同步」拉取合并并上传(如需改配置点「保存并测试」)"); showSyncQuick(); }
+    else setSyncStatus("尚未配置,填写后点「保存并测试」");
   } catch (e) { setSyncStatus("❌ " + e.message); }
 }
 function closeSync() { closeMask("syncMask"); }
@@ -36,21 +36,26 @@ async function saveSyncCfg() {
 async function syncAct(action, silent) {
   if (syncBusy) return;
   syncBusy = true;
-  setSyncStatus(action === "test" ? "测试中…" : action === "upload" ? "上传中…" : action === "clear" ? "清空中…" : "下载中…");
+  setSyncStatus(
+    action === "test" ? "测试中…" :
+    action === "sync" ? "同步中(拉取合并+上传)…" :
+    action === "clear" ? "清空中…" : "下载中…"
+  );
   try {
+    // 一键同步为无损合并(双向取最新+墓碑删除传播),无需删除确认;download 保留旧接口兼容
     if (action === "download" && !await cfm("下载会覆盖本地的账号池/历史数据,确定继续吗?")) { setSyncStatus("已取消"); return; }
     if (action === "clear" && !await cfm("确认清空本地保存的 WebDAV 登录配置?")) { setSyncStatus("已取消"); return; }
     const j = await api(__BASE__ + "/api/webdav/" + action, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
-    if (action === "test") { showSyncQuick(); } // 登录成功 → 操作条云同步右侧出现上传/下载
+    if (action === "test" || action === "sync") { showSyncQuick(); } // 连通/同步成功 → 操作条出现 🔄 快捷同步
     if (action === "clear") {
       const q = $("syncQuick"); if (q) q.hidden = true; closeSync();
-      autoUpOn = false; localStorage.setItem(LS_UP_ON, "0"); applyAutoUp(); // 配置已清空,联动关闭自动上传
+      autoUpOn = false; localStorage.setItem(LS_UP_ON, "0"); applyAutoUp(); // 配置已清空,联动关闭自动同步
     }
     if (!silent) toast("✅ " + j.message);
-    setSyncStatus("✅ " + j.message + (action === "download" && j.restored && j.restored.length ? ",请点「刷新全部」查看" : ""));
-    if (action === "download" && j.restored && j.restored.length) refreshAll(false);
+    setSyncStatus("✅ " + j.message + (action === "sync" && j.first ? "(首次同步,远端已有备份)" : ""));
+    if (action === "sync" || (action === "download" && j.restored && j.restored.length)) refreshAll(false);
   } catch (e) {
-    toast("❌ " + e.message); // 失败总是提示(silent 只静默成功;自动上传失败必须可见)
+    toast("❌ " + e.message); // 失败总是提示(silent 只静默成功;自动同步失败必须可见)
     setSyncStatus("❌ " + e.message);
   } finally { syncBusy = false; }
 }
@@ -63,11 +68,11 @@ async function checkWebdavQuick() {
   } catch {}
 }
 
-// ---- 自动上传(WebDAV,登录后可用;v1.4.43) ----
-// 与「页面自动刷新」同构:前端定时触发上传(静默成功、失败必报,复用 syncAct("upload") 单一路径)。
-// 间隔单位=小时(默认 12),localStorage 持久化,exe/GUI 常驻时到点自动备份。
-async function autoUpload() {
-  if (syncBusy) return; // 与手动上传互斥
+// ---- 自动同步(WebDAV,登录后可用;v1.4.46 由"自动上传"升级) ----
+// 与「页面自动刷新」同构:前端定时触发同步(先拉合并进本地,再上传全量;静默成功、失败必报,
+// 复用 syncAct("sync") 单一路径)。间隔单位=小时(默认 12),localStorage 持久化,exe/GUI 常驻时到点自动备份。
+async function autoSync() {
+  if (syncBusy) return; // 与手动同步互斥
   // 配置被清空后自动关闭开关,避免周期性失败骚扰
   try {
     const c = await api(__BASE__ + "/api/webdav/config");
@@ -75,23 +80,23 @@ async function autoUpload() {
       autoUpOn = false;
       localStorage.setItem(LS_UP_ON, "0");
       applyAutoUp();
-      toast("⚠️ 未配置 WebDAV,自动上传已自动关闭");
+      toast("⚠️ 未配置 WebDAV,自动同步已自动关闭");
       return;
     }
   } catch { return; }
-  await syncAct("upload", true);
+  await syncAct("sync", true);
 }
 function applyAutoUp() {
   clearInterval(autoUpTimer); autoUpTimer = null;
   const c = $("autoUpOnChk"); if (c) c.checked = autoUpOn;
   const inp = $("autoUpH"); if (inp) inp.value = autoUpH;
   if (autoUpOn && autoUpH > 0) {
-    autoUpTimer = setInterval(() => autoUpload(), autoUpH * 3600 * 1000);
+    autoUpTimer = setInterval(() => autoSync(), autoUpH * 3600 * 1000);
   }
 }
 function toggleAutoUp() {
   autoUpOn = !autoUpOn;
   localStorage.setItem(LS_UP_ON, autoUpOn ? "1" : "0");
   applyAutoUp();
-  toast(autoUpOn ? `自动上传:每 ${autoUpH} 小时` : "自动上传已关闭");
+  toast(autoUpOn ? `自动同步:每 ${autoUpH} 小时` : "自动同步已关闭");
 }

@@ -287,10 +287,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <div class="ops">
     <button class="btn btn-g" onclick="openSync()"><span class="em">☁️</span><span class="txt">云同步</span></button>
     <span id="syncQuick" hidden>
-      <button class="btn btn-g" title="测试连接" onclick="syncAct('test')"><span class="em">🔌</span><span class="txt">测试连接</span></button>
-      <button class="btn btn-g" title="上传数据" onclick="syncAct('upload')"><span class="em">⬆️</span><span class="txt">上传数据</span></button>
-      <button class="btn btn-g" title="下载数据" onclick="syncAct('download')"><span class="em">⬇️</span><span class="txt">下载数据</span></button>
-      <span class="auto auto-box">⏫ <span class="lbl">自动上传</span> <input type="number" id="autoUpH" min="1" max="168" value="12" title="每多少小时自动上传一次到 WebDAV"> <span class="lbl">小时</span> <label class="switch" title="自动上传开关"><input type="checkbox" id="autoUpOnChk" onchange="toggleAutoUp()"><span class="sl"></span></label></span>
+      <button class="btn btn-g" title="一键同步:拉取远端最新合并进本地,再上传合并后的全量" onclick="syncAct('sync')"><span class="em">🔄</span><span class="txt">同步</span></button>
+      <span class="auto auto-box">⏫ <span class="lbl">自动同步</span> <input type="number" id="autoUpH" min="1" max="168" value="12" title="每多少小时自动同步一次到 WebDAV"> <span class="lbl">小时</span> <label class="switch" title="自动同步开关"><input type="checkbox" id="autoUpOnChk" onchange="toggleAutoUp()"><span class="sl"></span></label></span>
     </span>
   </div>
 
@@ -353,10 +351,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <div><label class="tip" style="display:block;margin-bottom:6px">密码(仅存本机)</label><input class="finput" id="syncPass" type="password" placeholder="密码" autocomplete="off"></div>
       </div>
       <div class="factions" style="justify-content:flex-start;flex-wrap:wrap;gap:8px;margin-top:14px">
-        <button class="btn btn-g" onclick="saveSyncCfg()">💾 保存配置</button>
-        <button class="btn btn-g" onclick="syncAct('test')">🔌 测试连接</button>
-        <button class="btn btn-g" onclick="syncAct('upload')">⬆️ 上传数据</button>
-        <button class="btn btn-g" onclick="syncAct('download')">⬇️ 下载数据</button>
+        <button class="btn btn-p" onclick="saveSyncCfg()">💾 保存并测试</button>
+        <button class="btn btn-p" onclick="syncAct('sync')">🔄 一键同步</button>
         <button class="btn btn-d" style="min-height:38px;padding:9px 15px;margin-left:auto" onclick="syncAct('clear')">🗑 清空配置</button>
       </div>
       <div class="tip" id="syncStatus" style="margin-top:12px"></div>
@@ -406,12 +402,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 <div class="toast" id="toast"></div>
 <script>window.__BASE__ = (location.pathname.match(/^\/tool\/[^/]+/) || [""])[0];</script>
-<script src="./wb-gui.state.js?v=v1.4.45"></script>
-<script src="./wb-gui.core.js?v=v1.4.45"></script>
-<script src="./wb-gui.render.js?v=v1.4.45"></script>
-<script src="./wb-gui.chart.js?v=v1.4.45"></script>
-<script src="./wb-gui.ops.js?v=v1.4.45"></script>
-<script src="./wb-gui.sync.js?v=v1.4.45"></script>
-<script src="./wb-gui.actions.js?v=v1.4.45"></script>
+<script src="./wb-gui.state.js?v=v1.4.46"></script>
+<script src="./wb-gui.core.js?v=v1.4.46"></script>
+<script src="./wb-gui.render.js?v=v1.4.46"></script>
+<script src="./wb-gui.chart.js?v=v1.4.46"></script>
+<script src="./wb-gui.ops.js?v=v1.4.46"></script>
+<script src="./wb-gui.sync.js?v=v1.4.46"></script>
+<script src="./wb-gui.actions.js?v=v1.4.46"></script>
 </body>
 </html>

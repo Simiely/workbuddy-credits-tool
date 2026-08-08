@@ -153,7 +153,7 @@ document.addEventListener("click", (e) => {
   }
 });
 bindIntervalInput("autoMin", () => autoMin, (v) => { autoMin = v; }, 1440, LS_MIN, applyAuto, (v) => `间隔已设为 ${v} 分钟`);
-bindIntervalInput("autoUpH", () => autoUpH, (v) => { autoUpH = v; }, 168, LS_UP_H, applyAutoUp, (v) => `自动上传间隔已设为 ${v} 小时`);
+bindIntervalInput("autoUpH", () => autoUpH, (v) => { autoUpH = v; }, 168, LS_UP_H, applyAutoUp, (v) => `自动同步间隔已设为 ${v} 小时`);
 $("renameInput") && $("renameInput").addEventListener("keydown", (e) => { if (e.key === "Enter") confirmSmall(); if (e.key === "Escape") closeSmall(); });
 $("syncPass") && $("syncPass").addEventListener("keydown", (e) => { if (e.key === "Enter") saveSyncCfg(); });
 $("adminPass") && $("adminPass").addEventListener("keydown", (e) => { if (e.key === "Enter") confirmAdmin(); if (e.key === "Escape") closeAdmin(); });

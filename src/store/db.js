@@ -62,6 +62,13 @@ export function initSchema(db) {
       fixedAt TEXT,
       PRIMARY KEY (uin, day)
     );
+    -- 墓碑表(v1.4.46 同步删除传播):记录"哪个账号在何时被删除"。
+    -- 同步合并时:远端账号 updatedAt <= deletedAt → 保持删除(不复活);远端新数据 > deletedAt → 复活。
+    -- 只增不删(30 天后由 purgeOldTombstones 清理),不参与账号池查询。
+    CREATE TABLE IF NOT EXISTS tombstones (
+      uin TEXT PRIMARY KEY,
+      deletedAt TEXT NOT NULL
+    );
   `);
   ensureColumns(db);
 }

@@ -42,6 +42,10 @@ import {
   ACCOUNTS_FILE,
   exportLegacy as exportAccounts,
   importLegacy as importAccounts,
+  mergeAccountsSmart,
+  tombstoneUins,
+  loadTombstones,
+  purgeOldTombstones,
 } from "./src/compute/store.js";
 import { fetchAllAccounts, fetchOneAccount } from "./src/compute/query.js";
 import { sampleAll } from "./src/compute/sample.js";
@@ -467,6 +471,7 @@ const routes = [
       const t = findAccount(accounts, key);
       if (!t) return ctx.json(404, { ok: false, error: "账号不存在" });
       t.displayName = String(name || "").trim();
+      t.updatedAt = new Date().toISOString(); // 改名计入更新时间,smart 同步合并时才不会被远端旧名覆盖(v1.4.46)
       saveAccounts(accounts);
       ctx.json(200, { ok: true, account: brief(t) });
     },
@@ -480,6 +485,7 @@ const routes = [
       const accounts = loadAccounts();
       const t = findAccount(accounts, key);
       if (!t) return ctx.json(404, { ok: false, error: "账号不存在" });
+      tombstoneUins([t.uin]); // 删除写墓碑:同步时删除可跨设备传播,防旧备份复活(v1.4.46)
       accounts.splice(accounts.indexOf(t), 1);
       saveAccounts(accounts);
       ctx.json(200, { ok: true });
@@ -515,6 +521,7 @@ const routes = [
       // 删除失败不应让整个清空 500(此前导致"半清空+报失败",数据已删但提示失败)
       const safeRm = (p) => { try { fs.rmSync(p, { force: true }); } catch {} };
       if (accounts) {
+        tombstoneUins(loadAccounts().map((a) => a.uin)); // 清空账号池=全部删除,写墓碑跨设备传播(v1.4.46)
         clearAccounts();
         safeRm(ACCOUNTS_FILE); // 同步清理遗留镜像
         cleared.push("账号池");
@@ -574,6 +581,75 @@ const routes = [
       if (!uploaded.length)
         return ctx.json(200, { ok: true, uploaded: [], message: "没有可上传的数据文件(先刷新一次生成数据)" });
       ctx.json(200, { ok: true, uploaded, message: `已上传 ${uploaded.length} 个文件到 ${BACKUP_DIR}/` });
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/webdav/sync",
+    admin: true,
+    // 一键同步(v1.4.46,参考 edge-multi-account-cookie「先拉后传」方案):
+    //   ① 拉:下载远端 wb-accounts.json + wb-history.json(404=首次,跳过拉取;网络失败=中止,不上传)
+    //   ② 合:账号走 smart 合并(双向取最新 + 墓碑删除传播),历史走合并导入(append-only 无墓碑)
+    //   ③ 传:导出本地全量(账号+墓碑+历史)覆盖上传,远端固定保留最新 1 份
+    handler: async (ctx) => {
+      const c = syncCfg();
+      // ---- 拉取阶段:全部下载到内存,任一失败即中止(防止部分合并 + 旧数据覆盖远端) ----
+      let accJson = null, histJson = null;
+      try {
+        accJson = await downloadFile(c.url, c.user, c.pass, BACKUP_DIR, "wb-accounts.json");
+        histJson = await downloadFile(c.url, c.user, c.pass, BACKUP_DIR, "wb-history.json");
+      } catch (e) {
+        throw new Error("同步中止: 拉取远端失败,未上传本地数据(" + e.message + ")");
+      }
+      // ---- 合并阶段 ----
+      const pullStats = { added: 0, updated: 0, skipped: 0, tombstoned: 0, resurrected: 0 };
+      if (accJson !== null) {
+        let j = null;
+        try { j = JSON.parse(accJson); } catch {}
+        const accountsIn = j && Array.isArray(j.accounts) ? j.accounts : [];
+        // 远端墓碑并入本地墓碑(取 deletedAt 更新者)——删除标记随备份传播的关键
+        if (j && Array.isArray(j.tombstones)) {
+          const localTombs = loadTombstones();
+          const newer = [];
+          for (const t of j.tombstones) {
+            if (!t || !t.uin) continue;
+            const key = String(t.uin);
+            if (!localTombs.has(key) || (t.deletedAt || "") > localTombs.get(key)) newer.push(key);
+          }
+          if (newer.length) tombstoneUins(newer);
+        }
+        purgeOldTombstones(); // 顺带清理过期墓碑
+        const accounts = loadAccounts();
+        const st = mergeAccountsSmart(accounts, accountsIn, loadTombstones());
+        saveAccounts(accounts);
+        Object.assign(pullStats, st);
+      }
+      if (histJson !== null) {
+        fs.writeFileSync(path.join(TOOLS_DIR, "wb-history.json"), histJson, "utf8");
+        importHistory(); // 合并导入(原始 ts + 同分钟去重 + 摘要恢复),不破坏本地
+      }
+      // ---- 上传阶段:导出本地全量覆盖远端 ----
+      exportAccounts(); // 含 tombstones(删除标记传播)
+      exportHistory();
+      const uploaded = [];
+      for (const f of SYNC_FILES) {
+        const p = path.join(TOOLS_DIR, f);
+        if (!fs.existsSync(p)) continue;
+        await uploadFile(c.url, c.user, c.pass, BACKUP_DIR, f, fs.readFileSync(p));
+        uploaded.push(f);
+      }
+      broadcastRefresh({ source: "webdav-sync" });
+      const isFirst = accJson === null && histJson === null;
+      const detail = isFirst
+        ? "首次同步"
+        : `拉取合并(新增 ${pullStats.added} · 更新 ${pullStats.updated} · 删除 ${pullStats.tombstoned} · 复活 ${pullStats.resurrected})`;
+      ctx.json(200, {
+        ok: true,
+        first: isFirst,
+        pulled: isFirst ? null : pullStats,
+        pushed: uploaded,
+        message: `✅ 同步完成:${detail},已上传 ${uploaded.length} 个文件`,
+      });
     },
   },
   {

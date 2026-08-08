@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## v1.4.46 (2026-08-08) · WebDAV 一键同步(上传/下载合并) + 删除墓碑传播
+
+### 核心:上传+下载 → 一键同步(参考 edge-multi-account-cookie「先拉后传」方案)
+- **新接口 `POST /api/webdav/sync`**：① 拉取远端 wb-accounts.json + wb-history.json(404=首次,跳过拉取) → ② 账号 **smart 合并**进本地(双向取最新)、历史**合并导入**(原有逻辑) → ③ 导出本地全量覆盖上传(远端固定保留最新 1 份)
+- **拉取失败(非 404)即中止,不上传**——防本地旧数据覆盖远端新数据(与参考项目一致)
+- 前端:「⬆️ 上传」「⬇️ 下载」两个动作/按钮**全部合并为「🔄 同步」**——操作条快捷 `[🔌][⬆️][⬇️]` → `[🔄]`,弹窗「保存配置+测试连接」→「💾 保存并测试」、「上传+下载」→「🔄 一键同步」;同步为无损合并,无需删除确认弹窗
+- 旧 `/api/webdav/upload|download` 接口保留(向后兼容),前端不再调用
+
+### 删除墓碑传播(v1.4.46,解决"删除不跨设备")
+- **根因**:普通合并只能"双向取最新",无法表达"某个账号被删了"——远端没有它,合并时被当成"本地独有保留",旧备份会把已删账号复活
+- **修复**:新表 `tombstones(uin, deletedAt)`;删除账号(/api/del)与清空账号池(/api/clear-data)写墓碑;`mergeAccountsSmart()` 合并时墓碑三态判定——
+  - 远端账号 updatedAt ≤ deletedAt → 保持删除(不复活)
+  - 远端新数据 > deletedAt → 复活导入
+  - 本地账号 updatedAt ≤ deletedAt → 删除传播到本地;> deletedAt → 删除不生效(删后又更新过)
+- 墓碑随 wb-accounts.json 备份传播(`exportLegacy` 导出带 tombstones,旧格式兼容);TTL 30 天 `purgeOldTombstones` 自动清理
+- rename 补 `updatedAt`(防 smart 合并被远端旧显示名覆盖)
+
+### 自动上传 → 自动同步
+- 定时任务由"只上传"升级为"先拉合并再上传"(同步无损);文案「自动上传」→「自动同步」;守卫保留(WebDAV 配置被清空自动关开关)
+
+### 验证
+- 新增 `test/webdav-sync.test.mjs`(17 断言:smart 四态/墓碑三态/导出往返/TTL)+ `test/webdav-sync-e2e.test.mjs`(14 断言:mock WebDAV 端到端——首次同步/双向合并/墓碑跨设备不复活);auto-up 适配 autoSync
+- 全量 **11 文件 190+ 断言全过**;版本戳 v1.4.46
+
+
 ## v1.4.45 (2026-08-08) · 前端 XSS 转义收口 + 冗余清理
 
 ### 安全（前端 innerHTML 注入收口）

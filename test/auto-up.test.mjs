@@ -1,4 +1,4 @@
-// test/auto-up.test.mjs — 自动上传控件(WebDAV)逻辑回归(v1.4.43)
+// test/auto-up.test.mjs — 自动同步控件(WebDAV)逻辑回归(v1.4.46,由"自动上传"升级)
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createFrontendEnv, loadFrontend } from "./helpers/vm-env.mjs";
@@ -26,7 +26,7 @@ run(`window.__iv = [];
   const _sI = setInterval;
   setInterval = (fn, ms) => { window.__iv.push(ms); return _sI(fn, ms); };
   autoUpOn = false; applyAutoUp(); toggleAutoUp();`);
-assert("开启后 toast = 自动上传:每 12 小时", run('$("toast").textContent').includes("每 12 小时"), "got " + run('$("toast").textContent'));
+assert("开启后 toast = 自动同步:每 12 小时", run('$("toast").textContent').includes("每 12 小时"), "got " + run('$("toast").textContent'));
 assert("注册了定时器", run("window.__iv.length") >= 1, "got " + run("window.__iv.length"));
 assert("定时周期 = 12h(43200000ms)", run("window.__iv[window.__iv.length-1]") === 43200000, "got " + run("window.__iv[window.__iv.length-1]"));
 assert("滑块变 勾选(开)", run('$("autoUpOnChk").checked') === true, "got " + run('$("autoUpOnChk").checked'));
@@ -43,10 +43,10 @@ assert("关闭后 autoUpTimer = null", run("autoUpTimer") === null, "got " + run
 // 6. autoUpH 输入 change 事件绑定存在(启动段已绑)
 assert("autoUpH change 监听已绑定", typeof run('$("autoUpH")._listeners && $("autoUpH")._listeners.change') === "number" || true, "事件绑定检查跳过(视 stub)");
 
-// 7. 守卫(异步):未配置 WebDAV 时,自动上传到点自动关闭开关并提示(避免周期失败骚扰)
+// 7. 守卫(异步):未配置 WebDAV 时,自动同步到点自动关闭开关并提示(避免周期失败骚扰)
 run(`window.__ls = {};
   localStorage.setItem = (k, v) => { window.__ls[k] = v; };
-  autoUpOn = true; autoUpload();`);
+  autoUpOn = true; autoSync();`);
 setTimeout(() => {
   assert("守卫:未配置时 autoUpOn 自动关闭", run("autoUpOn") === false, "got " + run("autoUpOn"));
   assert("守卫:localStorage 持久化关闭", run("window.__ls['wb_auto_up_on']") === "0", "got " + run("window.__ls['wb_auto_up_on']"));
