@@ -94,6 +94,51 @@ try {
     const n = store.purgeOldTombstones();
     assert("仅清理 30 天前墓碑", store.loadTombstones().has("old1") === false && store.loadTombstones().has("new1") === true, "cleared=" + n);
   }
+
+  // ---------- T6 备份剥离策略:每天首末快照保留 giftPackages(包级口径不降级) ----------
+  console.log("T6 备份剥离策略(每天首末保留 giftPackages,口径不降级)");
+  {
+    const hist = await import("file:///" + tmp.replace(/\\/g, "/") + "/src/compute/history.js");
+    const derive = await import("file:///" + tmp.replace(/\\/g, "/") + "/src/compute/derive.js");
+    const TZ_MS = 8 * 3600 * 1000;
+    const todayKey = new Date(Date.now() + TZ_MS).toISOString().slice(0, 10);
+    const dayStart = (key) => new Date(key + "T00:00:00Z").getTime() - TZ_MS;
+    const at = (key, hour) => new Date(dayStart(key) + hour * 3600 * 1000).toISOString();
+    // v1.4.43 失效包场景:首条 active 包 A(used=100) → 末条 A 失效(status=3,used=160) + 新增 active 包 C(used=30)
+    //   包级口径 = C 增量 = 30;增量口径(降级) = 90 —— 差异明显,可验证是否降级
+    const pkgActive = (used) => [{ packageName: "裂变包", status: 0, capacityRemain: 1000 - used, capacityUsed: used, capacitySize: 1000, cycleEndTime: "2026-09-01 00:00:00" }];
+    const pkgExpiredPlusNew = (usedOld, usedNew) => [
+      { packageName: "裂变包", status: 3, capacityRemain: 0, capacityUsed: usedOld, capacitySize: 1000, cycleEndTime: "2026-08-08 00:00:00" },
+      { packageName: "签到包", status: 0, capacityRemain: 1000 - usedNew, capacityUsed: usedNew, capacitySize: 1000, cycleEndTime: "2026-09-08 00:00:00" },
+    ];
+    const mk = (ts, packs, totalUsed) => ({ uin: "u1", ts, baseRemain: 500, baseUsed: 0, giftRemain: 100, giftUsed: totalUsed, giftPackages: packs });
+    hist.clearReadings();
+    hist.appendSnapshot([mk(at(todayKey, 1), pkgActive(100), 100)], { ts: at(todayKey, 1) });   // 首条:active A used=100
+    hist.appendSnapshot([mk(at(todayKey, 4), pkgActive(130), 130)], { ts: at(todayKey, 4) });   // 中间
+    hist.appendSnapshot([mk(at(todayKey, 8), pkgExpiredPlusNew(160, 30), 190)], { ts: at(todayKey, 8) }); // 末条:A 失效+新包 C
+    const d0 = derive.deriveAccount("u1");
+    assert("原始库 todayUsed = 包级 30", d0.todayUsed === 30, "got " + d0.todayUsed);
+
+    hist.exportLegacy();
+    const mirror = JSON.parse(fs.readFileSync(path.join(tmp, "wb-history.json"), "utf8"));
+    const snaps = mirror.snapshots;
+    const hasGift = (s) => !!(s.entries && s.entries[0] && s.entries[0].giftPackages);
+    assert("快照 3 组", snaps.length === 3, "got " + snaps.length);
+    assert("首组保留 giftPackages", hasGift(snaps[0]));
+    assert("中间组剥离 giftPackages", !hasGift(snaps[1]));
+    assert("末组保留 giftPackages", hasGift(snaps[2]));
+
+    // 恢复到新库,派生必须仍是包级(不降级)
+    const tmp3 = fs.mkdtempSync(path.join(os.tmpdir(), "wb-sync-restore-"));
+    fs.cpSync(path.join(ROOT, "src"), path.join(tmp3, "src"), { recursive: true });
+    const hist3 = await import("file:///" + tmp3.replace(/\\/g, "/") + "/src/compute/history.js");
+    const derive3 = await import("file:///" + tmp3.replace(/\\/g, "/") + "/src/compute/derive.js");
+    fs.copyFileSync(path.join(tmp, "wb-history.json"), path.join(tmp3, "wb-history.json"));
+    hist3.importLegacy();
+    const d3 = derive3.deriveAccount("u1");
+    assert("恢复库 todayUsed 仍包级 30(首末带包,不降级)", d3.todayUsed === 30, "got " + d3.todayUsed + "(若为 90 则是降级增量口径)");
+    try { fs.rmSync(tmp3, { recursive: true, force: true }); } catch {}
+  }
 } catch (e) {
   console.log("  FAIL 测试执行异常: " + e.message);
   console.log(e.stack);

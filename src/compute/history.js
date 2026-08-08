@@ -149,11 +149,25 @@ export function latestReadingTs() {
 export function exportLegacy() {
   try {
     const hist = loadHistory();
-    // 剥离历史快照的 giftPackages（单条可 6.5KB 的体积大头；expiring 只读最新快照）——
-    // 仅最新一组保留完整，其余组剥离，镜像从 MB 级降到百 KB 级。
-    const n = hist.length;
-    const slim = hist.map((snap, i) => {
-      if (i === n - 1) return snap; // 最新组保留完整字段（含 giftPackages）
+    // 剥离策略(v1.4.47 修复):consumeByPack 包级口径需要「每天首条+末条」快照的 giftPackages
+    // （只读首末两条,中间快照不用）。原策略只保留最新一组 → 同步/下载恢复后每天首条无包 →
+    // 派生自动降级增量口径(今日已用被放大,2026-08-08 实测 321→1169)。新策略:每天首末快照组
+    // 保留完整(含 giftPackages),中间组剥离 → 口径不降级,体积几乎不变(每天 100+ 组 → 只 2 组带包)。
+    const cnDayKey = (ts) => new Date(new Date(ts).getTime() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+    const byDay = new Map(); // day -> {min, max}
+    for (const snap of hist) {
+      const day = cnDayKey(snap.ts);
+      const cur = byDay.get(day);
+      if (!cur) byDay.set(day, { min: snap.ts, max: snap.ts });
+      else {
+        if (snap.ts < cur.min) cur.min = snap.ts;
+        if (snap.ts > cur.max) cur.max = snap.ts;
+      }
+    }
+    const keep = new Set();
+    for (const { min, max } of byDay.values()) { keep.add(min); keep.add(max); }
+    const slim = hist.map((snap) => {
+      if (keep.has(snap.ts)) return snap; // 每天首末组保留完整(含 giftPackages)
       const entries = (snap.entries || []).map((e) => {
         const { giftPackages, ...rest } = e;
         return rest;
