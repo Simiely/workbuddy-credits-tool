@@ -521,7 +521,8 @@ const routes = [
       // 删除失败不应让整个清空 500(此前导致"半清空+报失败",数据已删但提示失败)
       const safeRm = (p) => { try { fs.rmSync(p, { force: true }); } catch {} };
       if (accounts) {
-        tombstoneUins(loadAccounts().map((a) => a.uin)); // 清空账号池=全部删除,写墓碑跨设备传播(v1.4.46)
+        // v1.4.48 修复:清空账号池=本地重置,**不写墓碑**(曾写墓碑→同步时删除传播→云端被清空)。
+        // 仅 /api/del(单账号明确删除)写墓碑。清空后重新同步即可从云端恢复账号。
         clearAccounts();
         safeRm(ACCOUNTS_FILE); // 同步清理遗留镜像
         cleared.push("账号池");
@@ -603,10 +604,12 @@ const routes = [
       }
       // ---- 合并阶段 ----
       const pullStats = { added: 0, updated: 0, skipped: 0, tombstoned: 0, resurrected: 0 };
+      let remoteHadAccounts = false; // 远端原本是否有账号(清空保护用)
       if (accJson !== null) {
         let j = null;
         try { j = JSON.parse(accJson); } catch {}
         const accountsIn = j && Array.isArray(j.accounts) ? j.accounts : [];
+        remoteHadAccounts = accountsIn.length > 0;
         // 远端墓碑并入本地墓碑(取 deletedAt 更新者)——删除标记随备份传播的关键
         if (j && Array.isArray(j.tombstones)) {
           const localTombs = loadTombstones();
@@ -623,6 +626,13 @@ const routes = [
         const st = mergeAccountsSmart(accounts, accountsIn, loadTombstones());
         saveAccounts(accounts);
         Object.assign(pullStats, st);
+        // v1.4.48 清空保护:远端有账号但合并后本地为空(墓碑误删/异常) → 拒绝上传,防云端被清空
+        if (remoteHadAccounts && loadAccounts().length === 0) {
+          throw new Error(
+            "同步中止: 合并后账号池为空但远端有 " + accountsIn.length + " 个账号,拒绝上传覆盖。" +
+            "可能是墓碑误删(用「清空本地数据」后),请在服务端清理 tombstones 表后重试"
+          );
+        }
       }
       if (histJson !== null) {
         fs.writeFileSync(path.join(TOOLS_DIR, "wb-history.json"), histJson, "utf8");

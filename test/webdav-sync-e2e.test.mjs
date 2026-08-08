@@ -86,7 +86,7 @@ try {
   console.log("S2 双向合并:远端加 B(新),本地有 C;同步后本地=A+B+C");
   const accKey = [...webdav.keys()].find((k) => k.endsWith("wb-accounts.json"));
   const remote = JSON.parse(webdav.get(accKey).toString("utf8"));
-  remote.accounts.push({ id: "b1", uin: "2", name: "远端B", updatedAt: "2026-08-09T00:00:00.000Z", cookieHeader: "ck_b" });
+  remote.accounts.push({ id: "b1", uin: "2", name: "远端B", updatedAt: "2026-08-08T00:00:00.000Z", cookieHeader: "ck_b" });
   webdav.set(accKey, Buffer.from(JSON.stringify(remote), "utf8"));
   r = await api(PORT, "/api/webdav/sync", {});
   assert("同步 ok", r.j && r.j.ok, JSON.stringify(r.j));
@@ -109,6 +109,21 @@ try {
   r = await api(PORT, "/api/webdav/sync", {});
   const local3 = store.loadAccounts().map((a) => a.uin).sort();
   assert("另一设备同步后 A 不复活(B/C 在)", JSON.stringify(local3) === JSON.stringify(["2", "3"]), JSON.stringify(local3));
+
+  console.log("S4 清空保护(v1.4.48):远端有账号但合并后本地为空(墓碑误删) → 拒绝上传");
+  store.tombstoneUins(["2", "3"]); // 模拟误写墓碑(清空/误删) → 远端 [2,3] 全被删 → 本地空
+  r = await api(PORT, "/api/webdav/sync", {});
+  assert("同步报错(拒绝上传)", r.j && r.j.ok === false, JSON.stringify(r.j));
+  const remote4 = JSON.parse(webdav.get(accKey).toString("utf8"));
+  assert("云端未被清空(仍有 2 个账号)", (remote4.accounts || []).length >= 2, JSON.stringify((remote4.accounts || []).map((a) => a.uin)));
+
+  console.log("S5 清空账号池不写墓碑(v1.4.48):本地重置不传播删除");
+  const tombsBefore = store.loadTombstones().size; // S4 写的 2 条墓碑
+  r = await api(PORT, "/api/clear-data", { accounts: true });
+  assert("clear-data ok", r.j && r.j.ok, JSON.stringify(r.j));
+  const tombsAfter = store.loadTombstones().size;
+  assert("清空账号池不新增墓碑", tombsAfter === tombsBefore, `before=${tombsBefore} after=${tombsAfter}`);
+  assert("本地账号池已清空", store.loadAccounts().length === 0);
 } catch (e) {
   console.log("  FAIL 测试异常: " + e.message);
   console.log(log.slice(-600));
