@@ -72,12 +72,12 @@ function renderCards() {
   const rs = (S && S.results) || [];
   if (!rs.length) {
     $("grid").innerHTML = '<div class="empty"><div class="big">📭</div>账号池为空<br>点「＋ 添加当前账号」或命令行 wb-credits.bat save-current</div>';
-    $("foot").textContent = "v1.4.44 · 数据来自 WorkBuddy 网页版接口 · 暂无账号数据(可「添加当前账号」或从 WebDAV 下载)";
+    $("foot").textContent = "v1.4.45 · 数据来自 WorkBuddy 网页版接口 · 暂无账号数据(可「添加当前账号」或从 WebDAV 下载)";
     return;
   }
   $("grid").innerHTML = rs.map((r, i) => {
     const a = r.account, s = r.summary;
-    const nm = acctName(a);
+    const nm = escAttr(acctName(a)); // 显示名可自定义,必须转义后进 innerHTML(v1.4.45)
     // 改名/删除:与「今日消耗」同一行,靠右
     const acts = `<span class="acts" style="margin-left:auto"><button class="btn btn-d" onclick="event.stopPropagation();openRename('${a.id}')">改名</button>
       <button class="btn btn-d" onclick="event.stopPropagation();openDel('${a.id}')">删除</button></span>`;
@@ -85,7 +85,7 @@ function renderCards() {
       return `<div class="acct" data-id="${a.id}" draggable="true" onclick="openDetail('${a.id}')"><div class="acct-top">
         <div><div class="acct-name">${nm}</div><div class="acct-uin">Uin: ${a.uin || "?"}</div></div>
         <span class="remain" style="color:var(--bad);border-color:currentColor;background:transparent">❌ 查询失败</span></div>
-        <div class="acct-rows"><div class="arow act-row"><div class="l">${r.error || "查询失败"}</div>${acts}</div></div></div>`;
+        <div class="acct-rows"><div class="arow act-row"><div class="l">${escAttr(r.error || "查询失败")}</div>${acts}</div></div></div>`;
     }
     const bp = s.baseSize ? Math.min(100, (s.baseUsed / s.baseSize) * 100) : 0;
     const gp = s.giftSize ? Math.min(100, (s.giftUsed / s.giftSize) * 100) : 0;
@@ -106,7 +106,7 @@ function renderCards() {
       </div></div>`;
   }).join("");
   initDrag();
-  $("foot").textContent = "v1.4.44 · 数据来自 WorkBuddy 网页版接口 · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新登录后「添加当前账号」 · 卡片可拖动排序";
+  $("foot").textContent = "v1.4.45 · 数据来自 WorkBuddy 网页版接口 · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新登录后「添加当前账号」 · 卡片可拖动排序";
 }
 
 // ---- 卡片拖拽排序(顺序随账号池持久化,经 /api/reorder 保存) ----
@@ -173,7 +173,7 @@ function renderDashTable() {
     return `<div class="dacct">
       <div class="dhead">
         <span class="di">${i + 1}</span>
-        <span class="dname">${acctName(a)}</span>
+        <span class="dname">${escAttr(acctName(a))}</span>
       </div>
       <div class="dremain"><div class="dr-v">${fmt(a.currentRemain ?? "-")}</div><div class="dr-l">💎 总剩余</div></div>
       <div class="dgrid">
@@ -208,7 +208,7 @@ function renderDashTable() {
   const rows = dashPer.map((a, i) => {
     const e1 = a.expiring1d || 0, e2 = a.expiring2d || 0, e3 = a.expiring3d || 0, e7 = a.expiring7d || 0;
     return `<tr>
-    <td class="num t-faint">${i + 1}</td><td>${acctName(a)}</td>
+    <td class="num t-faint">${i + 1}</td><td>${escAttr(acctName(a))}</td>
     <td class="num"><b>${a.currentRemain ?? "-"}</b></td><td class="num">${a.consumed ?? "-"}</td>
     <td class="num">${a.todayUsed > 0 ? fmt(a.todayUsed) : "0"}</td>
     <td class="num" style="color:var(--${e1 > 0 ? 'warn' : 'faint'})">${fmt(e1)}</td>

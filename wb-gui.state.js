@@ -35,8 +35,14 @@ const LS_UP_ON = "wb_auto_up_on", LS_UP_H = "wb_auto_up_h"; // 自动上传(WebD
 const LS_DAEMON_HIDE = "wb_daemon_hide"; // 用户手动隐藏过 daemon 提示后不再打扰
 const LS_FOLD = "wb_fold"; // 面板折叠状态 {trend:bool, overview:bool}
 
-// 属性转义（innerHTML 注入用）
-const escAttr = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+// 属性/文本转义（innerHTML 注入统一入口；v1.4.45 补 > 与 ' 转义,防止"改名"等自定义内容破坏页面）
+const escAttr = (s) =>
+  String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/'/g, "&#39;");
 
 // 过期分层：直接读账号对象上挂载的 derived（doRefresh 时由后端派生合并，单一来源）
 function derivedOf(r) { return (r && r.derived) || {}; }

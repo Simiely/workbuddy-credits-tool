@@ -1,5 +1,29 @@
 # CHANGELOG
 
+## v1.4.45 (2026-08-08) · 前端 XSS 转义收口 + 冗余清理
+
+### 安全（前端 innerHTML 注入收口）
+- **根因**：账号「显示名/名称」可自定义，但 `acctName()` 返回值在 5 处渲染点直接拼接进 innerHTML **未转义**（`escAttr` 此前只在图表 data-n 使用）——含 `<img onerror>` 等 HTML 时会被浏览器解析执行（存储型 XSS 面，可破坏页面/注入脚本）
+- **修复**：全部 innerHTML 注入点统一过 `escAttr()` 转义——
+  - `renderCards`：卡片名 `nm` + 查询失败行错误信息
+  - `renderDashTable`：手机卡片版（`.dname`）+ 桌面表格版（账号列）
+  - `renderLines`（chart.js）：图例账号名（此前漏网）
+  - `openDetail`（ops.js）：明细弹窗标题
+  - `openRename`（ops.js）：改名输入框 value 属性
+- **增强 `escAttr`**（state.js）：补 `>` 与 `'` 转义（原仅 `& " <`），属性上下文彻底防逃逸
+- 验证：恶意 displayName 注入复现（`<img src=x onerror=alert(1)>`）→ 修复后渲染为纯文本转义实体；正常名称渲染不变
+
+### 清理
+- `wb-gui.mjs` `/api/credits`：移除冗余三元（两分支状态码恒为 200）
+
+### 备注（排查结论，未改）
+- **时区口径**：经 48 时刻 + 跨日临界快照验证——「后端容器(UTC) + 浏览器(+8)」形态下前端本地时区计算与后端 +8 口径**完全一致**（v1.4.29/30 已修后端即足够）；仅当浏览器自身时区 ≠ +8（跨时区访问）才需前端配合，本版不加（避免过度修改）
+- **性能**：`deriveAll` 每账号 2 次 SQL（走 uin+ts 索引）实测 14.4ms/30 账号 × 18000 快照，批量全表扫描反而更慢（22.5ms）——保持现状
+- **scheduler `sessionExpiresAt`**：非死代码（edge-collector 仍在采集写入，用于凭证临期加密采样），保留
+
+- 验证：`npm test` 8 文件 120+ 断言全过；版本戳 v1.4.45（改前端必须 bump，浏览器缓存兜底）
+
+
 ## v1.4.44 (2026-08-06) · 二轮审计安全加固(daemon 鉴权 / CORS 同源 / admin 写面)
 
 ### 安全(高危)

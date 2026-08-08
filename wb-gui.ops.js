@@ -66,7 +66,7 @@ function openDetail(id) {
   if (!r || !r.summary) return toast("该账号暂无数据,无法查看明细");
   const d = derivedOf(r) || {}; // 赠送包到期/汇总全部来自后端派生(dashPer),前端不再现算
   openMask("mask");
-  $("mTitle").textContent = acctName(r.account) + " · 明细";
+  $("mTitle").textContent = escAttr(acctName(r.account)) + " · 明细";
   const baseNote = d.baseCycleEnd ? `(当月有效 · 至 ${String(d.baseCycleEnd).slice(5, 10)})` : "";
   const baseRemain = d.baseRemain ?? "-";
   const giftRemain = d.giftRemain ?? 0;
@@ -109,7 +109,7 @@ function openRename(id) {
   small = { type: "rename", id };
   const r = (S.results || []).find((x) => x.account.id === id);
   openSmall("修改显示名称", `<div class="tip">显示名称仅用于界面展示,不影响底层账号。</div>
-    <input class="finput" id="renameInput" maxlength="30" value="${(r && (r.account.displayName || r.account.name)) || ""}">
+    <input class="finput" id="renameInput" maxlength="30" value="${escAttr((r && (r.account.displayName || r.account.name)) || "")}">
     <div class="factions"><button class="btn btn-g" onclick="closeSmall()">取消</button><button class="btn btn-p" onclick="confirmSmall()">保存</button></div>`);
   setTimeout(() => { const i = $("renameInput"); if (i) { i.focus(); i.select(); } }, 60);
 }

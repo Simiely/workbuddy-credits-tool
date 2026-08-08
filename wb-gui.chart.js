@@ -158,8 +158,9 @@ function renderLines() {
     return;
   }
   // 图例 = 账号标签 + 最右侧「合计」标签（灰色，点击隐藏/显示合计柱，交互与账号一致）
+  // 账号名可自定义,插入 innerHTML 前必须转义(v1.4.45)
   $("legend").innerHTML = raw
-    .map((a, i) => `<div class="lg" data-key="${a.uin}" onclick="toggleLine('${a.uin}', this)"><i style="background:${LINE_COLORS[i % LINE_COLORS.length]}"></i>${acctName(a)}</div>`)
+    .map((a, i) => `<div class="lg" data-key="${a.uin}" onclick="toggleLine('${a.uin}', this)"><i style="background:${LINE_COLORS[i % LINE_COLORS.length]}"></i>${escAttr(acctName(a))}</div>`)
     .join("") + `<div class="lg" data-key="total" onclick="toggleLine('total', this)"><i style="background:${TOTAL_COLOR}"></i>合计</div>`;
   $("chart").innerHTML = barChart(lines, dashMode, xTicks, soloKey);
 }

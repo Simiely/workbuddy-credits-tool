@@ -412,9 +412,7 @@ const routes = [
       const r = await fetchOneAccount(a);
       saveAccounts(accounts);
       ctx.json(
-        r.data
-          ? 200
-          : 200,
+        200,
         r.data
           ? { ok: true, account: brief(a), summary: r.summary, data: r.data, fetchedAt: cnNow() }
           : { ok: false, error: r.error, expired: r.expired, account: brief(a) }
