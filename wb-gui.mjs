@@ -621,7 +621,10 @@ const routes = [
           }
           if (newer.length) tombstoneUins(newer);
         }
-        purgeOldTombstones(); // 顺带清理过期墓碑
+        // v2.x 修复:合并阶段不 purge 过期墓碑——墓碑必须先随本次上传写入远端备份(传播),
+        // 再清理本地,否则:①合并时墓碑被删→mergeAccountsSmart 误把远端旧账号当无墓碑导入(当次复活);
+        // ②exportAccounts 导出不含墓碑→远端备份被覆盖丢失删除标记→其他设备删除"复活"。
+        // purge 已移至上传成功后(见下方 v2.x 注释)。
         const accounts = loadAccounts();
         const st = mergeAccountsSmart(accounts, accountsIn, loadTombstones());
         saveAccounts(accounts);
@@ -648,6 +651,13 @@ const routes = [
         await uploadFile(c.url, c.user, c.pass, BACKUP_DIR, f, fs.readFileSync(p));
         uploaded.push(f);
       }
+      // v2.x 修复:墓碑物理清理移到「上传成功之后」。
+      // 原实现在合并阶段(拉取后、上传前)purge 过期墓碑 → 墓碑在"写入远端备份"前就被本地删除:
+      // ① 上传的 wb-accounts.json 不含墓碑 → 远端备份被覆盖丢失删除标记 → 其他设备删除"复活";
+      // ② 合并时墓碑已删 → mergeAccountsSmart 把远端旧账号当无墓碑导入 → 当次同步就复活。
+      // 现语义:墓碑先随本次上传写入远端权威备份,确认传播后再清理本地过期墓碑(TTL 30 天),
+      // 与"墓碑须存活足够久(传播删除)后被物理移除"一致(对齐 edge-multi-account-cookie v2.11.3)。
+      purgeOldTombstones(); // 上传成功后清理本地过期墓碑(远端备份已保留删除标记)
       broadcastRefresh({ source: "webdav-sync" });
       const isFirst = accJson === null && histJson === null;
       const detail = isFirst
