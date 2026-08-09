@@ -1,5 +1,60 @@
 # CHANGELOG
 
+## v1.4.60 (2026-08-10) · 截止日期默认显示今天
+
+### 变更
+- **启动默认**:趋势面板「截止日期」输入框默认填入今天(`trendEnd = todayStr()` 在启动段、首次渲染前设置)→ 每日/每月视图默认以今天/当月为终点;清空输入框仍可恢复动态窗口/全量
+- 测试:render-lines.test.mjs 新增 T18(启动默认=今天+输入框同步);T1 改为显式清空后测动态窗口(3 天下限补未来仍保留)
+
+### 验证
+- node --check + npm test 12/12(趋势 74 断言);版本戳 v1.4.60(仅前端改动,服务实时读文件,刷新即可生效)
+
+## v1.4.59 (2026-08-09) · 低成本清理:+8 口径全收敛 / upload·download 共用循环 / 死导出清理
+
+### 变更（行为零变化，全量测试 12/12 通过）
+- **+8 时区常数全部收敛**:scheduler.js 固化节流键、history.js 的 exportLegacy 日键与 readingsForDay/oldDayKeys 的 CN_TZ_MS 全部改引 `src/time.js`(dayKeyOf/TZ_MS)——全后端 `8*3600` 仅存于 time.js 一处
+- **upload/download 共用循环**:webdav.js 新增 `uploadAll(cfg)`/`downloadAll(cfg)`;`syncNow()` 上传阶段复用 uploadAll;`/api/webdav/upload|download` handler 从各 15-16 行收薄到接线(循环不再重复)
+- **清理死导出**:derive.js 删除无调用方的 `export { dayKeyOf, dayOfOffset, startOfToday }` re-export(时区工具已由 time.js 直接提供)
+
+### 验证
+- node --check 全部改动文件;grep 确认 `8*3600` 内联零残留(仅 time.js);npm test 12/12;版本戳 v1.4.59
+
+## v1.4.58 (2026-08-09) · 架构重构:解循环依赖 / 薄路由 / 时区口径收敛
+
+### 重构（行为零变化，全量测试 12/12 通过）
+- **解 derive↔history 循环依赖**:
+  - 历史固化 `gcDaySummaries()` 从 derive.js 拆出到新模块 **`src/compute/gc.js`**（依赖 derive+history+time 单向）
+  - `history.js` 删除无调用方的 `buildDashboard()` 及其 `import { deriveAll }` → **依赖环断开**（history 不再依赖 derive）
+  - `derive.js` 恢复"纯派生"纯度（不再写库）；其 import history 收敛为只读函数
+- **薄路由**:`/api/webdav/sync` 的 85 行内嵌业务（拉/合/墓碑/清空保护/导/传/purge）抽回 **`src/compute/webdav.js` 的 `syncNow()`**，路由 handler 只接线 + SSE 广播
+- **时区口径收敛**:新建 **`src/time.js`**（TZ_MS/cnWall/cnDay0/dayKeyOf/dayOfOffset/startOfToday/cnNow），derive/history/present/gui 统一引用；删除 `cnNow` 在 present/render.js 与 wb-gui.mjs 的两份逐字重复
+- scheduler.js 改从 gc.js 取固化；gc-summary/signin-detect 测试改引新模块
+
+### 验证
+- node --check 全部改动文件 + npm test 12/12 通过；同步链路由 webdav-sync/tombstone-ttl 测试覆盖；版本戳 v1.4.58
+
+## v1.4.57 (2026-08-09) · 修复:每月视图清空截止日期误切回每日(场景走查 P-1)
+
+### 修复(🟡 UX,场景走查发现)
+- **根因**:`onTrendEnd()` 原逻辑「非每日模式一律 `changeMode('day')`」——在每月视图清空日期框想恢复"每月全量"时,被意外切回每日视图(操作跳转不符合预期)
+- **修复**:仅「选值」时自动切每日(日期框=每日视图专用语义);「清空」保持当前模式,恢复该模式默认窗口(每日=动态窗口/每月=全部月份)
+- 新增 `test/render-lines.test.mjs` T17(每月视图清空 → 保持每月模式 + 全量)
+
+### 验证
+- 全量测试 12/12 通过(趋势 72 断言);版本戳 v1.4.57
+
+## v1.4.56 (2026-08-09) · 趋势图每日/每月窗口上限 5 + 截止日期/月份选择 + 数据不足自动收缩
+
+### 变更
+- **每日视图窗口上限 7 天 → 5 天**:`dayWindow()` 动态窗口夹取 `[3,7]` → `[3,5]`(数据多时默认只看最近 5 天)
+- **「每日」按钮 = 以今天为终点**:点击即截止日期重置为今天(窗口 = 今天-4 ~ 今天,输入框同步)
+- **「每月」按钮 = 以当月为终点**:点击即截止日期重置为今天,每月视图以当月为终点取最近 5 个月(`monthWindow()`,跨年自动进位);未点击时每月视图仍显示全部月份
+- **截止日期选择**:趋势面板头部「截止日期」+ 原生日期输入框;每日视图以所选日为终点固定 5 天,清空输入框恢复默认窗口
+- **数据不足自动收缩(v1.4.56)**:手动指定截止日/月时,若窗口内有数据的天/月 < 5 → 收缩到 [窗口内最早数据日/月, 截止日/月],不留空刻度(如仅今天 1 天数据 → 只画当天一根柱);窗口内无数据 → 保持固定 5 格
+
+### 验证
+- `test/render-lines.test.mjs` T5 断言改 5 天窗口,新增 T8/T9/T10/T11(每日交互)、T12/T13(每月窗口/全量)、T14/T15(每日收缩 1/3 天)、T16(每月收缩);全量测试通过;版本戳 v1.4.56
+
 ## v1.4.51 (2026-08-09) · 修复墓碑 TTL 过期同步复活 P0(墓碑物理清理晚于上传)
 
 ### 修复(数据安全 P0,对齐 edge-multi-account-cookie v2.11.3 教训)

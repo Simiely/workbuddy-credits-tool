@@ -11,7 +11,8 @@
 import { loadAccounts } from "./store.js";
 import { loadHistory } from "./history.js";
 import { sampleAll } from "./sample.js";
-import { gcDaySummaries } from "./derive.js";
+import { gcDaySummaries } from "./gc.js"; // v1.4.58 历史固化独立模块
+import { dayKeyOf } from "../time.js"; // v1.4.58 时区口径统一引用
 
 const DEFAULT_MIN = 15;
 const CRITICAL_REMAIN = 1000; // 剩余低于此视为偏紧
@@ -97,7 +98,7 @@ function scheduleNext() {
     S.mode = "auto";
     try {
       // 历史固化：每天执行一次（幂等；T-2 及更早压缩为 day_summary 摘要后清理明细）
-      const todayK = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+      const todayK = dayKeyOf(Date.now()); // +8 口径统一来自 time.js
       if (_gcDay !== todayK) {
         try { gcDaySummaries(); } catch (e) { /* 固化失败不阻断采样 */ }
         _gcDay = todayK;

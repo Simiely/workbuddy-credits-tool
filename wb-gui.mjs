@@ -34,6 +34,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { ROOT, TOOLS_DIR, DAEMON_PORT, GUI_PORT } from "./src/config.js";
+import { cnNow } from "./src/time.js"; // v1.4.58 时区口径收敛,与 CLI/derive 同源
 import {
   loadAccounts,
   saveAccounts,
@@ -68,6 +69,9 @@ import {
   uploadFile,
   downloadFile,
   testConnection,
+  syncNow, // v1.4.58 一键同步业务已收回 src/compute/webdav.js
+  uploadAll, // v1.4.59 upload/download 共用循环收回 src
+  downloadAll,
   BACKUP_DIR,
   SYNC_FILES,
   SYNC_FILE,
@@ -162,14 +166,6 @@ function syncCfg() {
   const c = loadSyncConfig();
   if (!c || !c.user) throw new Error("未配置 WebDAV 账号,请先填写用户名密码并「保存配置」");
   return { ...c, url: c.url || "http://192.168.2.1:6086/" };
-}
-
-// 固定中国时区(+8)格式化当前时间：不依赖进程时区（容器默认 UTC 时 toLocaleString 会错位显示）
-// 与 derive.js 的自然日口径一致，保证所有部署环境显示同一时刻
-function cnNow() {
-  const d = new Date(Date.now() + 8 * 3600000); // 平移至 UTC+8 墙钟
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getUTCFullYear()}/${p(d.getUTCMonth() + 1)}/${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }
 
 // 读取请求体（含 1MB 上限保护）
@@ -568,17 +564,9 @@ const routes = [
     method: "POST",
     path: "/api/webdav/upload",
     admin: true,
+    // v1.4.59 薄路由：导出+上传循环在 webdav.js 的 uploadAll()
     handler: async (ctx) => {
-      const c = syncCfg();
-      exportAccounts(); // 先把 SQLite 账号池导出为镜像文件(wb-accounts.json)
-      exportHistory(); // 再把 readings 导出为镜像文件(wb-history.json)
-      const uploaded = [];
-      for (const f of SYNC_FILES) {
-        const p = path.join(TOOLS_DIR, f);
-        if (!fs.existsSync(p)) continue;
-        await uploadFile(c.url, c.user, c.pass, BACKUP_DIR, f, fs.readFileSync(p));
-        uploaded.push(f);
-      }
+      const uploaded = await uploadAll(syncCfg());
       if (!uploaded.length)
         return ctx.json(200, { ok: true, uploaded: [], message: "没有可上传的数据文件(先刷新一次生成数据)" });
       ctx.json(200, { ok: true, uploaded, message: `已上传 ${uploaded.length} 个文件到 ${BACKUP_DIR}/` });
@@ -588,103 +576,20 @@ const routes = [
     method: "POST",
     path: "/api/webdav/sync",
     admin: true,
-    // 一键同步(v1.4.46,参考 edge-multi-account-cookie「先拉后传」方案):
-    //   ① 拉:下载远端 wb-accounts.json + wb-history.json(404=首次,跳过拉取;网络失败=中止,不上传)
-    //   ② 合:账号走 smart 合并(双向取最新 + 墓碑删除传播),历史走合并导入(append-only 无墓碑)
-    //   ③ 传:导出本地全量(账号+墓碑+历史)覆盖上传,远端固定保留最新 1 份
+    // v1.4.58 薄路由：一键同步业务(拉/合/墓碑/清空保护/导/传/purge)在 src/compute/webdav.js 的 syncNow()
     handler: async (ctx) => {
-      const c = syncCfg();
-      // ---- 拉取阶段:全部下载到内存,任一失败即中止(防止部分合并 + 旧数据覆盖远端) ----
-      let accJson = null, histJson = null;
-      try {
-        accJson = await downloadFile(c.url, c.user, c.pass, BACKUP_DIR, "wb-accounts.json");
-        histJson = await downloadFile(c.url, c.user, c.pass, BACKUP_DIR, "wb-history.json");
-      } catch (e) {
-        throw new Error("同步中止: 拉取远端失败,未上传本地数据(" + e.message + ")");
-      }
-      // ---- 合并阶段 ----
-      const pullStats = { added: 0, updated: 0, skipped: 0, tombstoned: 0, resurrected: 0 };
-      let remoteHadAccounts = false; // 远端原本是否有账号(清空保护用)
-      if (accJson !== null) {
-        let j = null;
-        try { j = JSON.parse(accJson); } catch {}
-        const accountsIn = j && Array.isArray(j.accounts) ? j.accounts : [];
-        remoteHadAccounts = accountsIn.length > 0;
-        // 远端墓碑并入本地墓碑(取 deletedAt 更新者)——删除标记随备份传播的关键
-        if (j && Array.isArray(j.tombstones)) {
-          const localTombs = loadTombstones();
-          const newer = [];
-          for (const t of j.tombstones) {
-            if (!t || !t.uin) continue;
-            const key = String(t.uin);
-            if (!localTombs.has(key) || (t.deletedAt || "") > localTombs.get(key)) newer.push(key);
-          }
-          if (newer.length) tombstoneUins(newer);
-        }
-        // v2.x 修复:合并阶段不 purge 过期墓碑——墓碑必须先随本次上传写入远端备份(传播),
-        // 再清理本地,否则:①合并时墓碑被删→mergeAccountsSmart 误把远端旧账号当无墓碑导入(当次复活);
-        // ②exportAccounts 导出不含墓碑→远端备份被覆盖丢失删除标记→其他设备删除"复活"。
-        // purge 已移至上传成功后(见下方 v2.x 注释)。
-        const accounts = loadAccounts();
-        const st = mergeAccountsSmart(accounts, accountsIn, loadTombstones());
-        saveAccounts(accounts);
-        Object.assign(pullStats, st);
-        // v1.4.48 清空保护:远端有账号但合并后本地为空(墓碑误删/异常) → 拒绝上传,防云端被清空
-        if (remoteHadAccounts && loadAccounts().length === 0) {
-          throw new Error(
-            "同步中止: 合并后账号池为空但远端有 " + accountsIn.length + " 个账号,拒绝上传覆盖。" +
-            "可能是墓碑误删(用「清空本地数据」后),请在服务端清理 tombstones 表后重试"
-          );
-        }
-      }
-      if (histJson !== null) {
-        fs.writeFileSync(path.join(TOOLS_DIR, "wb-history.json"), histJson, "utf8");
-        importHistory(); // 合并导入(原始 ts + 同分钟去重 + 摘要恢复),不破坏本地
-      }
-      // ---- 上传阶段:导出本地全量覆盖远端 ----
-      exportAccounts(); // 含 tombstones(删除标记传播)
-      exportHistory();
-      const uploaded = [];
-      for (const f of SYNC_FILES) {
-        const p = path.join(TOOLS_DIR, f);
-        if (!fs.existsSync(p)) continue;
-        await uploadFile(c.url, c.user, c.pass, BACKUP_DIR, f, fs.readFileSync(p));
-        uploaded.push(f);
-      }
-      // v2.x 修复:墓碑物理清理移到「上传成功之后」。
-      // 原实现在合并阶段(拉取后、上传前)purge 过期墓碑 → 墓碑在"写入远端备份"前就被本地删除:
-      // ① 上传的 wb-accounts.json 不含墓碑 → 远端备份被覆盖丢失删除标记 → 其他设备删除"复活";
-      // ② 合并时墓碑已删 → mergeAccountsSmart 把远端旧账号当无墓碑导入 → 当次同步就复活。
-      // 现语义:墓碑先随本次上传写入远端权威备份,确认传播后再清理本地过期墓碑(TTL 30 天),
-      // 与"墓碑须存活足够久(传播删除)后被物理移除"一致(对齐 edge-multi-account-cookie v2.11.3)。
-      purgeOldTombstones(); // 上传成功后清理本地过期墓碑(远端备份已保留删除标记)
+      const r = await syncNow(syncCfg()); // 业务在 src，这里只接线
       broadcastRefresh({ source: "webdav-sync" });
-      const isFirst = accJson === null && histJson === null;
-      const detail = isFirst
-        ? "首次同步"
-        : `拉取合并(新增 ${pullStats.added} · 更新 ${pullStats.updated} · 删除 ${pullStats.tombstoned} · 复活 ${pullStats.resurrected})`;
-      ctx.json(200, {
-        ok: true,
-        first: isFirst,
-        pulled: isFirst ? null : pullStats,
-        pushed: uploaded,
-        message: `✅ 同步完成:${detail},已上传 ${uploaded.length} 个文件`,
-      });
+      ctx.json(200, r);
     },
   },
   {
     method: "POST",
     path: "/api/webdav/download",
     admin: true,
+    // v1.4.59 薄路由：下载循环在 webdav.js 的 downloadAll()，导入由调用方决定
     handler: async (ctx) => {
-      const c = syncCfg();
-      const restored = [];
-      for (const f of SYNC_FILES) {
-        const content = await downloadFile(c.url, c.user, c.pass, BACKUP_DIR, f);
-        if (content === null) continue;
-        fs.writeFileSync(path.join(TOOLS_DIR, f), content, "utf8");
-        restored.push(f);
-      }
+      const restored = await downloadAll(syncCfg());
       if (!restored.length)
         return ctx.json(200, { ok: true, restored: [], message: "云端没有备份文件(先在其他电脑上传一次)" });
       importAccounts(); // 下载后把账号池镜像导入 SQLite（新的唯一真相源）

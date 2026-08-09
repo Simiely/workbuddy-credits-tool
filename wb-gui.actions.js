@@ -162,6 +162,10 @@ $("adminPass") && $("adminPass").addEventListener("keydown", (e) => { if (e.key 
 applyFold(); // 恢复上次面板折叠状态(v1.4.34)
 initChartTip(); // 图表悬浮提示事件委托(v1.4.38 归位 chart.js,启动接线)
 initChartSolo(); // 点击柱子独显/点击空白恢复(v1.4.41)
+// v1.4.60 截止日期默认 = 今天(每日/每月默认以今天/当月为终点;清空输入框恢复动态窗口/全量)
+trendEnd = todayStr();
+const teEl = $("trendEnd");
+if (teEl) teEl.value = trendEnd;
 refreshAll(false);
 checkDaemon();
 checkWebdavQuick();

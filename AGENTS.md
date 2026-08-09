@@ -3,7 +3,7 @@
 > 给 AI 与"未来的你"看的精简规则。核心约束尽量短,细节放 `rules/` 按需 @引用。
 >
 > **接手先读**:[`docs/交接说明.md`](docs/交接说明.md)(运行实例/端口/数据文件/待办的状态快照)。
-> 当前版本 **v1.4.50**(见 CHANGELOG)。
+> 当前版本 **v1.4.58**(见 CHANGELOG)。
 > **发包规范**:每次发包只发**平台版(tools-center 托管 zip)+ exe 版(SEA 单文件)** 两个版本,exe 不上传 GitHub Release;完整流程见 [`docs/发布规范.md`](docs/发布规范.md)。
 
 ## 技术栈
@@ -34,6 +34,7 @@
 17. **墓碑(v1.4.46,删除跨设备)**:`tombstones(uin, deletedAt)` 表;/api/del 写墓碑随备份传播(远端账号 updatedAt≤deletedAt 不复活、新数据>deletedAt 复活、本地≤deletedAt 删除传播);**清空账号池(/api/clear-data)不写墓碑**(v1.4.48,本地重置不传播);**TTL 30 天清理必须在上传成功后执行**(v1.4.51 P0 修复:禁止在合并阶段 purge——墓碑未传播就被删会导致当次合并误复活 + 远端备份丢删除标记、其他设备删除复活;对齐 edge-multi-account-cookie v2.11.3)
 18. **同步/测试前端超时(v1.4.49)**:syncAct 按动作放宽 timeout(sync=90s/test=30s)——后端下载/上传各 60s,默认 15s 会误报超时;新增长耗时接口必须显式传 timeout
 19. **favicon(v1.4.50)**:用**内联 SVG data-URI**(`<link rel="icon" href="data:image/svg+xml,<svg ...><text>📉</text></svg>">`,emoji 取 tool.json icon,零文件零后端,子路径自适应);**勿用 staticFile() 读 PNG 文件方案**(已撤回,PNG 二进制会被 utf8 读坏,且多一个文件要同步 4 处)
+20. **架构分层(v1.4.58 重构)**:时区工具收敛到 **`src/time.js`**(cnNow/dayKeyOf/dayOfOffset/startOfToday/TZ_MS,全后端唯一口径);历史固化在 **`src/compute/gc.js`**(`gcDaySummaries`,依赖 derive+history 单向);`history.js` **不得 import derive**(v1.4.58 已解循环依赖);`/api/webdav/sync` 业务在 webdav.js 的 `syncNow()`,路由只接线——新增后端逻辑遵守单向依赖(collect→compute→store + time/gc),勿把固化/时区/同步塞回 derive 或路由 handler
 
 ## 约定
 

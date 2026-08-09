@@ -31,6 +31,7 @@ try {
   const { getDb } = await import("file:///" + tmp.replace(/\\/g, "/") + "/src/store/db.js");
   const hist = await import("file:///" + tmp.replace(/\\/g, "/") + "/src/compute/history.js");
   const derive = await import("file:///" + tmp.replace(/\\/g, "/") + "/src/compute/derive.js");
+  const gc = await import("file:///" + tmp.replace(/\\/g, "/") + "/src/compute/gc.js"); // v1.4.58 固化独立模块
   const { getDb: getDb2 } = await import("file:///" + tmp.replace(/\\/g, "/") + "/src/store/db.js");
 
   // 构造:前天 2 条(消耗 30) + 昨天 2 条(消耗 30) + 今天 2 条(消耗 40)
@@ -49,7 +50,7 @@ try {
   assert("三天消耗 前天30/昨天30/今天40", before.includes(dayBeforeKey + ":30") && before.includes(yesterdayKey + ":30") && before.includes(todayKey + ":40"), "got " + before);
 
   console.log("T2 固化(T-2 前天)");
-  const g1 = derive.gcDaySummaries();
+  const g1 = gc.gcDaySummaries();
   assert("固化 1 天", g1.fixed === 1, "got " + g1.fixed);
   const s1 = hist.loadDaySummaries("u1");
   assert("摘要表含前天", s1.some((x) => x.day === dayBeforeKey && x.used === 30));
@@ -63,7 +64,7 @@ try {
   assert("todayUsed 不变(40)", d.todayUsed === 40, "got " + d.todayUsed);
 
   console.log("T4 固化幂等(再跑一次)");
-  const g2 = derive.gcDaySummaries();
+  const g2 = gc.gcDaySummaries();
   assert("第二次 fixed=0", g2.fixed === 0, "got " + g2.fixed);
   const s2 = hist.loadDaySummaries("u1");
   assert("摘要不重复(仍 1 行)", s2.length === 1, "got " + s2.length);

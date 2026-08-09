@@ -16,6 +16,7 @@ let S = null;            // 账号列表(唯一真相源){results:[{account,summ
 let busy = false;        // 刷新锁
 let dashPer = [];        // 仪表盘投影:由 S.results 经 mergeDerived 重建,表格/折线只读它
 let dashMode = "day";
+let trendEnd = "";        // 每日视图截止日期("YYYY-MM-DD",空=默认动态窗口;选中后以该日为终点向前显示 5 天,不持久化)
 let autoTimer = null;
 let autoOn = localStorage.getItem("wb_auto_on") !== "0";
 let autoMin = parseInt(localStorage.getItem("wb_auto_min") || "5", 10) || 5;

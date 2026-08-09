@@ -7,11 +7,14 @@ const TOTAL_COLOR = "#94a3b8"; // 合计柱/合计图例：中性灰，与账号
 // 本地当天 00:00（归一化数据点：X 轴刻度按天对齐，否则数据点 ts 是快照时刻无法与日期刻度匹配）
 function dayZero(ts) { const d = new Date(ts); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
 
-// 「每日视图」动态窗口：跨度 = 实际有数据的自然日天数，夹在 [3, 7]（下限 3 天、上限 7 天）
+// 「每日视图」动态窗口：跨度 = 实际有数据的自然日天数，夹在 [3, 5]（下限 3 天、上限 5 天）
 // 窗口定位：数据天数 ≤ 跨度 → 从最早数据日开始向右延伸（补未来，折线有伸展空间，如 2 天数据 → 8/3 8/4 8/5）；
-//            数据天数 > 跨度 → 取最近 span 天（终点 = 最晚数据日，只看最新 7 天）
+//            数据天数 > 跨度 → 取最近 span 天（终点 = 最晚数据日，只看最新 5 天）
+// 传入 endDate（"YYYY-MM-DD"，本地自然日）= 手动固定截止日 → 默认窗口 = [所选日-4, 所选日] 共 5 天（终点 = 所选日）；
+//            窗口内有数据的天数 < 5 → 收缩到 [窗口内最早数据日, 所选日]（不留空刻度，如仅今天 → 只画今天）
+// 「每日」按钮 = 今天-4 ~ 今天；日期框选任意日同理
 // 注意：日期键用「本地自然日」(getFullYear/Month/Date)，不能用 toISOString().slice(0,10)（UTC 会错位一天）
-function dayWindow() {
+function dayWindow(endDate) {
   const keyOf = (ts) => {
     const z = dayZero(ts); // 本地 00:00
     return `${z.getFullYear()}-${String(z.getMonth() + 1).padStart(2, "0")}-${String(z.getDate()).padStart(2, "0")}`;
@@ -22,17 +25,103 @@ function dayWindow() {
   }
   const sorted = [...daySet].sort();
   if (!sorted.length) return [];
-  const n = sorted.length;
-  const span = Math.min(7, Math.max(3, n));
   const parse = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }; // 本地 00:00
-  let start = parse(sorted[0]); // 默认从最早数据日开始
-  if (n > span) {
-    // 数据超过上限：窗口终点 = 最晚数据日，向前取 span 天
-    start = new Date(parse(sorted[n - 1]).getTime() - (span - 1) * 86400000);
+  let start, span, end = null;
+  if (endDate) {
+    // 手动截止日：终点 = 所选日，向前取 5 天
+    end = parse(String(endDate));
+    const lo = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 4);
+    const loKey = keyOf(lo), endKey = keyOf(end);
+    // 理论窗口 [所选日-4, 所选日] 内有数据的日期；不足 5 天 → 收缩起点到窗口内最早数据日
+    const inWin = sorted.filter((k) => k >= loKey && k <= endKey);
+    if (inWin.length > 0 && inWin.length < 5) {
+      start = parse(inWin[0]); // 收缩:窗口内最早数据日 → 所选日（不留空刻度）
+    } else {
+      start = lo; // 数据足 5 天或窗口内无数据：固定 5 格
+    }
+  } else {
+    // 默认动态窗口：数据天数在 [3,5] 夹取
+    const n = sorted.length;
+    span = Math.min(5, Math.max(3, n));
+    start = parse(sorted[0]); // 默认从最早数据日开始
+    if (n > span) {
+      // 数据超过上限：窗口终点 = 最晚数据日，向前取 span 天
+      start = new Date(parse(sorted[n - 1]).getTime() - (span - 1) * 86400000);
+    }
   }
   const days = [];
-  for (let i = 0; i < span; i++) days.push(new Date(start.getFullYear(), start.getMonth(), start.getDate() + i).toISOString());
+  if (endDate) {
+    // 手动截止日：按自然日从起点连续生成到所选日（收缩时 span 可能 <5）
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      days.push(new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString());
+    }
+  } else {
+    for (let i = 0; i < span; i++) days.push(new Date(start.getFullYear(), start.getMonth(), start.getDate() + i).toISOString());
+  }
   return days;
+}
+
+// 「每月视图」窗口：未指定截止月(trendEnd 空) → 返回全部有数据月份(现状)；
+// 点「每月」按钮后 trendEnd=今天 → 以当月为终点，向前取 5 个月（[当月-4, 当月]，跨年由 Date 自动进位）；
+// 窗口内有数据的月份 < 5 → 收缩到 [窗口内最早数据月, 当月]（不留空刻度）
+function monthWindow() {
+  const mSet = new Set();
+  for (const a of dashPer || []) {
+    for (const p of (a.series || [])) {
+      const d = new Date(p.t);
+      mSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+  }
+  const sorted = [...mSet].sort();
+  if (!sorted.length) return [];
+  if (!trendEnd) return sorted; // 无截止月：全部月份
+  const key = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const parseM = (s) => { const [yy, mm] = s.split("-").map(Number); return new Date(yy, mm - 1, 1); };
+  const [y, m] = String(trendEnd).slice(0, 7).split("-").map(Number);
+  const end = new Date(y, m - 1, 1); // 截止月 1 号(本地)
+  const lo = new Date(end.getFullYear(), end.getMonth() - 4, 1);
+  const inWin = sorted.filter((k) => k >= key(lo) && k <= key(end));
+  const months = [];
+  if (inWin.length > 0 && inWin.length < 5) {
+    // 收缩:窗口内最早数据月 → 当月（不留空刻度）
+    for (let d = parseM(inWin[0]); d <= end; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) months.push(key(d));
+  } else {
+    // 数据足 5 个月或窗口内无数据：固定 5 格
+    for (let i = 4; i >= 0; i--) months.push(key(new Date(end.getFullYear(), end.getMonth() - i, 1)));
+  }
+  return months;
+}
+
+// 今天(本地自然日)的 "YYYY-MM-DD"（「每日」/「每月」按钮 = 以今天/当月为终点）
+function todayStr() {
+  const z = dayZero(Date.now());
+  return `${z.getFullYear()}-${String(z.getMonth() + 1).padStart(2, "0")}-${String(z.getDate()).padStart(2, "0")}`;
+}
+
+// 「每日」按钮：截止日期重置为今天（以今天为终点显示最近 5 天），并切到每日模式
+function onDayClick() {
+  trendEnd = todayStr();
+  const el = $("trendEnd");
+  if (el && String(el.value) !== trendEnd) el.value = trendEnd;
+  changeMode("day");
+}
+
+// 「每月」按钮：截止日期重置为今天（每月视图以当月为终点显示最近 5 个月），并切到每月模式
+function onMonthClick() {
+  trendEnd = todayStr();
+  const el = $("trendEnd");
+  if (el && String(el.value) !== trendEnd) el.value = trendEnd;
+  changeMode("month");
+}
+
+// 截止日期选择：日期输入框；值为空 = 恢复当前模式的默认窗口（每日=动态窗口/每月=全部月份）。
+// 同时把输入框与 trendEnd 双向同步；仅「选值」时自动切到每日（日期框=每日视图专用语义），
+// 清空不切模式（避免在每月视图清空被意外弹回每日视图，不覆盖用户刚选的日期）。
+function onTrendEnd(v) {
+  trendEnd = v ? String(v) : "";
+  const el = $("trendEnd");
+  if (el && String(el.value) !== trendEnd) el.value = trendEnd;
+  if (v && dashMode !== "day") changeMode("day"); else renderLines();
 }
 
 // 柱状图：每个时间点（每日=天/每月=月）该组有数据的账号各一根柱；
@@ -132,8 +221,8 @@ function renderLines() {
     $("chart").innerHTML = '<div class="ph">暂无足够数据，多刷新几次后出现图表</div>';
     return;
   }
-  // day 模式：X 轴动态窗口（3~10 天）；all/month 用实际数据日期。窗口先算好供下方裁剪数据点
-  const xTicks = dashMode === "day" ? dayWindow() : null;
+  // day 模式：X 轴动态窗口（3~5 天，或截止日期固定 5 天）；month 模式：有截止月时取最近 5 个月、否则全部月份；all 用实际数据日期。窗口先算好供下方裁剪数据点
+  const xTicks = dashMode === "day" ? dayWindow(trendEnd) : (dashMode === "month" ? monthWindow() : null);
   const winMin = xTicks ? xTicks[0] : null, winMax = xTicks ? xTicks[xTicks.length - 1] : null;
   const lines = raw.map((a) => {
     let pts = (a.series || []).slice().sort((a, b) => a.t < b.t ? -1 : 1);
@@ -144,6 +233,8 @@ function renderLines() {
         m.set(k, (m.get(k) || 0) + p.v);
       }
       pts = [...m.keys()].sort().map((k) => ({ t: k, v: m.get(k) }));
+      // 每月视图：裁剪到窗口内（未点「每月」= 全部月份；点了则以当月为终点取最近 5 个月）
+      if (winMin && winMax) pts = pts.filter((p) => p.t >= winMin && p.t <= winMax);
     } else if (dashMode === "day") {
       // 每日视图：归一化到本地当天 00:00（与 X 轴刻度对齐），并裁剪到窗口内（窗口外历史点由「全部显示」查看）
       pts = pts

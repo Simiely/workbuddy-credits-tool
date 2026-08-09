@@ -48,6 +48,7 @@ const mk = (uin, ts, gR, gU, packs) => ({
 try {
   const hist = await import("file:///" + tmp.replace(/\\/g, "/") + "/src/compute/history.js");
   const derive = await import("file:///" + tmp.replace(/\\/g, "/") + "/src/compute/derive.js");
+  const gc = await import("file:///" + tmp.replace(/\\/g, "/") + "/src/compute/gc.js"); // v1.4.58 固化独立模块
 
   // 注意:appendSnapshot 同分钟去重全局不分账号,各场景时间必须互不相同
   console.log("T1 今天签到(首条无包,最新新增目标到期满额包) → true");
@@ -84,7 +85,7 @@ try {
   hist.appendSnapshot([mk("u6", at(dayBeforeKey, 1.2), 1000, 0, [])], { ts: at(dayBeforeKey, 1.2) });
   hist.appendSnapshot([mk("u6", at(dayBeforeKey, 9.2), 1100, 0, [pack(addMonth(dayBeforeKey), 100)])], { ts: at(dayBeforeKey, 9.2) });
   hist.appendSnapshot([mk("u6", at(todayKey, 1.4), 1100, 0, [pack(addMonth(dayBeforeKey), 80)])], { ts: at(todayKey, 1.4) });
-  const g = derive.gcDaySummaries();
+  const g = gc.gcDaySummaries();
   assert("固化执行", g.fixed >= 1, "got " + g.fixed);
   const summ = hist.loadDaySummaries("u6");
   const sb = summ.find((x) => x.day === dayBeforeKey);

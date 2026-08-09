@@ -1,17 +1,11 @@
 // src/present/render.js - 输出渲染层: markdown / CSV / 账号摘要(CLI 与 GUI 共用)
 // 统一消费 src/compute/model.js 的 parseAccountData，不再各自重算 base/gift/active/expired。
+// 时区口径收敛：cnNow 来自 src/time.js（v1.4.58，与 GUI/derive 同源，显示同一时刻）。
+import { cnNow } from "../time.js";
 import { displayName } from "../compute/store.js";
 import { parseAccountData, SHORT_PKG } from "../compute/model.js";
 
 export { SHORT_PKG };
-
-// 固定中国时区(+8)格式化当前时间：不依赖进程时区（容器 UTC 时 toLocaleString 会错位显示）
-// 与 derive.js 自然日口径一致，CLI/GUI 显示同一时刻
-export function cnNow() {
-  const d = new Date(Date.now() + 8 * 3600000); // 平移至 UTC+8 墙钟
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getUTCFullYear()}/${p(d.getUTCMonth() + 1)}/${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
-}
 
 /** 账号对外摘要(不暴露 cookie,供 API/前端展示) */
 export function brief(a) {

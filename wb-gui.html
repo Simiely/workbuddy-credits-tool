@@ -301,8 +301,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="phead foldable" data-fold="trend" onclick="toggleFold(this,event)" title="点击折叠/展开"><h2>📉 积分消耗趋势</h2>
       <div style="display:flex;gap:10px;align-items:center">
       <button class="btn btn-g" id="btnAll" onclick="changeMode('all')" style="min-height:30px;padding:4px 12px;font-size:12px">全部显示</button>
-      <button class="btn btn-g active" id="btnDay" onclick="changeMode('day')" style="min-height:30px;padding:4px 12px;font-size:12px">每日</button>
-      <button class="btn btn-g" id="btnMonth" onclick="changeMode('month')" style="min-height:30px;padding:4px 12px;font-size:12px">每月</button></div>
+      <button class="btn btn-g active" id="btnDay" onclick="onDayClick()" style="min-height:30px;padding:4px 12px;font-size:12px">每日</button>
+      <button class="btn btn-g" id="btnMonth" onclick="onMonthClick()" style="min-height:30px;padding:4px 12px;font-size:12px">每月</button>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--sub)">
+        <span>截止日期</span>
+        <input type="date" id="trendEnd" onchange="onTrendEnd(this.value)" title="以所选日为终点显示最近5天(留空=自动窗口)" style="border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);color-scheme:dark;padding:4px 6px;font-size:12px;outline:none"></span>
+      </div>
     </div>
     <div class="pbody line"><div class="legend" id="legend"></div><div class="chart" id="chart"><div class="ph">加载中…</div></div><div id="chartTip" hidden></div></div>
   </section>
@@ -402,12 +406,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 <div class="toast" id="toast"></div>
 <script>window.__BASE__ = (location.pathname.match(/^\/tool\/[^/]+/) || [""])[0];</script>
-<script src="./wb-gui.state.js?v=v1.4.50"></script>
-<script src="./wb-gui.core.js?v=v1.4.50"></script>
-<script src="./wb-gui.render.js?v=v1.4.50"></script>
-<script src="./wb-gui.chart.js?v=v1.4.50"></script>
-<script src="./wb-gui.ops.js?v=v1.4.50"></script>
-<script src="./wb-gui.sync.js?v=v1.4.50"></script>
-<script src="./wb-gui.actions.js?v=v1.4.50"></script>
+<script src="./wb-gui.state.js?v=v1.4.60"></script>
+<script src="./wb-gui.core.js?v=v1.4.60"></script>
+<script src="./wb-gui.render.js?v=v1.4.60"></script>
+<script src="./wb-gui.chart.js?v=v1.4.60"></script>
+<script src="./wb-gui.ops.js?v=v1.4.60"></script>
+<script src="./wb-gui.sync.js?v=v1.4.60"></script>
+<script src="./wb-gui.actions.js?v=v1.4.60"></script>
 </body>
 </html>

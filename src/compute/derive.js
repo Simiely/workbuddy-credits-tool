@@ -8,42 +8,13 @@
 //      loadHist 三处的「日消耗 = 当日首快照剩余 - 末快照剩余」逻辑，现在收口到这一处。
 //   2. todayUsed 由「今日首个快照剩余 - 当前剩余」得到（相邻 Reading 之差），
 //      根治旧版「今日已用恒为0」（旧版每天只有一次快照导致首末相等→0；P1 采样器已让每天多条）。
-//   3. 不碰 IO，IO 仍在 history.js / db.js —— 本文件可独立单测。
-import {
-  historyFor,
-  loadLastData,
-  loadDaySummaries,
-  saveDaySummary,
-  readingsForDay,
-  oldDayKeys,
-  deleteReadingsBefore,
-  allSnapshotUins,
-} from "./history.js";
+//   3. 不碰 IO，IO 仍在 history.js / db.js（唯一例外：packagesFor 缺包时回退读 last-data 缓存）。
+//      历史固化(gcDaySummaries) v1.4.58 已拆到 gc.js，本文件不再写库。
+//   4. 时区口径（+8）v1.4.58 收敛到 src/time.js，此处只 import 不重复实现。
+import { historyFor, loadLastData, loadDaySummaries } from "./history.js";
+import { cnWall, cnDay0, dayKeyOf, startOfToday } from "../time.js";
 
 const pad = (n) => String(n).padStart(2, "0");
-
-// 中国时区(UTC+8)固定口径:容器(node:alpine 默认 UTC)与桌面(Windows GMT+8)进程时区不同,
-// 若按"进程本地时区"算自然日,容器会把 8/3 数据算成 8/2(错位一天,趋势缺日期、今日已用异常)。
-// 统一按 +8 计算,与部署环境无关。
-const TZ_MS = 8 * 3600 * 1000;
-const cnWall = (utcMs) => new Date(utcMs + TZ_MS); // 真实 UTC 时刻 → 中国墙上时间(UTC 视图)
-const cnDay0 = (utcMs) => {
-  const w = cnWall(utcMs);
-  return new Date(Date.UTC(w.getUTCFullYear(), w.getUTCMonth(), w.getUTCDate()) - TZ_MS); // 中国当天 00:00 的真实 UTC 时刻
-};
-
-/** 自然日键 YYYY-MM-DD（统一按中国时区 +8） */
-export function dayKeyOf(ts) {
-  const w = cnWall(new Date(ts).getTime());
-  return `${w.getUTCFullYear()}-${pad(w.getUTCMonth() + 1)}-${pad(w.getUTCDate())}`;
-}
-
-/** 自然日偏移:day('YYYY-MM-DD') 加/减 offsetDays,仍按中国时区自然日 */
-export function dayOfOffset(day, offsetDays) {
-  const [y, m, d] = day.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d) + offsetDays * 86400000);
-  return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`;
-}
 
 // 消耗口径（v1.4.31 起，模块级供 deriveAccount 与 gcDaySummaries 共用）：
 // 对已按时间排序的快照序列，累计「已用」的正增量。
@@ -113,11 +84,6 @@ export function detectSignIn(firstPacks, lastPacks, todayKey) {
     const end = String(p.cycleEndTime || "").slice(0, 10);
     return end === target && !firstKeys.has(end);
   });
-}
-
-/** 中国时区今天 00:00（真实 UTC 时刻） */
-export function startOfToday() {
-  return cnDay0(Date.now());
 }
 
 /**
@@ -368,49 +334,4 @@ export function deriveAccount(uin, acct = {}) {
 /** 批量派生（账号池顺序，保持展示稳定） */
 export function deriveAll(accounts) {
   return accounts.map((a) => deriveAccount(a.uin, a));
-}
-
-// ---------- 历史固化（v1.4.31 规划落地） ----------
-// 把「T-2 及更早」的每日原始快照压缩为 day_summary 摘要，然后删除原始明细，
-// 防止历史无限增长（原 wb-history.json 3.8MB 上传慢的根因）。
-// 幂等：某日摘要已存在则跳过；保留窗口 = 昨天(T-1)与今天（todayUsed/dailyUsed 现算需要）。
-export function gcDaySummaries() {
-  const nowMs = Date.now();
-  const todayKey = new Date(nowMs + TZ_MS).toISOString().slice(0, 10);
-  const today0Utc = new Date(todayKey + "T00:00:00Z").getTime() - TZ_MS; // 中国今天 00:00 的 UTC 时刻
-  const cutMs = today0Utc - 1 * 86400000; // 保留窗口起点 = 昨天 00:00；<cut 的旧日全部固化后删除
-  const accts = allSnapshotUins(); // 只处理有快照的账号（字符串数组，不依赖账号池）
-  let fixed = 0;
-  for (const uin of accts) {
-    const existing = new Set(loadDaySummaries(uin).map((s) => s.day)); // 幂等键
-    for (const day of oldDayKeys(uin, cutMs)) {
-      if (existing.has(day)) continue; // 已固化，跳过
-      const rows = readingsForDay(uin, day);
-      if (!rows.length) continue;
-      const v = consumeByPack(rows);
-      const first = rows[0];
-      const last = rows[rows.length - 1];
-      // 当天签到状态：基线 = 前一天最后一条快照 vs 当日末条,「新增 + 到期日对日=当日+1月」= 当天已签到
-      // (基线修正 2026-08-06,与今日签到同因:当日首条可能已含签到包;取不到前一天则退化当日首条)
-      const packsOf = (r) => {
-        try { return (JSON.parse(r.raw || "{}").giftPackages) || []; } catch { return []; }
-      };
-      const prevRows = readingsForDay(uin, dayOfOffset(day, -1)); // 前一天快照(可能为空)
-      const basePacks = prevRows.length
-        ? packsOf(prevRows[prevRows.length - 1])
-        : packsOf(first);
-      const signedIn = detectSignIn(basePacks, packsOf(last), day) ? 1 : 0;
-      saveDaySummary(
-        uin,
-        day,
-        v,
-        first ? (first.baseRemain || 0) + (first.giftRemain || 0) : null,
-        last ? (last.baseRemain || 0) + (last.giftRemain || 0) : null,
-        signedIn
-      );
-      fixed++;
-    }
-  }
-  if (fixed > 0) deleteReadingsBefore(new Date(cutMs).toISOString()); // 有固化才清理（保留 T-1 与今天）
-  return { fixed };
 }

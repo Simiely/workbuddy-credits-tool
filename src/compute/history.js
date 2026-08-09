@@ -3,11 +3,13 @@
 // 设计：每次成功查询产生一个「快照」，旧版把整个快照数组存进 wb-history.json；
 // 新版把快照里的每个账号拆成 readings 表里的一行（append-only），快照时间 ts 共享。
 // 这样「今日消耗 / 每日序列 / 趋势」都能直接用 SQL 按 uin+ts 聚合，且单一真相源。
-// 对外函数签名与旧版一致，buildDashboard 逻辑原样保留（P2 才收口解析）。
+// 派生/仪表盘装配在 derive.js（v1.4.58 起本文件不再 import derive，依赖方向单向）。
+// v1.4.58 历史固化(gcDaySummaries)已拆到 gc.js，本文件只提供固化所需的数据访问。
 import fs from "node:fs";
 import path from "node:path";
 import { TOOLS_DIR } from "../config.js";
 import { getDb } from "../store/db.js";
+import { dayKeyOf, TZ_MS } from "../time.js"; // v1.4.58 时区口径统一引用
 
 const LAST_FILE = path.join(TOOLS_DIR, "wb-last-data.json"); // 离线缓存（仍保留为镜像）
 const DEDUP_MINUTES = 1;
@@ -120,20 +122,7 @@ export function loadHistory() {
   return [...byTs.entries()].map(([ts, entries]) => ({ ts, entries }));
 }
 
-// ---------- 消耗仪表盘聚合 ----------
-// P2 起：聚合逻辑收口到 src/compute/derive.js（纯函数、单数据源）。
-// 本函数只做「账号池 → Derived 视图」的装配，不再内联任何解析公式。
-import { deriveAll } from "./derive.js";
-
-/**
- * 由账号池生成消耗仪表盘数据。时序真相源在 readings 表，由 deriveAccount 读取。
- * @param {Array} [_hist] 兼容旧签名（已不再使用，保留避免破坏调用方）
- * @param {Array} accounts 账号池
- */
-export function buildDashboard(_hist, accounts) {
-  const per = deriveAll(accounts);
-  return { per };
-}
+// ---------- 固化任务的数据访问（计算逻辑在 gc.js 的 gcDaySummaries；v1.4.58 拆出，本文件不再 import derive） ----------
 
 /** 最新一条 reading 的 ts（用于 dashboard 缓存键，确保刷新后趋势图即时更新） */
 export function latestReadingTs() {
@@ -153,10 +142,9 @@ export function exportLegacy() {
     // （只读首末两条,中间快照不用）。原策略只保留最新一组 → 同步/下载恢复后每天首条无包 →
     // 派生自动降级增量口径(今日已用被放大,2026-08-08 实测 321→1169)。新策略:每天首末快照组
     // 保留完整(含 giftPackages),中间组剥离 → 口径不降级,体积几乎不变(每天 100+ 组 → 只 2 组带包)。
-    const cnDayKey = (ts) => new Date(new Date(ts).getTime() + 8 * 3600 * 1000).toISOString().slice(0, 10);
     const byDay = new Map(); // day -> {min, max}
     for (const snap of hist) {
-      const day = cnDayKey(snap.ts);
+      const day = dayKeyOf(snap.ts); // +8 口径统一来自 time.js
       const cur = byDay.get(day);
       if (!cur) byDay.set(day, { min: snap.ts, max: snap.ts });
       else {
@@ -245,12 +233,10 @@ export function clearDaySummaries() {
 
 // ---------- 固化任务的数据访问（计算逻辑在 derive.js 的 gcDaySummaries，避免循环依赖） ----------
 
-const CN_TZ_MS = 8 * 3600 * 1000;
-
 /** 某账号某中国自然日(YYYY-MM-DD)的全部快照（按时间升序，含 raw 供签到检测） */
 export function readingsForDay(uin, day) {
   const db = getDb();
-  const startUtc = new Date(day + "T00:00:00Z").getTime() - CN_TZ_MS;
+  const startUtc = new Date(day + "T00:00:00Z").getTime() - TZ_MS;
   const endUtc = startUtc + 86400000;
   return db
     .prepare(
@@ -267,7 +253,7 @@ export function oldDayKeys(uin, cutUtcMs) {
     .all(uin, new Date(cutUtcMs).toISOString());
   const days = new Set();
   for (const r of rows) {
-    days.add(new Date(new Date(r.ts).getTime() + CN_TZ_MS).toISOString().slice(0, 10));
+    days.add(dayKeyOf(r.ts)); // +8 口径统一来自 time.js
   }
   return [...days].sort();
 }
