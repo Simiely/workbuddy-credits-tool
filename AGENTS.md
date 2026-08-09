@@ -30,8 +30,8 @@
 13. **签到检测(v1.4.33)**:官方签到接口被 APISIX 401 拦,用元数据推断——`detectSignIn()` = 最新快照存在「今日首条没有 + cycleEndTime 对日=今天+1自然月」的新增包即为已签到;day_summary.signedIn 固化历史签到,卡片 ✅/⏰ 徽标
 14. **前端结构约定(v1.4.38 归位)**:折叠(toggleFold/applyFold)归 core.js(UI 基建),图表 hover 委托(initChartTip)归 chart.js,**副作用一律收敛在 actions.js 启动段**(其余文件只声明函数);改前端后必须 bump wb-gui.html 全部 ?v= 版本戳(一次 bump 到新号,别复用旧号——浏览器强缓存会拦"同名 URL")
 15. **图表布局要点(v1.4.34~37)**:日期标签统一 text-anchor="middle" 且 x 夹取防越界(首尾 start/end 锚点会偏 16px);合计柱紧贴账号柱、柱子组整体居中于组;矮柱子靠透明整列触发区(fill="transparent" .cpt)保证 hover 命中
-16. **一键同步(v1.4.46)**:`POST /api/webdav/sync` = 先拉(账号 smart 合并 `mergeAccountsSmart` + 历史合并导入)→ 再传(导出全量覆盖);404=首次只传;拉取失败(非 404)中止不上传;**清空保护(v1.4.48)**:远端有账号但合并后本地为空 → 拒绝上传(防云端被清空)
-17. **墓碑(v1.4.46,删除跨设备)**:`tombstones(uin, deletedAt)` 表;/api/del 写墓碑随备份传播(远端账号 updatedAt≤deletedAt 不复活、新数据>deletedAt 复活、本地≤deletedAt 删除传播);**清空账号池(/api/clear-data)不写墓碑**(v1.4.48,本地重置不传播);TTL 30 天清理
+16. **一键同步(v1.4.46)**:`POST /api/webdav/sync` = 先拉(账号 smart 合并 `mergeAccountsSmart` + 历史合并导入)→ 再传(导出全量覆盖);404=首次只传;拉取失败(非 404)中止不上传;**清空保护(v1.4.48)**:远端有账号但合并后本地为空 → 拒绝上传(防云端被清空);**墓碑 TTL 清理在上传成功后执行**(v1.4.51,勿移回合并阶段)
+17. **墓碑(v1.4.46,删除跨设备)**:`tombstones(uin, deletedAt)` 表;/api/del 写墓碑随备份传播(远端账号 updatedAt≤deletedAt 不复活、新数据>deletedAt 复活、本地≤deletedAt 删除传播);**清空账号池(/api/clear-data)不写墓碑**(v1.4.48,本地重置不传播);**TTL 30 天清理必须在上传成功后执行**(v1.4.51 P0 修复:禁止在合并阶段 purge——墓碑未传播就被删会导致当次合并误复活 + 远端备份丢删除标记、其他设备删除复活;对齐 edge-multi-account-cookie v2.11.3)
 18. **同步/测试前端超时(v1.4.49)**:syncAct 按动作放宽 timeout(sync=90s/test=30s)——后端下载/上传各 60s,默认 15s 会误报超时;新增长耗时接口必须显式传 timeout
 19. **favicon(v1.4.50)**:用**内联 SVG data-URI**(`<link rel="icon" href="data:image/svg+xml,<svg ...><text>📉</text></svg>">`,emoji 取 tool.json icon,零文件零后端,子路径自适应);**勿用 staticFile() 读 PNG 文件方案**(已撤回,PNG 二进制会被 utf8 读坏,且多一个文件要同步 4 处)
 
