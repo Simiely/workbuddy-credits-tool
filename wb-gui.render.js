@@ -72,12 +72,12 @@ function renderCards() {
   const rs = (S && S.results) || [];
   if (!rs.length) {
     $("grid").innerHTML = '<div class="empty"><div class="big">📭</div>账号池为空<br>点「＋ 添加当前账号」或命令行 wb-credits.bat save-current</div>';
-    $("foot").textContent = "v1.4.49 · 数据来自 WorkBuddy 网页版接口 · 暂无账号数据(可「添加当前账号」或从 WebDAV 下载)";
+    $("foot").textContent = "v1.4.50 · 数据来自 WorkBuddy 网页版接口 · 暂无账号数据(可「添加当前账号」或从 WebDAV 下载)";
     return;
   }
   $("grid").innerHTML = rs.map((r, i) => {
     const a = r.account, s = r.summary;
-    const nm = escAttr(acctName(a)); // 显示名可自定义,必须转义后进 innerHTML(v1.4.49)
+    const nm = escAttr(acctName(a)); // 显示名可自定义,必须转义后进 innerHTML(v1.4.50)
     // 改名/删除:与「今日消耗」同一行,靠右
     const acts = `<span class="acts" style="margin-left:auto"><button class="btn btn-d" onclick="event.stopPropagation();openRename('${a.id}')">改名</button>
       <button class="btn btn-d" onclick="event.stopPropagation();openDel('${a.id}')">删除</button></span>`;
@@ -106,7 +106,7 @@ function renderCards() {
       </div></div>`;
   }).join("");
   initDrag();
-  $("foot").textContent = "v1.4.49 · 数据来自 WorkBuddy 网页版接口 · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新登录后「添加当前账号」 · 卡片可拖动排序";
+  $("foot").textContent = "v1.4.50 · 数据来自 WorkBuddy 网页版接口 · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新登录后「添加当前账号」 · 卡片可拖动排序";
 }
 
 // ---- 卡片拖拽排序(顺序随账号池持久化,经 /api/reorder 保存) ----

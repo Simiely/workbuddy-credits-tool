@@ -3,7 +3,7 @@
 > 给 AI 与"未来的你"看的精简规则。核心约束尽量短,细节放 `rules/` 按需 @引用。
 >
 > **接手先读**:[`docs/交接说明.md`](docs/交接说明.md)(运行实例/端口/数据文件/待办的状态快照)。
-> 当前版本 **v1.4.49**(见 CHANGELOG)。
+> 当前版本 **v1.4.50**(见 CHANGELOG)。
 > **发包规范**:每次发包只发**平台版(tools-center 托管 zip)+ exe 版(SEA 单文件)** 两个版本,exe 不上传 GitHub Release;完整流程见 [`docs/发布规范.md`](docs/发布规范.md)。
 
 ## 技术栈
@@ -33,6 +33,7 @@
 16. **一键同步(v1.4.46)**:`POST /api/webdav/sync` = 先拉(账号 smart 合并 `mergeAccountsSmart` + 历史合并导入)→ 再传(导出全量覆盖);404=首次只传;拉取失败(非 404)中止不上传;**清空保护(v1.4.48)**:远端有账号但合并后本地为空 → 拒绝上传(防云端被清空)
 17. **墓碑(v1.4.46,删除跨设备)**:`tombstones(uin, deletedAt)` 表;/api/del 写墓碑随备份传播(远端账号 updatedAt≤deletedAt 不复活、新数据>deletedAt 复活、本地≤deletedAt 删除传播);**清空账号池(/api/clear-data)不写墓碑**(v1.4.48,本地重置不传播);TTL 30 天清理
 18. **同步/测试前端超时(v1.4.49)**:syncAct 按动作放宽 timeout(sync=90s/test=30s)——后端下载/上传各 60s,默认 15s 会误报超时;新增长耗时接口必须显式传 timeout
+19. **favicon(v1.4.50)**:用**内联 SVG data-URI**(`<link rel="icon" href="data:image/svg+xml,<svg ...><text>📉</text></svg>">`,emoji 取 tool.json icon,零文件零后端,子路径自适应);**勿用 staticFile() 读 PNG 文件方案**(已撤回,PNG 二进制会被 utf8 读坏,且多一个文件要同步 4 处)
 
 ## 约定
 

@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## v1.4.50 (2026-08-09) · 接入网站图标 favicon(打包标准 emoji 📉)
+
+### 新增
+- **网站图标**:wb-gui.html `<head>` 加内联 SVG data-URI favicon(`<svg><text>📉</text></svg>`,与 tool.json icon 一致)——**零文件、零后端改动**,子路径挂载自适应;PNG 文件方案已撤回
+
+### 验证
+- npm test 11/11 通过(191 断言);端到端 GET /favicon 页面 data-URI 正常解析
+
 ## v1.4.49 (2026-08-09) · 场景走查修复:同步/测试前端超时放宽
 
 ### 修复（场景走查发现）
