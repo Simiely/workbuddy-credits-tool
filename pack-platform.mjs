@@ -53,20 +53,28 @@ for (const f of ["部署.md", "tools-center部署.md", "配置要求.md", "新�
 fs.writeFileSync(path.join(STAGE, "wb-sync.json"), JSON.stringify(sync, null, 2), "utf8");
 console.log(`[pack] 已预填 wb-sync.json -> zip(WebDAV: ${sync.url || "空"})`);
 
-// 5. 生成平台部署说明(标注配置已预填)
+// 5. 生成平台部署说明(标注配置是否已预填;公开发布包一律空壳)
+const HAS_SYNC = Boolean(sync && sync.url && sync.user && sync.pass);
+const syncNote = HAS_SYNC
+  ? `本包**已预填 WebDAV 配置**(\`wb-sync.json\`,与桌面版同一套),上传后:
+1. 平台自动拉起 \`node wb-gui.mjs 8123\`(健康检查 \`/api/status\`)
+2. 打开 \`/tool/wb-credits/\` → 「☁️ 云同步 → 下载」→ 账号池 + 历史恢复
+3. **无需输入任何配置**`
+  : `本包 **未预填 WebDAV 配置**(\`wb-sync.json\` 为空壳——公开发布包出于凭证安全一律空壳,2026-08-11 起),上传后:
+1. 平台自动拉起 \`node wb-gui.mjs 8123\`(健康检查 \`/api/status\`)
+2. 打开 \`/tool/wb-credits/\` → 「☁️ 云同步 → 配置」填入你的 WebDAV 地址/账号/密码 → 「🔄 同步 → 下载」
+3. 凭证从桌面版「☁️ 上传」同步过来`;
+
 const readme = `# 平台版部署说明(tools-center 托管)
 
 > WorkBuddy 积分管理 · 平台版 v${VER}
 > **平台版 = tools-center 统一宿主托管**:网页「+ 添加」→ zip 上传本包,平台自动识别 \`tool.json\` 并托管进程。
 
 ## 零输入说明
-本包**已预填 WebDAV 配置**(\`wb-sync.json\`,与桌面版同一套),上传后:
-1. 平台自动拉起 \`node wb-gui.mjs 8123\`(健康检查 \`/api/status\`)
-2. 打开 \`/tool/wb-credits/\` → 「☁️ 云同步 → 下载」→ 账号池 + 历史恢复
-3. **无需输入任何配置**
+${syncNote}
 
 ## 全部配置要求
-见包内 \`docs/配置要求.md\`(10 项清单:必填 WebDAV 三项已预填;端口/命令/健康检查 tool.json 已声明;管理密码可选)。
+见包内 \`docs/配置要求.md\`(10 项清单:必填 WebDAV 三项${HAS_SYNC ? "已预填" : "需手动填写"};端口/命令/健康检查 tool.json 已声明;管理密码可选)。
 
 ## 数据与 cookie 更新
 - 数据目录 = 工具目录(\`tools/wb-credits/\`):\`credits.db\` 含凭证,**删工具 = 删数据**,先云同步备份
