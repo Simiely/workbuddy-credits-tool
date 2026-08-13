@@ -9,8 +9,8 @@ const sum = (arr, k) => arr.reduce((s, a) => s + (a[k] || 0), 0);
  */
 export function parseAccountData(D) {
   const accounts = (D && D.Accounts) || [];
-  const base = accounts.find((a) => a.PackageName.includes("体验版")) || null;
-  const gifts = accounts.filter((a) => !a.PackageName.includes("体验版"));
+  const base = accounts.find((a) => (a.PackageName || "").includes("体验版")) || null;
+  const gifts = accounts.filter((a) => !(a.PackageName || "").includes("体验版"));
   const active = gifts.filter((a) => a.Status === 0);
   const expired = gifts.filter((a) => a.Status !== 0);
 

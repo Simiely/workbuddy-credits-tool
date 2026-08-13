@@ -90,6 +90,13 @@ try {
   const summ = hist.loadDaySummaries("u6");
   const sb = summ.find((x) => x.day === dayBeforeKey);
   assert("前天摘要 signedIn=1", sb && sb.signedIn === 1, "got " + JSON.stringify(sb));
+
+  console.log("T7 同到期日碰撞(2026-08-13 小陈实测):历史包与今日签到包同日期不同时刻 → 仍识别今日签到");
+  // 历史/促销包:到期日 2026-09-13 08:48:05(早发);今日签到包:到期日 2026-09-13 09:00:50(同日新发)
+  const oldPromo = { packageName: "promo", status: 0, capacityRemain: 100, capacityUsed: 0, capacitySize: 100, cycleEndTime: "2026-09-13 08:48:05" };
+  const newSignIn = { packageName: "promo", status: 0, capacityRemain: 100, capacityUsed: 0, capacitySize: 100, cycleEndTime: "2026-09-13 09:00:50" };
+  assert("碰撞下识别今日签到 = true", derive.detectSignIn([oldPromo], [newSignIn], "2026-08-13") === true, "got " + derive.detectSignIn([oldPromo], [newSignIn], "2026-08-13"));
+  assert("完全相同包(非今日新增) = false", derive.detectSignIn([newSignIn], [newSignIn], "2026-08-13") === false, "got " + derive.detectSignIn([newSignIn], [newSignIn], "2026-08-13"));
 } catch (e) {
   console.log("  FAIL 测试执行异常: " + e.message);
   failed++;

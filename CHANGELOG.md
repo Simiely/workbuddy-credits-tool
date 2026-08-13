@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## v1.4.61 (2026-08-13) · 修复:签到漏判 + 今日到账/昨日结余卡片 + CLI 口径对齐
+
+### 修复（功能/健壮性）
+- **签到检测漏判(🟡 功能)**:`detectSignIn` 原用 `cycleEndTime` 的「日期」部分做唯一键;当某账号存在「老促销包」与今日签到包同到期日(如均 09-13、时刻不同 08:48 vs 09:00)时,老包掩盖新包 → 今日签到被误判为「未签到」。改为按 `cycleEndTime` 完整串(到秒)判定新包,历史固化(`gc.js`)一并受益。新增回归测试 `signin-detect.test.mjs` T7(同日期碰撞仍识别今日签到;完全相同包不误报)
+- **`model.js` 空值防护(P0)**:`parseAccountData` 对 `PackageName` 直接 `.includes` 无防护,接口返回缺该字段的账号会抛 `TypeError` 被误标「错误」;改为 `(a.PackageName || "")`(与 `buildSnapshotEntry` 一致)
+- **CLI `report` 死列删除(P0)**:`dailyRate`/`daysToEmpty` 已于 v1.4.15 下线,`report` 仍打印「日均消耗(7日)/预计耗尽(天)」两列恒为「—」(死功能);删除该两列及 `dte`/`rate` 变量
+- **CLI `report` 累计已用口径对齐**:「累计已用」列由 `d.used`(最新快照净额,包失效日远小于真实消耗)改为 `d.consumed`(历史每日消耗之和),与前端仪表盘「累计已用」统一口径
+- **调度采样间隔 O(全表) 解析优化(P1)**:`computeIntervalMin` 原每周期 `loadHistory()` 读出整个 `readings` 表并逐条 `JSON.parse` 仅取最新剩余;新增 `latestSnapshotEntries()` 定点查询(只取 `baseRemain/giftRemain` 列),实测 6136 条下 24.78ms → 1.59ms(~15×)
+
+### 变更（仪表盘 hero 卡片）
+- 第二张 hero 卡「⏳ 近3天过期」→「📥 今日到账」(今日相对昨日末**新增赠送包容量之和**,恒非负、不含消耗);右侧新增「昨日结余」大数字(昨日末剩余)
+- 后端 `derive.js` 新增 `todayAdded` / `yesterdayRemain` 字段;前端 `wb-gui.render.js` 卡片大数字并排(左「昨日结余」/右「今日到账」+绿),刷新即生效
+
+### 验证
+- node --check 全部改动文件;`test/run-all.mjs` 12/12 通过(含 signin-detect T7);`report` 列对齐、累计已用非零;8081 服务运行正常、`/api/dashboard/all` 已含 `todayAdded` 字段
+- 版本戳 v1.4.61(前端卡片刷新即生效;后端 `todayAdded/yesterdayRemain` 字段需重启服务)
+
 ## v1.4.60 (2026-08-10) · 截止日期默认显示今天
 
 > **2026-08-11 补发(同版本号,无代码行为变更)**:公开发布 zip 凭证安全修复——v1.4.60 旧 Release 资产 `wb-sync.json` 曾含明文 WebDAV 密码,已替换为空壳干净包;`pack-platform.mjs` 部署说明改为动态标注(空壳包提示手动填 WebDAV),发布规范/配置要求补充「公开 zip 必须空壳」铁律。文档同步见 GitHub commits(d98173d4 / 9e463301 / b639dc63)。

@@ -9,7 +9,7 @@
 //   - 其他                          → 15min（健康，低频即可）
 // 用量查询走「零成本接口」，后台采样不消耗额度。
 import { loadAccounts } from "./store.js";
-import { loadHistory } from "./history.js";
+import { latestSnapshotEntries } from "./history.js";
 import { sampleAll } from "./sample.js";
 import { gcDaySummaries } from "./gc.js"; // v1.4.58 历史固化独立模块
 import { dayKeyOf } from "../time.js"; // v1.4.58 时区口径统一引用
@@ -41,8 +41,7 @@ export function setNotifier(fn) {
 function computeIntervalMin() {
   const accounts = loadAccounts();
   if (!accounts.length) return DEFAULT_MIN;
-  const hist = loadHistory();
-  const lastSnap = hist.length ? hist[hist.length - 1].entries : [];
+  const lastSnap = latestSnapshotEntries(); // 定点查询最新快照剩余,不解析全表 raw JSON
   const byUin = new Map(lastSnap.map((e) => [e.uin, e]));
   const now = Date.now();
   let minRemain = Infinity;

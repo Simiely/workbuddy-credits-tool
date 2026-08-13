@@ -8,7 +8,7 @@
 //   node wb-credits.mjs rename <序号|id|Uin> <显示名>
 //   node wb-credits.mjs del <序号|id|Uin>
 //   node wb-credits.mjs all [--csv <路径>]      # 一键批量查询全部账号
-//   node wb-credits.mjs report                  # 派生视图:当前剩余/今日已用/日均/预计耗尽天数
+//   node wb-credits.mjs report                  # 派生视图:当前剩余/今日已用/累计已用
 //   node wb-credits.mjs [--account <序号|id|Uin>] [--all|--json|--csv <路径>]  # 单账号查询
 //   (兼容别名) node wb-credits.mjs cookie        # = save-current
 // 注:数据备份/恢复请用 GUI 的「☁️ 云同步」,命令行不再提供 export/import。
@@ -87,20 +87,19 @@ async function cmdAll(args) {
 }
 
 // ==================== 命令:report(派生视图,复用引擎) ====================
-// 复用 src/compute/derive.js 的 deriveAll,打印当前剩余/今日已用/日均消耗/预计耗尽天数等派生指标
+// 复用 src/compute/derive.js 的 deriveAll,打印当前剩余/今日已用/累计已用等派生指标
+// 注: 耗尽预测(dailyRate/daysToEmpty)已于 v1.4.15 主动下线(预测不准),故不在此展示。
 function cmdReport() {
   const accounts = loadAccounts();
   if (!accounts.length) return fail("账号池为空,先运行: wb-credits.bat save-current");
   const per = deriveAll(accounts);
   console.log(`# 额度派生视图(${new Date().toLocaleString("zh-CN")}) · 数据源:readings 时序`);
   console.log("");
-  console.log("| # | 账号 | 当前剩余 | 今日已用 | 累计已用 | 日均消耗(7日) | 预计耗尽(天) | 数据点 |");
-  console.log("|---|---|---|---|---|---|---|---|");
+  console.log("| # | 账号 | 当前剩余 | 今日已用 | 累计已用 | 数据点 |");
+  console.log("|---|---|---|---|---|---|");
   per.forEach((d, i) => {
-    const dte = d.daysToEmpty == null ? "—" : d.daysToEmpty;
-    const rate = d.dailyRate > 0 ? d.dailyRate : "—";
     console.log(
-      `| ${i + 1} | ${displayName(d)} | ${fmt(d.currentRemain)} | ${fmt(d.todayUsed)} | ${fmt(d.used)} | ${rate} | ${dte} | ${d.points} |`
+      `| ${i + 1} | ${displayName(d)} | ${fmt(d.currentRemain)} | ${fmt(d.todayUsed)} | ${fmt(d.consumed)} | ${d.points} |`
     );
   });
   console.log("");

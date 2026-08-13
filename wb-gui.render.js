@@ -11,7 +11,7 @@ function fpS() {
   return rs.map((r) => {
     const s = r.summary, d = r.derived || {};
     return (r.account.id || "") + "|" + (s ? [s.baseRemain, s.giftRemain, s.baseUsed, s.giftUsed, s.giftCount].join(",") : "f") + "|"
-      + "|d" + (d.expiring3d || 0) + "|" + (d.todayUsed || 0) + "|" + ((d.dailyUsed || []).length);
+      + "|d" + (d.todayAdded ?? 0) + "|" + (d.yesterdayRemain ?? 0) + "|" + (d.todayUsed || 0) + "|" + ((d.dailyUsed || []).length);
   }).join(";");
 }
 
@@ -32,8 +32,11 @@ function renderHero() {
   const failN = rs.length - okN;
   const total = rs.reduce((s, r) => s + (r.summary ? totalOf(r.summary) : 0), 0);
   const used = rs.reduce((s, r) => s + (((r.derived || {}).consumed) || 0), 0); // 累计已用=历史每日消耗之和(derived.consumed)
-  // 近3天过期 / 今日已用：直接消费账号对象上的 derived（单一来源，不再 patch dashPer 到 hero）
-  const exp3d = rs.reduce((s, r) => s + (((r.derived || {}).expiring3d) || 0), 0);
+  // 今日到账 / 今日已用：直接消费账号对象上的 derived（单一来源，不再 patch dashPer 到 hero）
+  const tAddAll = rs.reduce((s, r) => { const v = (r.derived || {}).todayAdded; return s + (v == null ? 0 : v); }, 0);
+  const tAddHas = rs.some((r) => (r.derived || {}).todayAdded != null);
+  const yestRemainAll = rs.reduce((s, r) => { const v = (r.derived || {}).yesterdayRemain; return s + (v == null ? 0 : v); }, 0);
+  const yRemainHas = rs.some((r) => (r.derived || {}).yesterdayRemain != null);
   const totalUsed = rs.reduce((s, r) => s + (((r.derived || {}).todayUsed) || 0), 0);
   // 昨日已用(自然日):从 dailyUsed 取昨天的消耗作对比基准;昨天无记录则只显示数值不显示箭头
   const yest = new Date(); yest.setDate(yest.getDate() - 1);
@@ -58,7 +61,7 @@ function renderHero() {
   }
   $("hero").innerHTML = `
     <div class="hcard total ${cls}"><span class="h-ico">🏦</span><div class="n" id="heroTotal">${rs.length ? fmt(total) : "—"}</div><div class="l">总剩余积分</div><div class="s">${sub}</div></div>
-    <div class="hcard"><span class="h-ico">⏳</span><div class="n" id="heroExp3d">${rs.length ? fmt(exp3d) : "—"}</div><div class="l">近3天过期</div></div>
+    <div class="hcard ${tAddHas ? "ok" : ""}"><span class="h-ico">📥</span><div style="display:flex;align-items:flex-end;gap:20px;margin-top:4px"><div><div class="n" id="heroYestRemain">${yRemainHas ? fmt(yestRemainAll) : "—"}</div><div class="l">昨日结余</div></div><div><div class="n" id="heroTodayAdd" style="color:var(--ok)">${tAddHas ? "+" + fmt(tAddAll) : "—"}</div><div class="l">今日到账</div></div></div></div>
     <div class="hcard"><span class="h-ico">📉</span><div class="n" id="heroToday">${trendHtml}</div><div class="l">今日已用</div></div>
     <div class="hcard"><span class="h-ico">🔥</span><div class="n">${fmt(used)}</div><div class="l">累计已用</div></div>`;
 }
@@ -72,7 +75,7 @@ function renderCards() {
   const rs = (S && S.results) || [];
   if (!rs.length) {
     $("grid").innerHTML = '<div class="empty"><div class="big">📭</div>账号池为空<br>点「＋ 添加当前账号」或命令行 wb-credits.bat save-current</div>';
-    $("foot").textContent = "v1.4.60 · 数据来自 WorkBuddy 网页版接口 · 暂无账号数据(可「添加当前账号」或从 WebDAV 下载)";
+    $("foot").textContent = "v1.4.61 · 数据来自 WorkBuddy 网页版接口 · 暂无账号数据(可「添加当前账号」或从 WebDAV 下载)";
     return;
   }
   $("grid").innerHTML = rs.map((r, i) => {
@@ -106,7 +109,7 @@ function renderCards() {
       </div></div>`;
   }).join("");
   initDrag();
-  $("foot").textContent = "v1.4.60 · 数据来自 WorkBuddy 网页版接口 · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新登录后「添加当前账号」 · 卡片可拖动排序";
+  $("foot").textContent = "v1.4.61 · 数据来自 WorkBuddy 网页版接口 · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新登录后「添加当前账号」 · 卡片可拖动排序";
 }
 
 // ---- 卡片拖拽排序(顺序随账号池持久化,经 /api/reorder 保存) ----

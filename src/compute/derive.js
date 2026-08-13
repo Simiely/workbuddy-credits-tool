@@ -64,25 +64,29 @@ export function consumeByPack(arr) {
   return Math.round(v * 100) / 100;
 }
 
-// 今日签到检测（v1.4.33）：
+// 今日签到检测（v1.4.33，碰撞修复 2026-08-13）：
 // 原理（数据实证）：WorkBuddy 每日签到 = 新增一个「到期日 = 领取日 + 1 自然月（对日）」的赠送包
 // （如 8/5 签到 → 新增 9/5 到期的包；8/4 签到 → 9/4 到期的包，逐日唯一）。
-// 检测：最新快照中存在「今日首条快照没有 + cycleEndTime 对日 = 今天+1月」的包。
+// 检测：最新快照中存在「今日基线快照没有 + cycleEndTime 对日 = 今天+1月」的包。
 // - 对日匹配 → 昨天的签到包（昨天+1月）不会误判成今天
 // - 不要求满额 → 签到后已消耗（剩余 < 容量）仍能识别
-// - 对比首条 → 排除早已存在的同到期日包
+// - 唯一键修复：用「完整 cycleEndTime（到秒）」而非仅日期做已存在判定。
+//   否则历史/促销包若与今日签到包巧合同一到期日（如都 2026-09-13，但时刻不同 08:48:05 vs 09:00:50），
+//   日期键会碰撞，把今日真实新增的签到包误判为「已存在」→ 漏报今日签到（2026-08-13 小陈实测）。
 export function detectSignIn(firstPacks, lastPacks, todayKey) {
   const last = Array.isArray(lastPacks) ? lastPacks : [];
   if (!last.length) return false;
   const [y, m, d] = todayKey.split("-").map(Number);
   const t = new Date(y, m, d); // JS Date 自动进位（月末罕见边界按 JS 行为）
   const target = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+  // 完整 cycleEndTime 作为每个赠送包的唯一键（到秒，区分同日不同时刻的包）；trim 兼容空格/ISO 两种写法
   const firstKeys = new Set(
-    (Array.isArray(firstPacks) ? firstPacks : []).map((p) => String(p.cycleEndTime || "").slice(0, 10))
+    (Array.isArray(firstPacks) ? firstPacks : []).map((p) => String(p.cycleEndTime || "").trim())
   );
   return last.some((p) => {
-    const end = String(p.cycleEndTime || "").slice(0, 10);
-    return end === target && !firstKeys.has(end);
+    const end = String(p.cycleEndTime || "").trim();
+    const endDay = end.slice(0, 10);
+    return endDay === target && !firstKeys.has(end);
   });
 }
 
@@ -292,6 +296,25 @@ export function deriveAccount(uin, acct = {}) {
     todayKey
   );
 
+  // 今日到账 = 今天相对昨日末「新出现的赠送包」容量之和（不管今日消耗/到期移除,恒为非负）。
+  // 新包判定用 cycleEndTime 完整串(到秒)做键(与 detectSignIn 修复一致),避免同日期包碰撞。
+  // 无昨日基线(今天为首发日)则 null(前端显示 —)。
+  let todayAdded = null;
+  if (beforeToday.length) {
+    const prevPacks = (beforeToday[beforeToday.length - 1].giftPackages) || [];
+    const lastPacks = (lastFull && lastFull.giftPackages) || [];
+    const prevKeys = new Set(prevPacks.map((p) => String(p.cycleEndTime || "").trim()));
+    todayAdded = 0;
+    for (const p of lastPacks) {
+      const k = String(p.cycleEndTime || "").trim();
+      if (!prevKeys.has(k)) {
+        todayAdded += p.capacitySize != null ? p.capacitySize : p.capacityRemain != null ? p.capacityRemain : 0;
+      }
+    }
+  }
+  // 昨日结余 = 昨天最后一条快照的 totalRemain(beforeToday 末条);无昨日基线(今天首发日)则 null。
+  const yesterdayRemain = beforeToday.length ? (beforeToday[beforeToday.length - 1].totalRemain ?? null) : null;
+
   // 赠送包到期派生（单派生源）：近1/3天过期积分、周桶、排序紧迫度
   const giftPacks = packagesFor(uin, lastFull);
   const gift = deriveGiftExpiry(giftPacks);
@@ -306,6 +329,8 @@ export function deriveAccount(uin, acct = {}) {
     consumed, // 累计已用(历史每日消耗之和,前端"累计已用"展示位统一读它,v1.4.43)
     todayUsed,
     signedInToday,
+    todayAdded, // 今日到账(新包容量之和,恒非负;null=无昨日基线,前端显示 —)
+    yesterdayRemain, // 昨日末剩余(null=无昨日基线,卡片副信息)
     points: n,
     series: seriesOut,
     dailyUsed,

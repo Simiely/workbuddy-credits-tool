@@ -76,7 +76,7 @@ node wb-credits.mjs --account 1 --json           # 查询单个账号(原始 JSO
 ## 开发与测试
 
 ```bash
-npm test            # 回归测试(7 个文件、120 断言:管理员流程/历史导入/趋势渲染/路由冒烟/消耗口径/固化/签到)
+npm test            # 回归测试(12 个文件:管理员流程/历史导入/趋势渲染/路由冒烟/消耗口径/固化/签到/调度/WebDAV/采集)
 node --check wb-gui.mjs   # 语法校验
 ```
 

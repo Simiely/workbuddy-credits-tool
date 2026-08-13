@@ -132,6 +132,24 @@ export function latestReadingTs() {
   return row ? row.ts : "0";
 }
 
+/**
+ * 最新一个快照(最大 ts)的逐账号剩余条目，仅读取 baseRemain/giftRemain 列，不解析 raw JSON。
+ * 用于 scheduler.computeIntervalMin（自适应采样间隔只需「每个账号最新剩余」），
+ * 替代 loadHistory() 的「全表读出 + 逐条 JSON.parse」——数据量大时省去 O(全表) 解析。
+ * 返回 [{ uin, baseRemain, giftRemain }]，与 loadHistory().at(-1).entries 的形状对齐。
+ */
+export function latestSnapshotEntries() {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT ts FROM readings ORDER BY ts DESC, id DESC LIMIT 1")
+    .get();
+  if (!row) return [];
+  return db
+    .prepare("SELECT uin, baseRemain, giftRemain FROM readings WHERE ts=?")
+    .all(row.ts)
+    .map((r) => ({ uin: r.uin, baseRemain: r.baseRemain, giftRemain: r.giftRemain }));
+}
+
 // ---------- WebDAV 镜像桥接（SQLite <-> 遗留 JSON） ----------
 
 /** 把 readings + day_summary 导出为 wb-history.json 镜像（固化后旧日只剩摘要，体积骤减） */
