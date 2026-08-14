@@ -267,16 +267,13 @@ export function deriveAccount(uin, acct = {}) {
   dailyUsed.sort((a, b) => (a.day < b.day ? -1 : 1));
   seriesOut.sort((a, b) => (a.t < b.t ? -1 : 1));
 
-  // 今日已用 = 今日快照序列的包级净增量(consumeByPack,失效包当天消耗不计)
+  // 今日快照序列（todayUsed 改用残差守恒口径，在 yesterdayRemain / todayAdded 算好后再计算，见下方）
   const today0 = startOfToday();
   const todayReadings = series.filter((s) => new Date(s.ts) >= today0);
-  const todayUsed = todayReadings.length ? consumeByPack(todayReadings) : 0;
 
-  // 累计已用 = 历史每日消耗之和(Σ dailyUsed.used,含固化摘要日)。
-  // 语义修正(v1.4.43):旧值取最新快照 used 净值,在包失效日会远小于真实历史消耗
-  // (2026-08-06 实测:张妈妈今日 42、旧累计仅 42,历史累计实为 991),用户无法接受"累计 < 今日";
-  // 现改为「历史累计消耗」,必然 ≥ 今日已用。
-  const consumed = Math.round(dailyUsed.reduce((s, x) => s + (x.used || 0), 0) * 100) / 100;
+  // 累计已用 = 历史每日消耗之和(Σ dailyUsed.used,含固化摘要日)，在「今日已用残差」回填 dailyUsed 后再汇总（见下方）。
+  // 语义修正(v1.4.43):旧值取最新快照 used 净值,在包失效日会远小于真实历史消耗;现改为「历史累计消耗」。
+  let consumed = 0; // 占位,真正汇总在今日已用残差回填 dailyUsed 之后
 
   // 今日签到检测（v1.4.33，基线修正 2026-08-06）：
   // 基线 = 昨天最后一条快照,目标 = 最新快照,「新增 + 到期日对日=今天+1月」= 已签到。
@@ -314,6 +311,27 @@ export function deriveAccount(uin, acct = {}) {
   }
   // 昨日结余 = 昨天最后一条快照的 totalRemain(beforeToday 末条);无昨日基线(今天首发日)则 null。
   const yesterdayRemain = beforeToday.length ? (beforeToday[beforeToday.length - 1].totalRemain ?? null) : null;
+
+  // —— 今日已用（残差守恒口径，v1.4.62 修复）——
+  // 旧 consumeByPack 只统计「末快照仍 active(status=0) 的包」used 增量，会把今天用光后失效的包
+  // 的真实消耗漏掉；而 yesterdayRemain / currentRemain 来自权威聚合 totalRemain，两口径打架，
+  // 导致「昨日结余 + 今日到账 - 今日已用 ≠ 总剩余」（张妈妈 2026-08-14 实测差 474）。
+  // 残差口径由权威 totalRemain 守恒直接得出，恒等式必然成立：
+  //   今日已用 = 昨日末 totalRemain + 今日到账 - 今日末 totalRemain
+  // 副作用：若某包今日到期且仍有未用积分被回收，残差会把它并入「今日已用」（不再单列过期回收）。
+  //         张妈妈该笔过期包剩余为 0，无影响；如需严格区分可再扣回「今日过期回收剩余」。
+  let todayUsed;
+  if (yesterdayRemain != null && todayAdded != null && todayReadings.length) {
+    todayUsed = Math.max(0, Math.round(((yesterdayRemain + todayAdded) - currentRemain) * 100) / 100);
+  } else {
+    todayUsed = todayReadings.length ? consumeByPack(todayReadings) : 0; // 无昨日基线(今日首发)回退包级口径
+  }
+
+  // 日消耗序列 / 趋势图「今日」那条与今日已用保持一致（避免累计已用漏掉失效包真实消耗）
+  for (const d of dailyUsed) { if (d.day === todayKey) d.used = todayUsed; }
+  for (const s of seriesOut) { if (dayKeyOf(s.t) === todayKey) s.v = todayUsed; }
+  // 累计已用随之重算（含今日真实消耗，口径与今日已用一致）
+  consumed = Math.round(dailyUsed.reduce((s, x) => s + (x.used || 0), 0) * 100) / 100;
 
   // 赠送包到期派生（单派生源）：近1/3天过期积分、周桶、排序紧迫度
   const giftPacks = packagesFor(uin, lastFull);

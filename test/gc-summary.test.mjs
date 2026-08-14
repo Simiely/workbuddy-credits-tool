@@ -47,7 +47,7 @@ try {
   console.log("T1 固化前派生值(基线)");
   let d = derive.deriveAccount("u1");
   const before = d.dailyUsed.map((x) => x.day + ":" + x.used).join(",");
-  assert("三天消耗 前天30/昨天30/今天40", before.includes(dayBeforeKey + ":30") && before.includes(yesterdayKey + ":30") && before.includes(todayKey + ":40"), "got " + before);
+  assert("三天消耗 前天30/昨天30/今天70", before.includes(dayBeforeKey + ":30") && before.includes(yesterdayKey + ":30") && before.includes(todayKey + ":70"), "got " + before);
 
   console.log("T2 固化(T-2 前天)");
   const g1 = gc.gcDaySummaries();
@@ -61,7 +61,7 @@ try {
   d = derive.deriveAccount("u1");
   const after = d.dailyUsed.map((x) => x.day + ":" + x.used).join(",");
   assert("固化后 dailyUsed 与固化前一致", after === before, "\n  before=" + before + "\n  after =" + after);
-  assert("todayUsed 不变(40)", d.todayUsed === 40, "got " + d.todayUsed);
+  assert("todayUsed = 70(残差口径:昨日末3710→今日末3640,净耗70;固化前后一致)", d.todayUsed === 70, "got " + d.todayUsed);
 
   console.log("T4 固化幂等(再跑一次)");
   const g2 = gc.gcDaySummaries();
