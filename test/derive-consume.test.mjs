@@ -71,9 +71,9 @@ try {
   const y = d.dailyUsed.find((x) => x.day === yesterdayKey);
   const t = d.dailyUsed.find((x) => x.day === todayKey);
   assert("昨日消耗 = 30", y && y.used === 30, "got " + (y && y.used));
-  assert("今日消耗 = 140(残差口径:昨日末4070→今日末3930,净耗140;旧包级口径漏算重置包仅得40)", t && t.used === 140, "got " + (t && t.used));
+  assert("今日消耗 = 40(包级口径降级 consumeByPos:giftUsed 130→0→40 正增量累加;重置回退不产生负消耗)", t && t.used === 40, "got " + (t && t.used));
   const sOut = d.series.find((x) => x.t.startsWith(todayKey));
-  assert("series 今日 v = 140", sOut && sOut.v === 140, "got " + (sOut && sOut.v));
+  assert("series 今日 v = 40", sOut && sOut.v === 40, "got " + (sOut && sOut.v));
 
   console.log("T5 已用回退后不产生负消耗(回退+持平)");
   hist.appendSnapshot([mk("u4", at(todayKey, 13.1), 500, 0, 2000, 100)], { ts: at(todayKey, 13.1) });
@@ -91,8 +91,8 @@ try {
   assert("今日已用 = 3(只算存活包A增量,失效包B不计)", d.todayUsed === 3, "got " + d.todayUsed);
   assert("今日(3) <= 累计(8)", d.todayUsed <= d.used, `got today=${d.todayUsed} used=${d.used}`);
 
-  console.log("T7 包失效日的消耗归属(8/5 场景) → 残差口径:失效包C当日被用光的消耗计入今日");
-  // u6:昨天 包C(8/6到期)用 5→10 + 包D 用 0→2;今天 包C 失效,包D 用 2→5
+  console.log("T7 包失效日的消耗归属(8/5 场景) → 包级口径:到期回收(status=3 且 remain>0)不计入消耗");
+  // u6:昨天 包C(8/6到期)用 5→10 + 包D 用 0→2;今天 包C 失效(剩余90被回收),包D 用 2→5
   hist.appendSnapshot([mk("u6", at(yesterdayKey, 1.3), 500, 0, 12, 5, [pk("2026-08-06", 0, 5), pk("2026-09-01", 0, 0)])], { ts: at(yesterdayKey, 1.3) });
   hist.appendSnapshot([mk("u6", at(yesterdayKey, 8.3), 500, 0, 12, 12, [pk("2026-08-06", 0, 10), pk("2026-09-01", 0, 2)])], { ts: at(yesterdayKey, 8.3) });
   hist.appendSnapshot([mk("u6", at(todayKey, 2.2), 500, 0, 2, 2, [pk("2026-08-06", 3, 10), pk("2026-09-01", 0, 2)])], { ts: at(todayKey, 2.2) });
@@ -101,10 +101,18 @@ try {
   const yD = d.dailyUsed.find((x) => x.day === yesterdayKey);
   const tD = d.dailyUsed.find((x) => x.day === todayKey);
   assert("昨日消耗 = 7(失效包C 昨日消耗计入昨日,不抹 0)", yD && yD.used === 7, "got " + (yD && yD.used));
-  assert("今日消耗 = 7(残差口径:昨日末512→今日末505,含失效包C的消耗;旧包级口径漏算仅得3)", tD && tD.used === 7, "got " + (tD && tD.used));
-  // 注:残差口径会把"当天失效包的真实消耗"计入今日,故今日已用可能 ≥ 累计 used(旧包级口径强制 todayUsed<=used 的不变式已不再成立,v1.4.62)
-  assert("今日已用 = 7(残差口径,失效包C消耗计入,不再强制<=累计used)", d.todayUsed === 7, "got " + d.todayUsed);
-  assert("累计已用 consumed = 14(昨日7+今日7,残差口径)", d.consumed === 14, "got " + d.consumed);
+  assert("今日消耗 = 3(包C 到期回收 remain=90>0 不计入,只算包D 2→5 增量;v1.4.63 口径)", tD && tD.used === 3, "got " + (tD && tD.used));
+  // 注:v1.4.63 起今日/历史日/固化统一包级口径;「到期回收」的剩余不是用户消耗,不计入(与 v1.4.62 残差口径不同:残差会把回收的 90 也算成今日消耗 → 7)
+  assert("今日已用 = 3(包级口径,到期回收不计)", d.todayUsed === 3, "got " + d.todayUsed);
+  assert("累计已用 consumed = 10(昨日7+今日3)", d.consumed === 10, "got " + d.consumed);
+
+  console.log("T8 用光失效(status=3 且 remain=0)当日消耗必须计入(v1.4.63 核心修复)");
+  // u7:今天 包E 用 0→100 后用光(remain=0,status 0→3);包F 无变化 → 今日消耗 = 100(旧口径整包丢弃只得 0)
+  hist.appendSnapshot([mk("u7", at(todayKey, 5.0), 500, 0, 200, 0, [pk("2026-09-20", 0, 0), pk("2026-09-21", 0, 0)])], { ts: at(todayKey, 5.0) });
+  hist.appendSnapshot([mk("u7", at(todayKey, 6.0), 500, 0, 100, 100, [pk("2026-09-20", 3, 100), pk("2026-09-21", 0, 0)])], { ts: at(todayKey, 6.0) });
+  d = derive.deriveAccount("u7");
+  assert("今日已用 = 100(用光失效包E 的当日消耗计入,旧口径只数 active 包会算成 0)", d.todayUsed === 100, "got " + d.todayUsed);
+  assert("累计已用 consumed = 100", d.consumed === 100, "got " + d.consumed);
 } catch (e) {
   console.log("  FAIL 测试执行异常: " + e.message);
   failed++;

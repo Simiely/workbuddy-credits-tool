@@ -4,7 +4,7 @@
 >
 > **接手先读**:[`docs/交接说明.md`](docs/交接说明.md)(运行实例/端口/数据文件/待办的状态快照)。
 > 当前版本 **v1.4.58**(见 CHANGELOG)。
-> **发包规范**:每次发包只发**平台版(tools-center 托管 zip)+ exe 版(SEA 单文件)** 两个版本,exe 不上传 GitHub Release;完整流程见 [`docs/发布规范.md`](docs/发布规范.md)。
+> **发包规范**:每次发包只发**平台版(tools-center 托管 zip)+ bat 版(Windows 一键启动 zip)** 两个版本,均上传 GitHub Release(不含数据文件);完整流程见 [`docs/发布规范.md`](docs/发布规范.md)。
 
 ## 技术栈
 

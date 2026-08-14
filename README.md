@@ -91,7 +91,7 @@ node --check wb-gui.mjs   # 语法校验
 | [`docs/架构.md`](docs/架构.md) | 开发者 | 完整模块架构、数据流、维护指南 |
 | [`docs/部署.md`](docs/部署.md) | 运维 | 桌面 / Docker 两种部署方案 |
 | [`docs/tools-center部署.md`](docs/tools-center部署.md) | 运维 | **平台版标注**:tools-center 托管接入规范(目录/tool.json/数据/升级) |
-| [`docs/发布规范.md`](docs/发布规范.md) | 维护者 | **发包要求**:平台版 + exe 版两个版本,版本 bump/发布步骤/铁律 |
+| [`docs/发布规范.md`](docs/发布规范.md) | 维护者 | **发包要求**:平台版 + bat 版两个版本,版本 bump/发布步骤/铁律 |
 | [`docs/交接说明.md`](docs/交接说明.md) | 接手者 | 快速上手与状态快照 |
 | [`docs/问题记录/`](docs/问题记录/) | 开发者 | 踩坑与解决(一坑一篇) |
 

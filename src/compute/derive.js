@@ -32,14 +32,18 @@ export function consumeByPos(arr) {
 }
 
 // 消耗口径 v2（v1.4.43 起,今日/单日消耗的最终口径,供 todayUsed/dailyUsed/固化共用）：
-// 包级净增量 —— 只统计「末快照仍 active(status=0)」的包的 used 增量
+// 包级净增量 —— 统计「末快照 active(status=0) 或 用光失效(status≠0 且 remain=0)」的包的 used 增量
 //（首快照**全部包**(不过滤 status)为基线,首快照没有则从 0 起;负数截 0;末快照无包数据降级 consumeByPos）。
 // 为什么:
 //   ①增量口径(consumeByPos)在官方「包失效日」会把今日已用算得比累计还大
 //     (2026-08-06 实测:张妈妈今日已用 342、累计净值仅 38——消耗集中在当天失效的包上)。
 //   ②基线必须含首快照全部包(含 status≠0):小陈(330100595762)首快照所有包 status=3、
 //     末快照恢复 status=0,若基线也过滤 status,这些包会被当成"今天新增"→ 今日已用虚高 1789(实测)。
-// 效果:失效包当天消耗不计入今日(已随包回收)→ 今日已用 ≤ 累计已用;历史日(8/5)不被抹成 0。
+// v1.4.63 修复(2026-08-15):末快照统计对象从「仅 active」放宽为「active ∪ 用光失效」——
+//   包被用光(used=size, remain=0)后 status 0→3,旧口径整包丢弃其当日消耗,导致历史日/固化
+//   严重低估、且与当天(残差口径)跨天跳变(实测:张妈妈 8/14 真实消耗 611,旧口径只算 37)。
+//   仍排除「到期回收(status≠0 且 remain>0)」的包:剩余被官方收走不是用户消耗,计入会复现
+//   v1.4.43 的 342 虚高(8/6 张妈妈)。用光失效包的 remain 必为 0,可精确区分两种"失效"。
 export function consumeByPack(arr) {
   if (!arr || !arr.length) return 0;
   const packsOf = (r) => {
@@ -47,7 +51,11 @@ export function consumeByPack(arr) {
     try { return JSON.parse(r.raw || "{}").giftPackages || []; } catch { return []; }
   };
   const first = packsOf(arr[0]) || []; // 基线:首快照全部包(不过滤 status,防状态波动导致"伪新增"虚高)
-  const last = (packsOf(arr[arr.length - 1]) || []).filter((p) => (p.status ?? 0) === 0);
+  const last = (packsOf(arr[arr.length - 1]) || []).filter((p) => {
+    const st = p.status ?? 0;
+    if (st === 0) return true; // active 包:正常统计
+    return (p.capacityRemain ?? -1) === 0; // 用光失效(remain=0):真实消耗,计入;到期回收(remain>0):不计
+  });
   if (!first.length || !last.length) return consumeByPos(arr); // 首/末任一无包数据(采集异常/旧快照)降级为增量口径
   const key = (p) => (p.cycleEndTime || "") + "|" + (p.packageName || "") + "|" + (p.capacitySize || 0);
   const fMap = new Map();
@@ -312,20 +320,13 @@ export function deriveAccount(uin, acct = {}) {
   // 昨日结余 = 昨天最后一条快照的 totalRemain(beforeToday 末条);无昨日基线(今天首发日)则 null。
   const yesterdayRemain = beforeToday.length ? (beforeToday[beforeToday.length - 1].totalRemain ?? null) : null;
 
-  // —— 今日已用（残差守恒口径，v1.4.62 修复）——
-  // 旧 consumeByPack 只统计「末快照仍 active(status=0) 的包」used 增量，会把今天用光后失效的包
-  // 的真实消耗漏掉；而 yesterdayRemain / currentRemain 来自权威聚合 totalRemain，两口径打架，
-  // 导致「昨日结余 + 今日到账 - 今日已用 ≠ 总剩余」（张妈妈 2026-08-14 实测差 474）。
-  // 残差口径由权威 totalRemain 守恒直接得出，恒等式必然成立：
-  //   今日已用 = 昨日末 totalRemain + 今日到账 - 今日末 totalRemain
-  // 副作用：若某包今日到期且仍有未用积分被回收，残差会把它并入「今日已用」（不再单列过期回收）。
-  //         张妈妈该笔过期包剩余为 0，无影响；如需严格区分可再扣回「今日过期回收剩余」。
-  let todayUsed;
-  if (yesterdayRemain != null && todayAdded != null && todayReadings.length) {
-    todayUsed = Math.max(0, Math.round(((yesterdayRemain + todayAdded) - currentRemain) * 100) / 100);
-  } else {
-    todayUsed = todayReadings.length ? consumeByPack(todayReadings) : 0; // 无昨日基线(今日首发)回退包级口径
-  }
+  // —— 今日已用（包级口径，v1.4.63 与历史日/固化统一）——
+  // v1.4.62 曾用残差守恒口径（今日已用 = 昨日末剩余 + 今日到账 - 今日末剩余），虽守恒，但
+  // ① 把「到期回收的剩余」并入消耗（语义上非用户使用）；② 与历史日/固化用的 consumeByPack
+  // 口径不一致 → 同一日期在跨天后从「残差」回落到「包级」数值跳变（8/14 实测 611→37）。
+  // v1.4.63 修好 consumeByPack（计入用光失效包，排除到期回收）后，今日/历史日/固化全走
+  // consumeByPack，任意跨天不再跳变。yesterdayRemain / todayAdded 仍保留供前端展示。
+  const todayUsed = todayReadings.length ? consumeByPack(todayReadings) : 0;
 
   // 日消耗序列 / 趋势图「今日」那条与今日已用保持一致（避免累计已用漏掉失效包真实消耗）
   for (const d of dailyUsed) { if (d.day === todayKey) d.used = todayUsed; }

@@ -104,9 +104,9 @@ try {
     const todayKey = new Date(Date.now() + TZ_MS).toISOString().slice(0, 10);
     const dayStart = (key) => new Date(key + "T00:00:00Z").getTime() - TZ_MS;
     const at = (key, hour) => new Date(dayStart(key) + hour * 3600 * 1000).toISOString();
-    // v1.4.43 失效包场景:首条 active 包 A(used=100) → 末条 A 失效(status=3,used=160) + 新增 active 包 C(used=30)
-    //   包级口径 = C 增量 = 30;增量口径(降级) = 90 —— 差异明显,可验证是否降级
-    const pkgActive = (used) => [{ packageName: "裂变包", status: 0, capacityRemain: 1000 - used, capacityUsed: used, capacitySize: 1000, cycleEndTime: "2026-09-01 00:00:00" }];
+    // v1.4.43 失效包场景:首条 active 包 A(used=100,end 不变) → 末条 A 用光失效(status=3,used=160,remain=0) + 新增 active 包 C(used=30)
+    //   v1.4.63 包级口径 = A 增量 60 + C 增量 30 = 90;降级增量口径(giftUsed 100→105→115)= 15 —— 差异明显,可验证是否降级
+    const pkgActive = (used) => [{ packageName: "裂变包", status: 0, capacityRemain: 1000 - used, capacityUsed: used, capacitySize: 1000, cycleEndTime: "2026-08-08 00:00:00" }];
     const pkgExpiredPlusNew = (usedOld, usedNew) => [
       { packageName: "裂变包", status: 3, capacityRemain: 0, capacityUsed: usedOld, capacitySize: 1000, cycleEndTime: "2026-08-08 00:00:00" },
       { packageName: "签到包", status: 0, capacityRemain: 1000 - usedNew, capacityUsed: usedNew, capacitySize: 1000, cycleEndTime: "2026-09-08 00:00:00" },
@@ -114,10 +114,10 @@ try {
     const mk = (ts, packs, totalUsed) => ({ uin: "u1", ts, baseRemain: 500, baseUsed: 0, giftRemain: 100, giftUsed: totalUsed, giftPackages: packs });
     hist.clearReadings();
     hist.appendSnapshot([mk(at(todayKey, 1), pkgActive(100), 100)], { ts: at(todayKey, 1) });   // 首条:active A used=100
-    hist.appendSnapshot([mk(at(todayKey, 4), pkgActive(130), 130)], { ts: at(todayKey, 4) });   // 中间
-    hist.appendSnapshot([mk(at(todayKey, 8), pkgExpiredPlusNew(160, 30), 190)], { ts: at(todayKey, 8) }); // 末条:A 失效+新包 C
+    hist.appendSnapshot([mk(at(todayKey, 4), pkgActive(130), 105)], { ts: at(todayKey, 4) });   // 中间
+    hist.appendSnapshot([mk(at(todayKey, 8), pkgExpiredPlusNew(160, 30), 115)], { ts: at(todayKey, 8) }); // 末条:A 用光失效+新包 C
     const d0 = derive.deriveAccount("u1");
-    assert("原始库 todayUsed = 包级 30", d0.todayUsed === 30, "got " + d0.todayUsed);
+    assert("原始库 todayUsed = 包级 90(用光失效 A 增量 60 + 新增 C 增量 30)", d0.todayUsed === 90, "got " + d0.todayUsed);
 
     hist.exportLegacy();
     const mirror = JSON.parse(fs.readFileSync(path.join(tmp, "wb-history.json"), "utf8"));
@@ -136,7 +136,7 @@ try {
     fs.copyFileSync(path.join(tmp, "wb-history.json"), path.join(tmp3, "wb-history.json"));
     hist3.importLegacy();
     const d3 = derive3.deriveAccount("u1");
-    assert("恢复库 todayUsed 仍包级 30(首末带包,不降级)", d3.todayUsed === 30, "got " + d3.todayUsed + "(若为 90 则是降级增量口径)");
+    assert("恢复库 todayUsed 仍包级 90(首末带包,不降级)", d3.todayUsed === 90, "got " + d3.todayUsed + "(若为 15 则是降级增量口径)");
     try { fs.rmSync(tmp3, { recursive: true, force: true }); } catch {}
   }
 } catch (e) {

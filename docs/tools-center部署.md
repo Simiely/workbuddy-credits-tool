@@ -12,7 +12,7 @@
 | 版本 | 载体 | 采集方式 | 说明 |
 |---|---|---|---|
 | **平台版(本文)** | tools-center 托管(app) | **WebDAV 文件同步**(`WB_COLLECTOR=file`) | 容器无浏览器,凭证由桌面版上传 |
-| exe 版 | Windows 单文件 | Edge 直采(内嵌 daemon) | 双击即用,数据在 exe 同目录 |
+| bat 版 | Windows 一键启动(zip) | Node 源码 + .bat 启动器(钉死托管 Node) | 双击 wb-gui.bat 即用,数据在 bat 同目录 |
 | 源码版 | Node 源码 | Edge CDP(edge-daemon) | 开发/自部署 |
 
 三者共用同一套 `src/compute`(查询/派生/采样),数据文件格式一致,WebDAV 互通。
@@ -71,7 +71,7 @@ tools-center/
 工具在平台上以 `/tool/wb-credits/` 访问,本工具前端**已按平台约定适配**(AGENTS.md 关键坑 6):
 - 页面资源:相对路径(`./wb-gui.core.js` 等)
 - 内部 API:`__BASE__ + "/api/xxx"`(`wb-gui.html` 401 行已注入 `__BASE__` 检测,actions.js/core.js 全量使用)
-- 独立运行时 `__BASE__` 为空,自动退化直连 —— 桌面版/exe 版不受影响
+- 独立运行时 `__BASE__` 为空,自动退化直连 —— 桌面版/bat 版不受影响
 
 ## 三、数据目录与安全(重要)
 
@@ -113,7 +113,7 @@ tools-center/
 平台版**不能采集 cookie**(容器无浏览器),数据真相源靠桌面版:
 
 ```
-桌面版(exe/源码):Edge 重新登录 → 「＋ 添加当前账号」→ 「☁️ 上传」
+桌面版(bat/源码):Edge 重新登录 → 「＋ 添加当前账号」→ 「☁️ 上传」
 平台版:          「☁️ 云同步 → 下载」→ 凭证/历史更新
 ```
 
