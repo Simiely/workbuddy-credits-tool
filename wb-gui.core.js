@@ -98,7 +98,7 @@ function setBusy(b) {
 
 // ---- 面板折叠:点击标题折叠/展开,状态存 localStorage(LS_FOLD 常量在 state.js 归位) ----
 function toggleFold(head, ev) {
-  if (ev && ev.target.closest && ev.target.closest("button")) return; // 标题内按钮(模式切换等)不触发折叠
+  if (ev && ev.target.closest && ev.target.closest("button,input,select,textarea,label,a")) return; // 标题内可交互元素(模式按钮/截止日期输入框等)不触发折叠
   head.classList.toggle("folded");
   try {
     const st = JSON.parse(localStorage.getItem(LS_FOLD) || "{}");
