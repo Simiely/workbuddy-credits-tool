@@ -67,6 +67,42 @@ node wb-credits.mjs --account 1 --json           # 查询单个账号(原始 JSO
 - 备份/迁移用 GUI「☁️ 云同步」→「🔄 一键同步」(拉取合并 + 上传全量,存到你的 WebDAV)
 - 查询不依赖浏览器,仅需网络直连 `www.workbuddy.cn`
 
+## 迁移与重新打包（2026-08-16 v1.4.62 实测事故复盘）
+
+> **为什么"重新打包后无法正常使用"?** 根因只有一个:打包/迁移时把**开发机环境**硬编码带进了产物。新包在新机器上必须过一遍下面的检查清单,否则大概率踩坑。
+
+### 必查清单(重新打包 / 换机器后逐项核对)
+
+| # | 检查项 | 症状 | 处置 |
+|---|---|---|---|
+| 1 | **UA 是否被官方风控**(最常见) | 添加凭证/查询全部 401,换账号重登无效 | 见下方「UA 风控」,实测当前放行值后改 `src/config.js` |
+| 2 | `edge-daemon.mjs` 是否硬编码了打包机路径 | 旧包(≤v1.4.62)的 `USER_DATA` 写过 `C:\Users\2504\...`,换机器即失效 | 已修为 `os.homedir()` 动态获取;旧包 `grep USER_DATA edge-daemon.mjs` 看到具体用户名路径即需同步 |
+| 3 | `.bat` 的 Node 探测是否命中 | 双击窗口报 `Node.js not found` / 一闪而过 | `where node` 失败会回退 `%USERPROFILE%\.workbuddy\binaries\node\...`;该变量在部分启动器上下文不展开,且无 WorkBuddy 托管 Node 的机器需自装 Node 22+ |
+| 4 | **桌面采集的调试 Edge 是否启动** | GUI 显示"浏览器代理未连接";添加凭证失败 | 见下方「调试 Edge 启动姿势」;日常 Edge 登录**无效** |
+
+### UA 风控(2026-08-16 实测)
+
+`billing/meter/get-user-resource` 接口有 UA 风控,只放行特定 `Edg/xx.0.0.0` 占位版本。本次事故:**工具硬编码 `Edg/148.0.0.0` 已落后,被 APISIX 网关 401 拦截**(页面浏览器请求正常、工具进程全部 401);实测仅 `Edg/151.0.0.0` 稳定放行(148/150/151 精确版本均 401)。官方前端每次升级都可能导致放行值变化,排查与实测方法见 [`docs/问题记录/官方UA风控致添加凭证401.md`](docs/问题记录/官方UA风控致添加凭证401.md)。**全部账号突然集体 401 时,优先怀疑此项。**
+
+### 调试 Edge 启动姿势(桌面采集必需)
+
+```bat
+"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir="<工具目录>\edge-debug-profile" https://www.workbuddy.cn
+```
+
+- 必须用**独立 profile**(`edge-debug-profile`),不能与日常 Edge 共用;daemon 3 秒轮询自动连接
+- 采集/添加凭证读的是**这个调试实例**的登录态——日常 Edge 登录无效,凭证添加失败先查这个窗口
+- 调试实例被关闭 → daemon 掉线 → GUI 报"浏览器代理未连接",重新执行上面命令即恢复
+- 凭证有固定有效期,到期后必须在**调试 Edge 窗口**重新登录再「添加当前账号」
+
+### 迁移到新机器(数据 + 环境)
+
+1. 整个工具目录拷贝即可(含 `credits.db` / `wb-*.json` / `edge-daemon.token`),数据零迁移成本
+2. 双击 `.bat` 验证 Node 探测(见清单 #3)
+3. 执行上面「调试 Edge 启动姿势」命令
+4. 用 `node wb-credits.mjs accounts` 确认账号池在;凭证过期则重新登录添加
+5. 实测 UA 放行值(方法见问题记录),必要时更新 `src/config.js`
+
 ## 平台托管说明（tool.json 能力声明）
 
 - 本工具**未声明 `capabilities`**(无「💾 存储」等能力徽标),数据直接写在工具目录,通过 **`dataFiles`** 声明保护:平台按 glob(`*.db`、`*.db-wal`、`*.db-shm`、`wb-*.json`、`data/**`)识别这些为"数据",**升级工具时保留不被覆盖**
