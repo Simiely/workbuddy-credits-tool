@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { width: 320px; margin: 0; padding: 14px; font: 13px/1.5 "Microsoft YaHei", sans-serif; background: #1e1e1e; color: #ddd; }
+  h1 { font-size: 15px; margin: 0 0 10px; color: #ff9292; }
+  .row { margin: 8px 0; display: flex; gap: 8px; }
+  input { flex: 1; background: #2d2d2d; border: 1px solid #444; color: #ddd; border-radius: 4px; padding: 5px 8px; font-size: 12px; }
+  button { background: #ff9292; color: #1e1e1e; border: 0; border-radius: 4px; padding: 7px 12px; font-size: 12px; cursor: pointer; font-weight: bold; }
+  button.secondary { background: #444; color: #ddd; }
+  button:disabled { opacity: .5; cursor: wait; }
+  #status { margin-top: 10px; padding: 8px; border-radius: 4px; background: #2d2d2d; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+  .ok { color: #7bd88f; } .err { color: #ff7b7b; }
+  .hint { color: #888; font-size: 11px; margin-top: 10px; line-height: 1.6; }
+  .cfg { border-top: 1px solid #333; margin-top: 10px; padding-top: 10px; }
+</style>
+</head>
+<body>
+<h1>📉 积分账号抓取器</h1>
+
+<div id="status" class="hint">就绪。请先在浏览器登录 workbuddy.cn,然后点「抓取当前账号」。</div>
+
+<div class="row">
+  <button id="btnCapture">抓取当前账号</button>
+  <button id="btnSync" class="secondary">抓取并同步 WebDAV</button>
+</div>
+
+<div class="cfg">
+  <div class="row"><input id="cfgUrl" placeholder="WebDAV 地址(留空=192.168.2.1:6086)" style="flex:2"></div>
+  <div class="row">
+    <input id="cfgUser" placeholder="用户名" style="flex:1">
+    <input id="cfgPass" type="password" placeholder="密码" style="flex:1">
+    <button id="btnSave" class="secondary">保存</button>
+    <button id="btnTest" class="secondary">测试</button>
+  </div>
+</div>
+
+<div class="hint">
+  流程:浏览器登录 workbuddy.cn → 点「抓取并同步」→ 在积分仪表盘点「☁️ 云同步 → 🔄 一键同步」即完成导入。<br>
+  多账号:切换登录另一个账号,再点一次「抓取并同步」即可追加/更新。
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>
