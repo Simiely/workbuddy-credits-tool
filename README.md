@@ -4,6 +4,8 @@
 直接调用 WorkBuddy 网页版内部接口,无需开浏览器(仅"添加账号"时需要 Edge)。
 
 > **平台版标注**:本工具可作为 **[tools-center](https://github.com/Simiely/tools-center)(轻量工具统一宿主)** 的托管工具部署(NAS 常驻),平台声明见 `tool.json`(app 型,端口 8123,`/api/status` 健康检查)。接入规范、目录结构、数据目录与升级步骤见 **`docs/tools-center部署.md`**;桌面/容器通用部署见 `docs/部署.md`。
+>
+> **配套扩展标注**:本仓库**同时维护**抓取扩展 [`extensions/wb-credits-capture/`](extensions/wb-credits-capture/)(免调试浏览器方案,读取浏览器登录态上传 WebDAV 供本工具导入)。改采集链路(账号池 schema / WebDAV 目录 / billing 接口)时**必须同步检查插件**,反之亦然。
 
 ## 功能特性
 
@@ -42,6 +44,8 @@ node wb-credits.mjs --account 1 --json           # 查询单个账号(原始 JSO
 ```
 
 ### 首次使用:添加账号(每个账号约 10 秒)
+
+> 💡 **推荐(免调试浏览器)**:Edge 136+ 官方安全策略已禁止对默认浏览器开调试端口,「调试 Edge 副本」方案繁琐易踩坑。**改用配套抓取扩展 [`wb-credits-capture`](extensions/wb-credits-capture/)**:日常浏览器登录 → 点扩展「抓取并同步」→ 工具「一键同步」即导入,全程无副本浏览器。下列 CDP 步骤仅作兼容保留。
 
 1. 启动 `edge-daemon.mjs`(浏览器代理,添加账号必需);
 2. 打开 Edge 登录 workbuddy.cn 的**账号 A**;
@@ -130,6 +134,7 @@ node --check wb-gui.mjs   # 语法校验
 | [`docs/发布规范.md`](docs/发布规范.md) | 维护者 | **发包要求**:平台版 + bat 版两个版本,版本 bump/发布步骤/铁律 |
 | [`docs/交接说明.md`](docs/交接说明.md) | 接手者 | 快速上手与状态快照 |
 | [`docs/问题记录/`](docs/问题记录/) | 开发者 | 踩坑与解决(一坑一篇) |
+| [`extensions/wb-credits-capture/`](extensions/wb-credits-capture/) | 维护者/用户 | **配套抓取扩展(免调试浏览器)**:日常 Edge 登录 → 抓取 Cookie → WebDAV 同步 → 工具「一键同步」导入。**本仓库同时维护此插件,改工具采集链路时需同步** |
 
 ## 免责声明
 
