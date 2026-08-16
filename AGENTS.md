@@ -35,6 +35,8 @@
 18. **同步/测试前端超时(v1.4.49)**:syncAct 按动作放宽 timeout(sync=90s/test=30s)——后端下载/上传各 60s,默认 15s 会误报超时;新增长耗时接口必须显式传 timeout
 19. **favicon(v1.4.50)**:用**内联 SVG data-URI**(`<link rel="icon" href="data:image/svg+xml,<svg ...><text>📉</text></svg>">`,emoji 取 tool.json icon,零文件零后端,子路径自适应);**勿用 staticFile() 读 PNG 文件方案**(已撤回,PNG 二进制会被 utf8 读坏,且多一个文件要同步 4 处)
 20. **架构分层(v1.4.58 重构)**:时区工具收敛到 **`src/time.js`**(cnNow/dayKeyOf/dayOfOffset/startOfToday/TZ_MS,全后端唯一口径);历史固化在 **`src/compute/gc.js`**(`gcDaySummaries`,依赖 derive+history 单向);`history.js` **不得 import derive**(v1.4.58 已解循环依赖);`/api/webdav/sync` 业务在 webdav.js 的 `syncNow()`,路由只接线——新增后端逻辑遵守单向依赖(collect→compute→store + time/gc),勿把固化/时区/同步塞回 derive 或路由 handler
+21. **UA 受官方风控(v1.4.65,2026-08-16 实测)**:billing 接口只放行特定 `Edg/xx.0.0.0` 占位版本——硬编码 `Edg/148.0.0.0` 被 APISIX 401 拦截,全部账号假性「凭证过期」;实测仅 `Edg/151.0.0.0` 放行(148/150/精确版本均 401)。**打包/发布前必检 `src/config.js` 的 UA 是否当前可用**(实测方法:循环换 `Edg/15x.0.0.0` 请求 billing API 取 200 版本);官方改版后 UA 再失效时重复此流程,详见 `docs/问题记录/官方UA风控致添加凭证401.md`
+22. **环境硬编码与调试 Edge 独占(v1.4.65)**:① `USER_DATA` 必须 `os.homedir()` 动态拼(曾硬编码打包机 `C:\Users\2504`,换机器即失效);② **Edge 151:系统已有其他 Edge 实例时,带 `--remote-debugging-port` 的新实例直接退出**——桌面方案必须先清空 msedge 进程再单独启动调试实例(已封装 `start-all.bat`);③ 平台版(file 方案)只在启动时/手动「一键同步」拉 WebDAV,**桌面版续期凭证后需平台版手动同步或重启**,且平台版包 UA 未同步修复时即使拷新数据也 401
 
 ## 约定
 
