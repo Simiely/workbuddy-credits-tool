@@ -11,10 +11,13 @@
 //   GET  /newtab?url=...          -> 新开标签页
 import http from "node:http";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 
-const USER_DATA = "C:\\Users\\2504\\AppData\\Local\\Microsoft\\Edge\\User Data";
+// 本机 Edge 用户数据目录：动态取（2026-08-16 修：曾硬编码打包机路径 C:\Users\2504\...，
+// 迁移到其他机器路径不存在；改用 os.homedir() 任何机器自适应）
+const USER_DATA = path.join(os.homedir(), "AppData", "Local", "Microsoft", "Edge", "User Data");
 const TOKEN_FILE = path.join(process.cwd(), "edge-daemon.token");
 
 /** 读取/生成 daemon 鉴权 token(2026-08-06 安全加固:防恶意网页跨域调用 /eval /cmd 窃取 cookie)。
