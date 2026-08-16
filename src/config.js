@@ -23,8 +23,10 @@ export const GUI_PORT = 8080;       // GUI 服务端口
 
 // WorkBuddy 计费接口（无公开文档，是网页自身使用的内部接口）
 export const API = "https://www.workbuddy.cn/billing/meter/get-user-resource";
+// ⚠️ UA 受官方风控（2026-08-16 实测）:仅 `Edg/151.0.0.0` 放行,148/150/精确版本均 401。
+// 官方前端升级后放行值可能再变;若全部账号突然 401,用 docs/问题记录/官方UA风控致添加凭证401.md 的方法实测新放行值。
 export const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0";
 
 // 采集方案：环境变量显式指定优先；否则桌面(win32)用 Edge，其余（Docker/NAS/Linux）用 WebDAV 文件
 export const COLLECTOR_SCHEME =
