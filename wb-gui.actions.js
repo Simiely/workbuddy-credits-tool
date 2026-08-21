@@ -59,7 +59,7 @@ async function doRefresh(manual) {
     render(); // 卡片/hero/表格/折线全部从单一 model 重渲染(派生已就绪)
     if (manual) {
       const rs = all.results || [];
-      if (!rs.length) { toast("⚠️ 暂无账号数据(点「＋ 添加账号」或从 WebDAV 下载)"); }
+      if (!rs.length) { toast("⚠️ 暂无账号数据(点「📥 导入账号信息」或从 WebDAV 下载)"); }
       else {
         const ok = rs.filter((r) => r.summary).length;
         const changed = fpS() !== oldSfp;
@@ -145,13 +145,6 @@ async function checkAdminStatus() {
 }
 
 // ==================== 启动 + 顶层事件绑定（须在所有函数定义之后） ====================
-// 提示条「✕」:隐藏并记住,刷新后不再显示。用事件委托(无论 DOM 时序都可靠绑定)
-document.addEventListener("click", (e) => {
-  if (e.target && e.target.closest && e.target.closest("#daemonHide")) {
-    $("daemonWarn").hidden = true;
-    try { localStorage.setItem(LS_DAEMON_HIDE, "1"); } catch {}
-  }
-});
 bindIntervalInput("autoMin", () => autoMin, (v) => { autoMin = v; }, 1440, LS_MIN, applyAuto, (v) => `间隔已设为 ${v} 分钟`);
 bindIntervalInput("autoUpH", () => autoUpH, (v) => { autoUpH = v; }, 168, LS_UP_H, applyAutoUp, (v) => `自动同步间隔已设为 ${v} 小时`);
 $("renameInput") && $("renameInput").addEventListener("keydown", (e) => { if (e.key === "Enter") confirmSmall(); if (e.key === "Escape") closeSmall(); });
@@ -167,7 +160,6 @@ trendEnd = todayStr();
 const teEl = $("trendEnd");
 if (teEl) teEl.value = trendEnd;
 refreshAll(false);
-checkDaemon();
 checkWebdavQuick();
 checkAdminStatus(); // 是否需要管理员密码
 applyAuto();

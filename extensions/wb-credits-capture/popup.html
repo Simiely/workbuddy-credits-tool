@@ -9,30 +9,54 @@
   input { flex: 1; background: #2d2d2d; border: 1px solid #444; color: #ddd; border-radius: 4px; padding: 5px 8px; font-size: 12px; }
   button { background: #ff9292; color: #1e1e1e; border: 0; border-radius: 4px; padding: 7px 12px; font-size: 12px; cursor: pointer; font-weight: bold; }
   button.secondary { background: #444; color: #ddd; }
+  button.danger { background: #c0392b; color: #fff; }
   button:disabled { opacity: .5; cursor: wait; }
   #status { margin-top: 10px; padding: 8px; border-radius: 4px; background: #2d2d2d; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
   .ok { color: #7bd88f; } .err { color: #ff7b7b; }
   .hint { color: #888; font-size: 11px; margin-top: 10px; line-height: 1.6; }
   .cfg { border-top: 1px solid #333; margin-top: 10px; padding-top: 10px; }
+  .captured { border-top: 1px solid #333; margin-top: 10px; padding-top: 10px; }
+  .captured.hidden { display: none; }
+  .cap-title { color: #ff9292; font-size: 12px; margin-bottom: 6px; font-weight: bold; }
+  .cap-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 12px; gap: 10px; }
+  .cap-row span { color: #888; flex: none; }
+  .cap-row b { color: #ddd; font-weight: 600; text-align: right; word-break: break-all; }
 </style>
 </head>
 <body>
 <h1>📉 积分账号抓取器</h1>
 
-<div id="status" class="hint">就绪。请先在浏览器登录 workbuddy.cn,然后点「抓取当前账号」。</div>
+<div class="row">
+  <button id="btnOpen" class="secondary">🌐 打开 workbuddy.cn</button>
+</div>
+
+<div id="status" class="hint">就绪。点「打开 workbuddy.cn」登录后,再点「抓取当前账号」。</div>
 
 <div class="row">
-  <button id="btnCapture">抓取当前账号</button>
-  <button id="btnSync" class="secondary">抓取并同步 WebDAV</button>
+  <button id="btnCapture" style="flex:2">抓取当前账号</button>
+  <button id="btnExport" class="secondary" style="flex:1">导出</button>
+</div>
+<div class="row">
+  <button id="btnSync" class="secondary" style="flex:1">抓取并同步 WebDAV</button>
+</div>
+
+<div id="captured" class="captured hidden">
+  <div class="cap-title">📋 已抓取账号</div>
+  <div id="capBody"></div>
+  <div class="row" style="margin-top:8px;">
+    <button id="btnDelete" class="danger">🗑 删除该账号</button>
+  </div>
 </div>
 
 <div class="cfg">
-  <div class="row"><input id="cfgUrl" placeholder="WebDAV 地址(留空=192.168.2.1:6086)" style="flex:2"></div>
+  <div class="row"><input id="cfgUrl" placeholder="WebDAV 地址(留空=192.168.2.1:6086)"></div>
   <div class="row">
-    <input id="cfgUser" placeholder="用户名" style="flex:1">
-    <input id="cfgPass" type="password" placeholder="密码" style="flex:1">
-    <button id="btnSave" class="secondary">保存</button>
-    <button id="btnTest" class="secondary">测试</button>
+    <input id="cfgUser" placeholder="用户名">
+    <input id="cfgPass" type="password" placeholder="密码">
+  </div>
+  <div class="row">
+    <button id="btnSave" class="secondary" style="flex:1">保存</button>
+    <button id="btnTest" class="secondary" style="flex:1">测试</button>
   </div>
 </div>
 

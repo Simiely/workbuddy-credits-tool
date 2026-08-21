@@ -1,6 +1,6 @@
 // wb-gui.ops.js — 账号与数据操作（拆分第 5 部分，v1.4.7 从 actions.js 拆出）
 // 依赖：state(状态/helper)、core(api/toast/遮罩/管理员)、render(render*)、actions(refreshAll)。
-// 职责：排序(拖拽/一键) · 明细弹窗 · 改名/删除 · 添加/导出 · daemon 探测 · 清空本地数据。
+// 职责：排序(拖拽/一键) · 明细弹窗 · 改名/删除 · 导入/导出 · 清空本地数据。
 // 与 actions.js 共享同一全局词法作用域，classic <script> 按 state→core→render→ops→sync→actions 顺序加载。
 
 // ---- 保存排序:POST /api/reorder + 同步数据 + 重渲染 + 成功/失败提示(拖拽/一键排序共用) ----
@@ -137,39 +137,35 @@ async function confirmSmall() {
   } catch (e) { toast("❌ " + e.message); }
 }
 
-// ---- 添加 / 导出 ----
-async function saveCurrent() {
-  const b = $("btnAdd"); b.disabled = true; b.textContent = "保存中…";
-  try {
-    const j = await api(__BASE__ + "/api/save-current", { method: "POST" });
-    toast(`已保存账号[${j.account.name}]`);
-    refreshAll(false);
-  } catch (e) { toast("❌ " + e.message); }
-  finally { b.disabled = false; b.textContent = "＋ 添加当前账号"; }
-}
-// 打开登录页:经 edge-daemon 在调试 Edge 中打开 workbuddy.cn(登录后点「添加账号」收录 cookie)
-async function openLoginPage() {
-  const b = $("btnOpenWeb"); b.disabled = true;
-  try {
-    const j = await api(__BASE__ + "/api/open-workbuddy");
-    if (j && j.ok === false) toast("⚠️ " + (j.error || "打开失败"));
-    else toast("🌐 已在 Edge 打开 workbuddy.cn,登录后点「添加账号」");
-  } catch (e) { toast("❌ " + e.message); }
-  finally { b.disabled = false; }
+// ---- 导入账号信息 / 导出 ----
+// 选择 Edge 插件导出的 wb-accounts.json,POST /api/import-json(smart 合并进 SQLite)
+function importAccountsFromFile(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const data = JSON.parse(reader.result);
+      const r = await api(__BASE__ + "/api/import-json", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      toast(`✅ 已导入账号信息:共 ${r.total} 个账号`);
+      refreshAll(false);
+    } catch (e) { toast("❌ " + e.message); }
+    input.value = "";
+  };
+  reader.onerror = () => { toast("❌ 读取文件失败"); input.value = ""; };
+  reader.readAsText(f);
 }
 function exportMd() { window.location.href = __BASE__ + "/api/export.md"; }
 
-// ---- daemon 探测 ----
-async function checkDaemon() {
-  try {
-    const j = await api(__BASE__ + "/api/status");
-    // 场景化提示:工具中心挂载时指向 edge-daemon 工具;独立运行时指向手动启动
-    const tip = __BASE__
-      ? "请先在工具中心「＋ 添加工具」接入 edge-daemon 工具(或保持其运行)。"
-      : "请先启动 edge-daemon.mjs(node edge-daemon.mjs 8129)。";
-    showDaemon(j.daemon !== "ok" ? `⚠️ 浏览器代理未运行:「添加当前账号」暂不可用(查询不受影响)。${tip}` : "");
-  } catch { }
-}
+// 文件选择 change 绑定(脚本加载完成时执行)
+(function bindImport() {
+  const imp = $("importFile");
+  if (imp) imp.addEventListener("change", (e) => importAccountsFromFile(e.target));
+})();
 
 // ---- 清空本地数据 ----
 function openClear() { openMask("clearMask"); }

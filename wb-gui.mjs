@@ -33,7 +33,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { ROOT, TOOLS_DIR, DAEMON_PORT, GUI_PORT } from "./src/config.js";
+import { ROOT, TOOLS_DIR, GUI_PORT } from "./src/config.js";
 import { cnNow } from "./src/time.js"; // v1.4.58 时区口径收敛,与 CLI/derive 同源
 import {
   loadAccounts,
@@ -50,7 +50,6 @@ import {
 } from "./src/compute/store.js";
 import { fetchAllAccounts, fetchOneAccount } from "./src/compute/query.js";
 import { sampleAll } from "./src/compute/sample.js";
-import { saveCurrentFromEdge } from "./src/compute/account-ops.js";
 import { brief, mdAll } from "./src/present/render.js";
 import {
   saveLastData,
@@ -97,16 +96,6 @@ function staticFile(name, fallback = "// missing") {
 }
 
 const HTML_FILE = path.join(ROOT, "wb-gui.html");
-const DAEMON_BASE = `http://127.0.0.1:${DAEMON_PORT}`;
-
-// edge-daemon 鉴权头(2026-08-06 安全加固):读运行目录 edge-daemon.token,带 X-Daemon-Token;
-// /status 开放无需,其余 daemon 调用(/newtab 等)必须携带,否则 401。
-function daemonAuthHeaders() {
-  try {
-    const t = fs.readFileSync(path.join(process.cwd(), "edge-daemon.token"), "utf8").trim();
-    return t ? { "X-Daemon-Token": t } : {};
-  } catch { return {}; }
-}
 
 // dashboard/all 内存缓存 {key, payload}
 let dashCache = null;
@@ -245,39 +234,8 @@ const routes = [
     method: "GET",
     path: "/api/status",
     handler: async (ctx) => {
-      let daemon = "down";
-      try {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 2500);
-        const r = await fetch(`${DAEMON_BASE}/status`, { signal: ctrl.signal });
-        const j = await r.json();
-        clearTimeout(t);
-        daemon = j.connected ? "ok" : "down";
-      } catch {}
-      ctx.json(200, { ok: true, daemon, collector: collectorStatus() });
-    },
-  },
-  {
-    // 在调试 Edge 中打开 workbuddy.cn 登录页(配合「添加账号」收录 cookie,2026-08-06)
-    method: "GET",
-    path: "/api/open-workbuddy",
-    admin: true, // 有副作用(打开浏览器标签),设置密码后需鉴权(2026-08-06 安全加固)
-    handler: async (ctx) => {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 5000);
-      try {
-        const r = await fetch(
-          `${DAEMON_BASE}/newtab?url=${encodeURIComponent("https://www.workbuddy.cn")}`,
-          { signal: ctrl.signal, headers: daemonAuthHeaders() }
-        );
-        const j = await r.json();
-        clearTimeout(t);
-        if (j && j.error) ctx.json(200, { ok: false, error: "浏览器代理未连接(Edge 需以调试模式启动)" });
-        else ctx.json(200, { ok: true });
-      } catch (e) {
-        clearTimeout(t);
-        ctx.json(200, { ok: false, error: "浏览器代理(edge-daemon)不可用,请先启动它" });
-      }
+      // edge-daemon 已归档(v1.4.65):浏览器代理不再内置,采集统一走 Edge 插件导出 → 工具导入
+      ctx.json(200, { ok: true, daemon: "down", collector: collectorStatus() });
     },
   },
   {
@@ -449,16 +407,6 @@ const routes = [
   // ---------- 写接口（admin:true，分发层统一鉴权） ----------
   {
     method: "POST",
-    path: "/api/save-current",
-    admin: true,
-    handler: async (ctx) => {
-      const { account } = await saveCurrentFromEdge();
-      broadcastRefresh({ source: "save-current" });
-      ctx.json(200, { ok: true, account: brief(account) });
-    },
-  },
-  {
-    method: "POST",
     path: "/api/rename",
     admin: true,
     handler: (ctx) => {
@@ -608,6 +556,28 @@ const routes = [
     },
   },
   {
+    // 文件导入:接收 wb-redits 扩展导出的 wb-accounts.json({accounts,tombstones}),
+    // smart 合并进 SQLite(按 uin 去重取最新),实时刷新前端。绕过 WebDAV,适合本地单账号快速验证。
+    method: "POST",
+    path: "/api/import-json",
+    admin: true,
+    handler: async (ctx) => {
+      const body = ctx.bodyObj || {};
+      const incoming = Array.isArray(body.accounts) ? body.accounts : [];
+      if (!incoming.length) return ctx.json(400, { ok: false, error: "文件中无账号数据(accounts 为空)" });
+      // tombstones 可选:传了则一并合并(稀态三态)
+      const tombList = Array.isArray(body.tombstones) ? body.tombstones : [];
+      const tombMap = new Map(
+        tombList.filter((t) => t && t.uin).map((t) => [String(t.uin), t.deletedAt || new Date().toISOString()])
+      );
+      const local = loadAccounts();
+      const merged = mergeAccountsSmart(local, incoming, tombMap);
+      saveAccounts(local); // 全量覆盖写回 SQLite(事务保护)
+      broadcastRefresh({ source: "import-json" });
+      ctx.json(200, { ok: true, ...merged, total: local.length });
+    },
+  },
+  {
     // 采样手动触发:会写库,设置密码后需鉴权(2026-08-06 安全加固;前端 api() 自动带 X-Admin-Token)
     method: "POST",
     path: "/api/scheduler/run",
@@ -723,23 +693,7 @@ function listen(port, max) {
     setSchedulerNotifier((meta) => broadcastRefresh(meta));
     startScheduler();
     console.log("[启动] 采样调度器已启动（后台周期采集,实时推送）");
-    // 内嵌 edge-daemon（单文件 exe/桌面一体:同一进程同时提供 GUI + 8129 浏览器代理）
-    // 8129 若被外部 daemon 占用则静默跳过;edge-daemon.mjs 缺失时降级(不影响 GUI)
-    (async () => {
-      try {
-        const { createDaemonServer } = await import("./edge-daemon.mjs");
-        const daemon = createDaemonServer({ port: DAEMON_PORT });
-        daemon.server.once("error", (err) => {
-          if (err.code !== "EADDRINUSE") console.log("[启动] edge-daemon 内嵌失败: " + err.message);
-        });
-        daemon.server.listen(DAEMON_PORT, "127.0.0.1", () => {
-          console.log("[启动] 内嵌 edge-daemon 已就绪: http://127.0.0.1:" + DAEMON_PORT);
-          daemon.connect();
-        });
-      } catch (e) {
-        console.log("[启动] edge-daemon 内嵌跳过: " + e.message);
-      }
-    })();
+    // v1.4.65:edge-daemon 已归档,浏览器代理不再内置;账号采集统一走 Edge 插件导出 → 工具「导入账号信息」
   });
 }
 

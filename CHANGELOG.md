@@ -1,8 +1,15 @@
 # CHANGELOG
 
-## v1.4.65 (2026-08-16) · 修复:官方 UA 风控致全量 401 + 环境硬编码迁移适配
+## v1.4.65 (2026-08-21) · 采集重构:Edge 插件统一采集 + 新增「导入账号信息」,移除 CDP/edge-daemon
 
-### 修复（环境,2026-08-16 实测事故复盘）
+### 变更（采集架构,正式发布）
+- **账号采集统一走 Edge 插件**(`extensions/wb-credits-capture/`,chrome.cookies 官方 API 读登录态)→ 导出 `wb-accounts.json` → 工具「📥 导入账号信息」。
+- **移除旧 CDP 采集**:GUI 删除「添加账号」「打开网页」按钮与 `/api/save-current`、`/api/open-workbuddy` 端点、内嵌 edge-daemon 启动;`edge-daemon.mjs` **归档到 `legacy/`**;`/api/status` 不再探测 daemon。
+- **新增「导入账号信息」**:GUI 文件选择按钮 + CLI `import <wb-accounts.json>` 子命令(替代旧 `save-current`/`cookie`),经 `mergeAccountsSmart` 按 uin 合并进账号池(含墓碑三态)。
+- **维护策略**:本仓库只维护 **平台版 + Edge 插件版**;**bat 版保留、随版本自然迭代,不专门测试**。
+- 版本戳 1.4.64 → 1.4.65;`pack-platform.mjs` 打包列表剔除 `edge-daemon.mjs`。
+
+### 修复（环境,2026-08-16 实测事故复盘,随本版一并发布）
 - **官方 UA 风控致添加凭证/查询全量 401(P0)**:`billing/meter/get-user-resource` 接口新增 UA 风控,只放行特定 `Edg/xx.0.0.0` 占位版本。工具硬编码 `Edg/148.0.0.0` 落后于官方当前版本,被 APISIX 网关 401 拦截——表现为「换账号重登仍 401」「全部账号凭证过期」。实测仅 `Edg/151.0.0.0` 稳定放行(148/150/151 精确版本均 401,重复 3 次确认)。`src/config.js` 的 `UA` 已更新;官方前端升级后放行值可能再变,排查/实测方法见 `docs/问题记录/官方UA风控致添加凭证401.md`。
 - **`edge-daemon.mjs` 硬编码打包机路径(P1)**:`USER_DATA` 曾硬编码 `C:\Users\2504\...`(打包机用户名),迁移到其他机器路径不存在;改为 `os.homedir()` 动态拼 `AppData\Local\Microsoft\Edge\User Data`,任何机器自适应。
 - **调试 Edge 独占约束(桌面方案)**:Edge 151 检测到系统已有其他 Edge 实例(即使不同 profile)时,拒绝启动带 `--remote-debugging-port` 的新实例并直接退出 → GUI 报「浏览器代理未连接」。必须清空 msedge 进程后单独启动调试实例;已提供 `start-all.bat` 一键启动(自动关旧 Edge → 起调试 Edge 9222 → 起 GUI)。

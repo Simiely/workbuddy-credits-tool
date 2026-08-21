@@ -71,13 +71,6 @@ function toast(msg, ms = 2600) {
   toastTimer = setTimeout(() => t.classList.remove("show"), ms);
 }
 function showErr(msg) { const e = $("err"); e.hidden = !msg; e.textContent = msg || ""; }
-function showDaemon(msg) {
-  const w = $("daemonWarn");
-  if (!msg) { w.hidden = true; return; }
-  if (localStorage.getItem(LS_DAEMON_HIDE)) return; // 已手动隐藏
-  $("daemonMsg").textContent = msg;
-  w.hidden = false;
-}
 
 // ---- 按钮状态单点控制(唯一改按钮的地方,finally 必恢复) ----
 function setBusy(b) {

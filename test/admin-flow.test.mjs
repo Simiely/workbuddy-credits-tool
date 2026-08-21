@@ -53,7 +53,7 @@ const { assert, report } = makeTester();
 
 // S0 拆分后跨文件函数存在性（regression: 拆分不能丢函数）
 console.log("S0 拆分后跨文件引用");
-for (const fn of ["confirmSmall", "openDel", "openRename", "saveCurrent", "checkDaemon", "openClear", "confirmClear", "syncAct", "openSync", "saveSyncCfg", "checkWebdavQuick", "refreshAll", "doRefresh", "connectStream", "applyAuto", "confirmAdmin", "openAdmin", "api", "toast", "cfm"]) {
+for (const fn of ["confirmSmall", "openDel", "openRename", "importAccountsFromFile", "openClear", "confirmClear", "syncAct", "openSync", "saveSyncCfg", "checkWebdavQuick", "refreshAll", "doRefresh", "connectStream", "applyAuto", "confirmAdmin", "openAdmin", "api", "toast", "cfm"]) {
   assert(`函数可调用: ${fn}`, run(`typeof ${fn}`) === "function");
 }
 

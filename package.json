@@ -1,6 +1,6 @@
 {
   "name": "workbuddy-credits-tool",
-  "version": "1.4.64",
+  "version": "1.4.65",
   "private": true,
   "type": "module",
   "description": "WorkBuddy 积分监控仪表盘（多账号查询/趋势/云同步）",
@@ -10,7 +10,6 @@
   "scripts": {
     "serve": "node wb-gui.mjs",
     "cli": "node wb-credits.mjs",
-    "daemon": "node edge-daemon.mjs",
     "test": "node test/run-all.mjs"
   }
 }

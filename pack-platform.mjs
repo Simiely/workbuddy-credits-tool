@@ -36,7 +36,7 @@ const rootFiles = [
   "wb-gui.mjs", "wb-gui.html",
   "wb-gui.state.js", "wb-gui.core.js", "wb-gui.render.js",
   "wb-gui.chart.js", "wb-gui.ops.js", "wb-gui.sync.js", "wb-gui.actions.js",
-  "edge-daemon.mjs", "package.json", "Dockerfile", "docker-compose.yml",
+  "package.json", "Dockerfile", "docker-compose.yml",
   "tool.json", ".dockerignore", "README.md", "CHANGELOG.md",
 ];
 for (const f of rootFiles) {
@@ -78,7 +78,7 @@ ${syncNote}
 
 ## 数据与 cookie 更新
 - 数据目录 = 工具目录(\`tools/wb-credits/\`):\`credits.db\` 含凭证,**删工具 = 删数据**,先云同步备份
-- cookie 更新只在桌面版:重新登录 →「添加当前账号」→「☁️ 上传」→ 平台版「下载」
+- cookie 更新统一走 **Edge 插件**(chrome.cookies 官方 API 采集)→ 导出 \`wb-accounts.json\` → 本工具「📥 导入账号信息」→「☁️ 上传」→ 平台版「下载」
 
 ## 升级
 替换 \`tools/wb-credits/\` 下代码 → 平台卡片「↻ 重启」。

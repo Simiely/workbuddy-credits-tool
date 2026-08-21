@@ -20,6 +20,53 @@ const CFG_KEY = "wb_credits_capture_webdav";
 const CACHE_KEY = "wb_credits_capture_cache"; // 最近一次抓取结果(展示用,非真相)
 
 // ============================================================
+//  Cookie 清洗(对齐工具 src/compute/client.js sanitizeCookieHeader)
+//  背景:workbuddy.cn 登录会残留 KC_RESTART(1KB+ 一次性令牌)/埋点追踪 cookie,
+//  多次登录还会残留同名多份,header 总长可超 7KB → 网关 400 Cookie Too Large。
+//  扩展自己发 billing 验证请求 + 落库 WebDAV 前都必须清洗,否则扩展内验证直接 400。
+// ============================================================
+const JUNK_COOKIE_PREFIX = [
+  "KC_RESTART",       // Keycloak 登录重启令牌(一次性,API 不需要,1KB+)
+  "KC_STATE_CHECKER", // Keycloak 状态校验(登录流程用)
+  "9c412d6095037d16", // 风控指纹
+  "_TDID_CK",         // 腾讯 TDID 跟踪
+  "_gcl_au",          // Google 广告
+  "trafficParams",    // 流量参数
+  "sensorsdata",      // 神策埋点
+  "qcloud_",          // 腾讯云埋点(qcloud_from/qcloud_visitId)
+  "i18next",          // 国际化语言偏好
+  "login_risk_state", // 登录风控状态
+];
+const AUTH_COOKIE_WHITELIST = [
+  "KEYCLOAK_IDENTITY",
+  "KEYCLOAK_SESSION",
+  "AUTH_SESSION_ID",
+  "session",
+  "session_2",
+];
+const MAX_COOKIE_BYTES = 7000; // stgw 网关请求头约 8KB 上限,留 1KB 余量
+function sanitizeCookieHeader(cookieHeader) {
+  if (!cookieHeader || typeof cookieHeader !== "string") return cookieHeader;
+  const parts = cookieHeader.split(";").map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) return cookieHeader;
+  const byName = new Map();
+  for (const p of parts) {
+    const eq = p.indexOf("=");
+    const name = eq > 0 ? p.slice(0, eq) : p;
+    if (JUNK_COOKIE_PREFIX.some((j) => name.startsWith(j))) continue; // 剔除垃圾
+    byName.set(name, p); // 同名保留最后一份
+  }
+  let cleaned = [...byName.values()].join("; ");
+  if (cleaned.length > MAX_COOKIE_BYTES) {
+    // 超长兜底:只留认证核心白名单
+    cleaned = [...byName.values()]
+      .filter((p) => AUTH_COOKIE_WHITELIST.some((n) => p.startsWith(n + "=")))
+      .join("; ");
+  }
+  return cleaned;
+}
+
+// ============================================================
 //  配置
 // ============================================================
 async function getConfig() {
@@ -36,12 +83,15 @@ async function getConfig() {
 //  抓取:读 Cookie → 验证 → 组装账号记录
 // ============================================================
 async function capture() {
-  const url = "https://www.workbuddy.cn/";
-  const cookies = await chrome.cookies.getAll({ url });
+  // 全域名树采集(对齐工具 edge-collector 的 domain.includes 口径):
+  // 覆盖 .workbuddy.cn / www.workbuddy.cn / host-only workbuddy.cn,避免漏采
+  const cookies = await chrome.cookies.getAll({ domain: "workbuddy.cn" });
   if (!cookies.length) throw new Error("未获取到 workbuddy.cn 的 Cookie(未登录或未授予站点权限)");
   const filtered = cookies.filter((c) => c.domain.includes("workbuddy.cn"));
   if (!filtered.length) throw new Error("未找到 workbuddy.cn 登录 Cookie");
-  const cookieHeader = filtered.map((c) => `${c.name}=${c.value}`).join("; ");
+  // 清洗:剔除一次性登录/埋点垃圾 cookie + 同名去重 + 超长降级白名单(对齐工具 client.js)
+  // 验证请求与落库前都必须是清洗后的 header,否则扩展内验证直接撞 400 Cookie Too Large
+  const cookieHeader = sanitizeCookieHeader(filtered.map((c) => `${c.name}=${c.value}`).join("; "));
 
   // 验证 + 拿 Uin(与工具 client.js 同款请求;扩展 fetch 带浏览器 UA/TLS,不受 UA 风控)
   const resp = await fetch(API, {
@@ -108,12 +158,17 @@ async function dav(method, u, cfg, body, headers = {}) {
 }
 function dirUrl(cfg) {
   const base = cfg.url.replace(/\/+$/, "");
-  return `${base}/${BACKUP_DIR.split("/").map(encodeURIComponent).join("/")}`;
+  // 必须与主控 src/compute/webdav.js 的 fileUrl 完全一致:使用原始中文路径,不 encodeURIComponent。
+  // (多数 NAS 会解码碰巧可用,但不解码的服务器会让工具「同步」拉到 404 → 当首次同步清空云端)
+  return `${base}/${BACKUP_DIR}`;
 }
 async function ensureDir(cfg) {
   const base = cfg.url.replace(/\/+$/, "");
   const dir = dirUrl(cfg);
-  for (const level of [base + "/workbuddy", dir]) {
+  // 注意:WebDAV 集合(目录)URL 必须以 / 结尾,与主控 webdav.js ensureDir 的 `${acc}/` 一致。
+  // 部分服务器(Nginx WebDAV / 某些 NAS 如 iStoreOS)对无尾斜杠的 MKCOL 直接 409/405,
+  // 导致建目录失败、同步卡死 —— 这是「改过很多轮都同步不上」的典型诱因之一。
+  for (const level of [`${base}/workbuddy/`, `${dir}/`]) {
     const probe = await dav("PROPFIND", level, cfg, undefined, { Depth: "0" });
     if (probe.status !== 404) continue;
     const mk = await dav("MKCOL", level, cfg);
@@ -206,6 +261,57 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       case "getState": {
         const c = await chrome.storage.local.get([CFG_KEY, CACHE_KEY]);
         sendResponse({ ok: true, config: c[CFG_KEY] || {}, cache: c[CACHE_KEY] || null });
+        break;
+      }
+      case "export": {
+        // 导出当前抓取结果为标准 wb-accounts.json(与 WebDAV 镜像同格式),
+        // 供"文件导入"路径:用户下载后交给 WorkBuddy 直接灌入积分仪表盘服务器,绕过 WebDAV。
+        const c = await chrome.storage.local.get(CACHE_KEY);
+        const cache = c[CACHE_KEY];
+        if (!cache || !cache.account) throw new Error("还没有抓取数据,请先点「抓取当前账号」");
+        const rec = cache.account;
+        const payload = {
+          updatedAt: new Date().toISOString(),
+          accounts: [rec],
+          tombstones: [],
+        };
+        sendResponse({ ok: true, json: JSON.stringify(payload, null, 2), uin: rec.uin });
+        break;
+      }
+      case "deleteCapture": {
+        // 删除当前抓取账号:① 清本地缓存(展示消失);② 若已配 WebDAV,把该 uin 从远端移除并加墓碑,
+        // 使服务器下次「一键同步」也删除(对齐工具 tombstone 删除传播,避免一同步又回来)。
+        // 本地删除永远成功;WebDAV 失败不致命(仅提示手动在服务器删)。
+        const c = await chrome.storage.local.get(CACHE_KEY);
+        const cache = c[CACHE_KEY];
+        if (!cache || !cache.account) throw new Error("还没有抓取数据,无需删除");
+        const uin = String(cache.account.uin);
+        await chrome.storage.local.remove(CACHE_KEY); // ① 清本地缓存
+        const webdav = { removed: false, tombstoned: false };
+        const cfg = await getConfig();
+        if (cfg.user) {
+          try {
+            let remote = { updatedAt: new Date().toISOString(), accounts: [], tombstones: [] };
+            const raw = await fetchRemote(cfg);
+            if (raw !== null) {
+              try { remote = JSON.parse(raw); } catch { /* 损坏:从空重建 */ }
+              if (!Array.isArray(remote.accounts)) remote.accounts = [];
+              if (!Array.isArray(remote.tombstones)) remote.tombstones = [];
+            }
+            const before = remote.accounts.length;
+            remote.accounts = remote.accounts.filter((a) => a && String(a.uin) !== uin);
+            remote.tombstones = remote.tombstones.filter((t) => t && String(t.uin) !== uin);
+            remote.tombstones.push({ uin, deletedAt: new Date().toISOString() }); // 墓碑:删除跨设备传播
+            remote.updatedAt = new Date().toISOString();
+            await ensureDir(cfg);
+            await pushRemote(cfg, JSON.stringify(remote, null, 2));
+            webdav.removed = remote.accounts.length < before;
+            webdav.tombstoned = true;
+          } catch (e) {
+            webdav.error = e.message; // WebDAV 失败不致命,本地缓存已清
+          }
+        }
+        sendResponse({ ok: true, uin, webdav });
         break;
       }
       case "saveConfig": {

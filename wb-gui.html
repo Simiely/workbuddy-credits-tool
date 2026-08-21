@@ -73,8 +73,6 @@ input,select{font:inherit;color:var(--text)}
 
 .warn{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.3);color:var(--bad);padding:10px 14px;border-radius:12px;margin-bottom:12px;font-size:13px}
 .warn.d{background:rgba(247,163,92,.08);border-color:rgba(247,163,92,.3);color:var(--warn)}
-#daemonWarn:not([hidden]){display:flex;align-items:center;justify-content:space-between;gap:10px}
-#daemonWarn[hidden]{display:none}
 .warn-x{flex-shrink:0;background:none;border:none;color:var(--warn);font-size:14px;line-height:1;cursor:pointer;padding:4px 6px;border-radius:6px;opacity:.7}
 .warn-x:hover{opacity:1;background:rgba(247,163,92,.15)}
 
@@ -293,7 +291,6 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 
   <div class="warn" id="err" hidden></div>
-  <div class="warn d" id="daemonWarn" hidden><span id="daemonMsg"></span><button class="warn-x" id="daemonHide" title="知道了,不再显示">✕</button></div>
 
   <section class="hero" id="hero"></section>
 
@@ -320,8 +317,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </section>
 
   <div class="ops">
-    <button class="btn btn-g" onclick="saveCurrent()" id="btnAdd"><span class="em">＋</span><span class="txt">添加账号</span></button>
-    <button class="btn btn-g" onclick="openLoginPage()" id="btnOpenWeb" title="在调试 Edge 中打开 workbuddy.cn 登录页,登录后点「添加账号」收录 cookie"><span class="em">🌐</span><span class="txt">打开网页</span></button>
+    <button class="btn btn-g" onclick="$('importFile').click()" id="btnImport" title="选择 Edge 插件导出的 wb-accounts.json,导入账号信息"><span class="em">📥</span><span class="txt">导入账号信息</span></button>
+    <input type="file" id="importFile" accept=".json,application/json" hidden>
     <button class="btn btn-g" onclick="sortByExpiring()"><span class="em">⏰</span><span class="txt">过期排序</span></button>
     <button class="btn btn-g" onclick="sortByTodayUsed()"><span class="em">📉</span><span class="txt">使用排序</span></button>
     <button class="btn btn-g" onclick="sortByTotal()"><span class="em">📊</span><span class="txt">剩余排序</span></button>
@@ -406,12 +403,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 <div class="toast" id="toast"></div>
 <script>window.__BASE__ = (location.pathname.match(/^\/tool\/[^/]+/) || [""])[0];</script>
-<script src="./wb-gui.state.js?v=v1.4.64"></script>
-<script src="./wb-gui.core.js?v=v1.4.64"></script>
-<script src="./wb-gui.render.js?v=v1.4.64"></script>
-<script src="./wb-gui.chart.js?v=v1.4.64"></script>
-<script src="./wb-gui.ops.js?v=v1.4.64"></script>
-<script src="./wb-gui.sync.js?v=v1.4.64"></script>
-<script src="./wb-gui.actions.js?v=v1.4.64"></script>
+<script src="./wb-gui.state.js?v=v1.4.65"></script>
+<script src="./wb-gui.core.js?v=v1.4.65"></script>
+<script src="./wb-gui.render.js?v=v1.4.65"></script>
+<script src="./wb-gui.chart.js?v=v1.4.65"></script>
+<script src="./wb-gui.ops.js?v=v1.4.65"></script>
+<script src="./wb-gui.sync.js?v=v1.4.65"></script>
+<script src="./wb-gui.actions.js?v=v1.4.65"></script>
 </body>
 </html>

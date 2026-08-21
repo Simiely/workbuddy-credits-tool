@@ -53,6 +53,7 @@ node --check wb-gui.mjs && node --check wb-gui.chart.js   # 语法校验
 3. **历史快照长期增长**:readings 由 `gcDaySummaries` 固化(T-2 及更早浓缩为 day_summary),已缓解;仍可观察
 4. **edge-daemon**(8129):Windows 专用;Docker/NAS 上「添加当前账号」不可用,靠 WebDAV 同步账号
 5. **双设备同时点同步 → 后写覆盖**(理论竞态,单用户不触发);同步按钮无进行中反馈(🟡 UX)
+6. **配套浏览器扩展 `extensions/wb-credits-capture`(免调试浏览器采集方案)**:日常 Edge 登录 → 扩展「抓取并同步 WebDAV」→ 工具「一键同步」导入。2026-08-20 修通:① **manifest 必须声明 `background.service_worker`**,否则 popup 消息无接收端、扩展完全不可用(历史遗留死穴);② WebDAV 路径用**原始中文**(`workbuddy/workbuddy积分`),与 `src/compute/webdav.js` 完全一致,**切勿 encodeURIComponent**(否则 NAS 不解码时工具「同步」拉 404 → 当首次同步清空云端);③ 扩展内 cookie 必须**清洗**(已移植 `sanitizeCookieHeader`),否则扩展自身 billing 验证直接撞 400 Cookie Too Large;④ 采集用 `chrome.cookies.getAll({domain:"workbuddy.cn"})` 全域名树。回归见 `test/extension-capture.test.mjs`
 
 ## 7. 近期修复历史(浓缩,v1.4.x)
 
