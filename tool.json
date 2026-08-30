@@ -13,6 +13,7 @@
   ],
   "cwd": ".",
   "port": 8123,
+  "_portNote": "端口 8123 由 tools-center/docs/ports.md 统一分配；改端口须先登记并同步 cmd 与 port",
   "health": "/api/status",
   "dataFiles": [
     "*.db",
