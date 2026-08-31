@@ -8,6 +8,7 @@ v1.4.67 只挡了「未来再灌满」(导入过滤),但**清不掉已被灌满�
 ### 修复
 - **gc 无条件清理旧明细(P0)**:`gcDaySummaries` 固化循环结束后**无条件 `deleteReadingsBefore(cutMs)`**(原 `fixed>0` 才删)。循环结束后所有 `<cut` 旧日都已进 day_summary(既有或本次新增),删除安全;保留 T-1 与今天。重灌残留一次 gc 即清(27330→455 行,导出 10052KB→368KB)。
 - **启动先固化再重导出**:`wb-gui.mjs` listen 回调由「直接 exportHistory」改为「先 `gcDaySummaries()` 再 `exportHistory()`」——升级重启后陈旧镜像**立即收缩**,不必等首个调度 tick(5-15 分钟)的 gc。
+- **前端页脚版本号显示修正**:`wb-gui.render.js` 页脚两处仍显示 v1.4.67(平台版可见),统一改 v1.4.68;`wb-gui.html` 全部 `?v=` 缓存戳 v1.4.67 → v1.4.68。
 
 ### 测试
 - `test/gc-summary.test.mjs` 新增 T6:重灌已固化旧日快照后 gc `fixed=0` 仍清理残留(6 条→4 条)。15 断言全过;`test/run-all.mjs` 14/14 通过。
