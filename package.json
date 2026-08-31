@@ -1,6 +1,6 @@
 {
   "name": "workbuddy-credits-tool",
-  "version": "1.4.70",
+  "version": "1.4.71",
   "private": true,
   "type": "module",
   "description": "WorkBuddy 积分监控仪表盘（多账号查询/趋势/云同步）",
