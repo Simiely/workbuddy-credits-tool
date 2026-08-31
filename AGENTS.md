@@ -3,7 +3,7 @@
 > 给 AI 与"未来的你"看的精简规则。核心约束尽量短,细节放 `rules/` 按需 @引用。
 >
 > **接手先读**:[`docs/交接说明.md`](docs/交接说明.md)(运行实例/端口/数据文件/待办的状态快照)。
-> 当前版本 **v1.4.69**(见 CHANGELOG)。
+> 当前版本 **v1.4.70**(见 CHANGELOG)。
 > **发包规范**:每次发包只发**平台版(tools-center 托管 zip)+ bat 版(Windows 一键启动 zip)** 两个版本,均上传 GitHub Release(不含数据文件);完整流程见 [`docs/发布规范.md`](docs/发布规范.md)。
 
 ## 技术栈
@@ -25,7 +25,7 @@
 8. **近1/2/3/7天过期口径**:有效(Status===0)且非"体验版"的赠送包,`CycleEndTime` 距今天 ≤n 天的 `CapacityRemain` 合计。已收口到 `src/compute/derive.js` 的 `deriveGiftExpiry()`(**单派生源**),`/api/dashboard/all` 返回 `expiring1d/2d/3d/7d/giftBuckets/expiryTier`,前端表格/卡片/排序全部消费派生结果
 9. **统一采样入口**:`src/compute/sample.js` 的 `sampleAll()` 是唯一"采集→落盘"路径,手动刷新(`/api/all`)与调度器(`scheduler`)都走它;新增写入 readings 的路径必须复用
 10. **前端文件清单改动(增删 script)必须同步 4 处**:`wb-gui.html` 引用 / `wb-gui.mjs` 静态路由 / `test/server-routes.test.mjs` 复制正则+断言 / `test/helpers/vm-env.mjs` FRONTEND_FILES——漏一处 `npm test` 就挂
-11. **消耗口径 = 已用正增量累加**(`consumeByPos`):官方赠送包数据调整(包消失/重置/新增)会让「首条剩余−当前剩余」漂移成 0,必须按时间扫描快照累计「已用」正增量,包重置时 prev 同步回退点重算(v1.4.31);`consumed` 死字段已删
+11. **消耗口径 = 已用正增量累加**(`consumeByPos`):官方赠送包数据调整(包消失/重置/新增)会让「首条剩余−当前剩余」漂移成 0,必须按时间扫描快照累计「已用」正增量,包重置时 prev 同步回退点重算(v1.4.31);`consumed` 死字段已删;**基础包(体验版)消耗必须计入(v1.4.70 修)**:`consumeByPack` 在赠送包包级首末差之后追加 `baseUsed` 正增量累加(回退=周期重置同步基线),否则基础包一旦消耗(官方"已用 106.92")工具消耗指标恒 0,与官方对不齐;赠送包走包级首末差、基础包走增量,两者不相交不重复
 12. **历史固化(v1.4.32)**:`day_summary` 表(uin+day PK)+ `gcDaySummaries()` 幂等固化 T-2 及更早,保留昨天+今天+最新快照;derive 双源读取(快照日期优先+摘要补齐旧日);备份镜像 `{snapshots, summaries}`;**剥离策略(v1.4.47 修)**:每天保留首末快照组 giftPackages(consumeByPack 只读首末)、中间组剥离(勿改回"仅最新组保留"——会致恢复后包级口径降级、今日已用虚高);wb-last-data.json 非账本已移出 SYNC_FILES;**gc 无条件清理旧明细(v1.4.68 修)**:`deleteReadingsBefore(cutMs)` 不再受 `fixed>0` 门控——陈旧镜像重灌的残留(day_summary 已有但 readings 残留)一次 gc 即清,否则镜像永不收缩;**启动先固化再重导出(v1.4.68)**:wb-gui.mjs listen 回调 `gcDaySummaries()` 后 `exportHistory()`,升级重启镜像立即收缩
 13. **签到检测(v1.4.33)**:官方签到接口被 APISIX 401 拦,用元数据推断——`detectSignIn()` = 最新快照存在「今日首条没有 + cycleEndTime 对日=今天+1自然月」的新增包即为已签到;day_summary.signedIn 固化历史签到,卡片 ✅/⏰ 徽标;**目标到期日必须「对日+月末钳制」计算(v1.4.66 修)**:`new Date(y,m,d)` 的 m 是 1 索引而 Date 月份是 0 索引,月末会溢出(8/31 签到算出 10/1 漏判)→ 用 `Date.UTC(nextY,nextM,0)` 取目标月天数再 `Math.min(d,dim)`(8/31→9/30、1/31→2/28/29、12/31→次年1/31)
 14. **前端结构约定(v1.4.38 归位)**:折叠(toggleFold/applyFold)归 core.js(UI 基建),图表 hover 委托(initChartTip)归 chart.js,**副作用一律收敛在 actions.js 启动段**(其余文件只声明函数);改前端后必须 bump wb-gui.html 全部 ?v= 版本戳(一次 bump 到新号,别复用旧号——浏览器强缓存会拦"同名 URL")
