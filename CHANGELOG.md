@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## v1.4.68 (2026-08-31) · 修复:wb-history.json 仍 10MB 不收缩(残留旧快照清理 + 启动先固化)
+
+### 背景
+v1.4.67 只挡了「未来再灌满」(导入过滤),但**清不掉已被灌满的残留**:若数据库被陈旧镜像重灌过(旧代码导入无过滤),day_summary 已含旧日 → gc `fixed=0` → `deleteReadingsBefore` 被 `fixed>0` 条件挡住 → 残留旧快照永不删除 → 重导出仍 10MB。实测复现:重灌 27330 行/4967 组后跑 v1.4.67 gc,`fixed=0` 不删除,导出仍 10052KB。
+
+### 修复
+- **gc 无条件清理旧明细(P0)**:`gcDaySummaries` 固化循环结束后**无条件 `deleteReadingsBefore(cutMs)`**(原 `fixed>0` 才删)。循环结束后所有 `<cut` 旧日都已进 day_summary(既有或本次新增),删除安全;保留 T-1 与今天。重灌残留一次 gc 即清(27330→455 行,导出 10052KB→368KB)。
+- **启动先固化再重导出**:`wb-gui.mjs` listen 回调由「直接 exportHistory」改为「先 `gcDaySummaries()` 再 `exportHistory()`」——升级重启后陈旧镜像**立即收缩**,不必等首个调度 tick(5-15 分钟)的 gc。
+
+### 测试
+- `test/gc-summary.test.mjs` 新增 T6:重灌已固化旧日快照后 gc `fixed=0` 仍清理残留(6 条→4 条)。15 断言全过;`test/run-all.mjs` 14/14 通过。
+
+### 文档
+- README / DEVELOPMENT / AGENTS / CHANGELOG 同步;版本戳 v1.4.67 → v1.4.68。
+
 ## v1.4.67 (2026-08-31) · 修复:wb-history.json 镜像陈旧膨胀根治(导入跳过已固化旧日 + gc 后无条件重导出)
 
 ### 背景
