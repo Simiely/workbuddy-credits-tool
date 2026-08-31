@@ -15,9 +15,11 @@
   .ok { color: #7bd88f; } .err { color: #ff7b7b; }
   .hint { color: #888; font-size: 11px; margin-top: 10px; line-height: 1.6; }
   .cfg { border-top: 1px solid #333; margin-top: 10px; padding-top: 10px; }
-  .captured { border-top: 1px solid #333; margin-top: 10px; padding-top: 10px; }
-  .captured.hidden { display: none; }
-  .cap-title { color: #ff9292; font-size: 12px; margin-bottom: 6px; font-weight: bold; }
+  .cards { border-top: 1px solid #333; margin-top: 10px; padding-top: 10px; }
+  .cards-title { color: #ff9292; font-size: 12px; margin-bottom: 6px; font-weight: bold; display:flex; justify-content:space-between; align-items:center; }
+  .cards-title .empty { color:#888; font-weight:normal; }
+  .card { background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 6px; margin-bottom: 8px; padding: 8px 10px; }
+  .card-uin { color: #777; font-size: 11px; }
   .cap-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 12px; gap: 10px; }
   .cap-row span { color: #888; flex: none; }
   .cap-row b { color: #ddd; font-weight: 600; text-align: right; word-break: break-all; }
@@ -27,25 +29,32 @@
 <h1>📉 积分账号抓取器</h1>
 
 <div class="row">
-  <button id="btnOpen" class="secondary">🌐 打开 workbuddy.cn</button>
+  <button id="btnOpen" class="secondary" style="flex:1">🌐 打开 workbuddy.cn</button>
+  <button id="btnOpenTrae" class="secondary" style="flex:1">🌐 打开 trae.cn</button>
 </div>
 
-<div id="status" class="hint">就绪。点「打开 workbuddy.cn」登录后,再点「抓取当前账号」。</div>
+<div id="status" class="hint">就绪。先「打开 workbuddy.cn」登录,可填名称,再点「抓取账号」生成卡片。</div>
 
 <div class="row">
-  <button id="btnCapture" style="flex:2">抓取当前账号</button>
+  <input id="nameInput" placeholder="名称/备注(可选,留空则不填备注)">
+</div>
+<div class="row">
+  <button id="btnCapture" style="flex:2">抓取账号 → 生成卡片</button>
   <button id="btnExport" class="secondary" style="flex:1">导出</button>
 </div>
 <div class="row">
-  <button id="btnSync" class="secondary" style="flex:1">抓取并同步 WebDAV</button>
+  <button id="btnSync" class="secondary" style="flex:1">同步全部到 WebDAV</button>
 </div>
 
-<div id="captured" class="captured hidden">
-  <div class="cap-title">📋 已抓取账号</div>
-  <div id="capBody"></div>
-  <div class="row" style="margin-top:8px;">
-    <button id="btnDelete" class="danger">🗑 删除该账号</button>
+<div id="cardsBox" class="cards">
+  <div class="cards-title">
+    <span>📋 账号卡片</span>
+    <span style="display:flex;gap:6px;align-items:center;">
+      <span id="cardsEmpty" class="empty">尚未抓取</span>
+      <button id="btnClearAll" class="danger" style="padding:3px 8px;font-size:11px">一键清理</button>
+    </span>
   </div>
+  <div id="cards"></div>
 </div>
 
 <div class="cfg">
@@ -61,8 +70,9 @@
 </div>
 
 <div class="hint">
-  流程:浏览器登录 workbuddy.cn → 点「抓取并同步」→ 在积分仪表盘点「☁️ 云同步 → 🔄 一键同步」即完成导入。<br>
-  多账号:切换登录另一个账号,再点一次「抓取并同步」即可追加/更新。
+  流程:登录 workbuddy.cn → 「抓取账号」生成卡片 → 点「同步全部到 WebDAV」→ 在积分仪表盘点「☁️ 云同步 → 🔄 一键同步」即导入。<br>
+  多账号:换登录另一个账号再抓一次,即可新增/更新一张卡片。<br>
+  名称:抓取时填写的名称会存为该账号备注;留空则不填。点卡片可查看详情/改备注/删除。
 </div>
 
 <script src="popup.js"></script>

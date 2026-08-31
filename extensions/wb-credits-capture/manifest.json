@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "积分账号抓取器 (wb-credits capture)",
-  "version": "1.0.0",
+  "version": "2.0.5",
+  "version_name": "2.0.05",
   "description": "抓取当前登录的 workbuddy.cn 账号 Cookie,同步到 WebDAV,供「WorkBuddy 积分仪表盘」(wb-credits-tool)一键导入使用。无需调试浏览器/独立 profile。",
   "permissions": ["cookies", "storage"],
   "host_permissions": [
