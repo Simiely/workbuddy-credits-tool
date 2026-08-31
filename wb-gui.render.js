@@ -75,7 +75,7 @@ function renderCards() {
   const rs = (S && S.results) || [];
   if (!rs.length) {
     $("grid").innerHTML = '<div class="empty"><div class="big">📭</div>账号池为空<br>点「📥 导入账号信息」(Edge 插件导出 wb-accounts.json)或命令行 wb-credits.bat import</div>';
-    $("foot").textContent = "v1.4.70 · 数据来自 WorkBuddy 网页版接口 · 暂无账号数据(可「导入账号信息」或从 WebDAV 下载)";
+    $("foot").textContent = "v1.4.71 · 数据来自 WorkBuddy 网页版接口 · 暂无账号数据(可「导入账号信息」或从 WebDAV 下载)";
     return;
   }
   $("grid").innerHTML = rs.map((r, i) => {
@@ -93,6 +93,9 @@ function renderCards() {
     const bp = s.baseSize ? Math.min(100, (s.baseUsed / s.baseSize) * 100) : 0;
     const gp = s.giftSize ? Math.min(100, (s.giftUsed / s.giftSize) * 100) : 0;
     const baseNote = s.baseCycleEnd ? `(至 ${s.baseCycleEnd.slice(5, 10)})` : "";
+    // 基础包状态(v1.4.71):用光=红(已用完) / 快用完=橙(警告) / 正常
+    const baseState = !s.baseSize ? "" : (bp >= 100 ? "bad" : (bp > 85 ? "warn" : ""));
+    const baseVal = s.baseSize && (s.baseRemain ?? 1) <= 0 ? "已用完" : `剩余 ${s.baseRemain ?? "-"}`;
     // 签到标记（v1.4.44）：由后端 derive 检测今日首条 vs 最新快照的新增满额包推断，见 detectSignIn
     const signed = (r.derived && r.derived.signedInToday)
       ? `<span class="signed" title="今日已签到">✅ 已签到</span>`
@@ -101,15 +104,15 @@ function renderCards() {
       <div><div class="acct-name">${nm}</div><div class="acct-uin">Uin: ${a.uin || "?"}</div></div>
       <div class="remain"><span class="tt">💎 总剩余积分</span><span class="tn">${fmt(totalOf(s))}</span></div></div>
       <div class="acct-rows">
-        <div class="arow"><div class="l"><span>🎁 体验版基础用量 ${baseNote}</span><b>剩余 ${s.baseRemain ?? "-"}</b></div>
-          ${s.baseSize ? `<div class="meter ${bp > 85 ? "warn" : ""}"><i style="width:${bp}%"></i></div>` : ""}</div>
+        <div class="arow"><div class="l"><span>🎁 体验版基础用量 ${baseNote}</span><b class="${baseState ? "t-" + baseState : ""}">${baseVal}</b></div>
+          ${s.baseSize ? `<div class="meter ${baseState}"><i style="width:${bp}%"></i></div>` : ""}</div>
         <div class="arow"><div class="l"><span>📦 有效赠送包(${s.giftCount} 个)</span><b>剩余 ${s.giftRemain}</b></div>
           <div class="meter ${gp > 85 ? "warn" : ""}"><i style="width:${gp}%"></i></div></div>
         <div class="arow act-row"><div class="l t-brand"><div class="acct-today">今日消耗 ${fmt((r.derived && r.derived.todayUsed) || 0)}</div>${signed}</div>${acts}</div>
       </div></div>`;
   }).join("");
   initDrag();
-  $("foot").textContent = "v1.4.70 · 数据来自 WorkBuddy 网页版接口 · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新导入账号信息更新凭证 · 卡片可拖动排序";
+  $("foot").textContent = "v1.4.71 · 数据来自 WorkBuddy 网页版接口 · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新导入账号信息更新凭证 · 卡片可拖动排序";
 }
 
 // ---- 卡片拖拽排序(顺序随账号池持久化,经 /api/reorder 保存) ----
