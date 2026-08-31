@@ -32,6 +32,14 @@ const mk = (uin, ts, bR, bU, gR, gU, packs = []) => ({
   giftPackages: packs, // 包级消耗口径(consumeByPack)读它;不带则降级为增量口径
 });
 
+// v1.4.72:带 baseCycleEnd 的快照(基础包到期统计用)
+const mkB = (uin, ts, bR, bU, bCE, gR, gU, packs = []) => ({
+  uin, ts,
+  baseRemain: bR, baseUsed: bU, baseCycleEnd: bCE, giftRemain: gR, giftUsed: gU,
+  summary: { baseRemain: bR, baseUsed: bU, giftRemain: gR, giftUsed: gU },
+  giftPackages: packs,
+});
+
 try {
   const { getDb } = await import("file:///" + tmp.replace(/\\/g, "/") + "/src/store/db.js");
   const hist = await import("file:///" + tmp.replace(/\\/g, "/") + "/src/compute/history.js");
@@ -138,6 +146,28 @@ try {
   d = derive.deriveAccount("u10");
   assert("今日已用 = 30(基础包 20 + 赠送包 10)", d.todayUsed === 30, "got " + d.todayUsed);
   assert("累计已用 consumed = 30", d.consumed === 30, "got " + d.consumed);
+
+  console.log("T12 基础包(体验版)纳入到期统计(v1.4.72 修复) → expiring1d/3d/7d 含基础包剩余");
+  // u11:基础包今天到期(剩余70) + 赠送包3天后到期(剩余100) → 近1天=70, 近3天=170, 近7天=170
+  const baseEndToday = `${todayKey} 23:59:59`;
+  const giftEnd3d = `${cnDateOf(dayStartUtc(todayKey) + 3 * 86400000)} 23:59:59`;
+  hist.appendSnapshot([mkB("u11", at(todayKey, 10.1), 70, 429, baseEndToday, 100, 0, [pk(giftEnd3d, 0, 0)])], { ts: at(todayKey, 10.1) });
+  d = derive.deriveAccount("u11");
+  assert("近1天过期 = 70(基础包今天到期,旧口径排除体验版会算成 0)", d.expiring1d === 70, "got " + d.expiring1d);
+  assert("近3天过期 = 170(基础包70 + 赠送包100)", d.expiring3d === 170, "got " + d.expiring3d);
+  assert("近7天过期 = 170", d.expiring7d === 170, "got " + d.expiring7d);
+
+  console.log("T13 基础包用光(剩余0)不参与到期统计");
+  hist.appendSnapshot([mkB("u12", at(todayKey, 11.1), 0, 500, baseEndToday, 0, 0, [])], { ts: at(todayKey, 11.1) });
+  d = derive.deriveAccount("u12");
+  assert("近1天过期 = 0(基础包剩余0,无到期压力)", d.expiring1d === 0, "got " + d.expiring1d);
+
+  console.log("T14 基础包远期到期(10天后)不计入近1/7天");
+  const baseEnd10d = `${cnDateOf(dayStartUtc(todayKey) + 10 * 86400000)} 23:59:59`;
+  hist.appendSnapshot([mkB("u13", at(todayKey, 12.3), 400, 100, baseEnd10d, 0, 0, [])], { ts: at(todayKey, 12.3) });
+  d = derive.deriveAccount("u13");
+  assert("近1天过期 = 0", d.expiring1d === 0, "got " + d.expiring1d);
+  assert("近7天过期 = 0(10天后到期不在近7天窗口)", d.expiring7d === 0, "got " + d.expiring7d);
 } catch (e) {
   console.log("  FAIL 测试执行异常: " + e.message);
   failed++;
