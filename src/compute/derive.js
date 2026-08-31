@@ -69,6 +69,14 @@ export function consumeByPack(arr) {
     const d = (p.capacityUsed || 0) - (fMap.get(k) || 0);
     if (d > 0) v += d;
   }
+  // v1.4.70:基础包(体验版)消耗也要计入 —— baseUsed 正增量累加(回退=周期重置,同步基线)。
+  // 赠送包走包级首末差、基础包走增量,两者不相交不重复;与 consumeByPos 的 base 口径一致。
+  let basePrev = null;
+  for (const s of arr) {
+    const b = s.baseUsed ?? 0;
+    if (basePrev !== null && b > basePrev) v += b - basePrev;
+    basePrev = b; // 回退(周期重置)时同步到回退点,后续增量从新基线计
+  }
   return Math.round(v * 100) / 100;
 }
 
