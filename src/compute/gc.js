@@ -59,6 +59,9 @@ export function gcDaySummaries() {
       fixed++;
     }
   }
-  if (fixed > 0) deleteReadingsBefore(new Date(cutMs).toISOString()); // 有固化才清理（保留 T-1 与今天）
+  // v1.4.68:无论本次是否新增固化,已固化的旧日明细都应清理——否则 day_summary 已有但 readings
+  // 残留(陈旧镜像重灌/历史遗留)时 fixed=0 不触发删除,镜像永远不收缩(实测 9.7MB 一直保留)。
+  // 循环结束后所有 <cut 的旧日都已进 day_summary(既有或本次新增),删除是安全的;保留 T-1 与今天。
+  deleteReadingsBefore(new Date(cutMs).toISOString());
   return { fixed };
 }
