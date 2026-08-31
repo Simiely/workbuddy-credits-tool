@@ -113,6 +113,31 @@ try {
   d = derive.deriveAccount("u7");
   assert("今日已用 = 100(用光失效包E 的当日消耗计入,旧口径只数 active 包会算成 0)", d.todayUsed === 100, "got " + d.todayUsed);
   assert("累计已用 consumed = 100", d.consumed === 100, "got " + d.consumed);
+
+  console.log("T9 基础包(体验版)消耗计入(v1.4.70 修复) → baseUsed 0→50 计入今日消耗");
+  // u8:带 giftPackages(走包级主路径),baseUsed 0→50 → 今日消耗 = 基础包 50 + 赠送包 0 = 50
+  hist.appendSnapshot([mk("u8", at(todayKey, 7.1), 500, 0, 100, 0, [pk("2026-09-10", 0, 0)])], { ts: at(todayKey, 7.1) });
+  hist.appendSnapshot([mk("u8", at(todayKey, 7.6), 450, 50, 100, 0, [pk("2026-09-10", 0, 0)])], { ts: at(todayKey, 7.6) });
+  d = derive.deriveAccount("u8");
+  assert("今日已用 = 50(基础包 0→50 计入,旧口径只数赠送包会算成 0)", d.todayUsed === 50, "got " + d.todayUsed);
+  assert("累计已用 consumed = 50", d.consumed === 50, "got " + d.consumed);
+
+  console.log("T10 基础包周期重置(0→30→0→20) → 重置前 30 + 重置后 20 = 50");
+  hist.appendSnapshot([mk("u9", at(todayKey, 8.2), 500, 0, 100, 0, [pk("2026-09-10", 0, 0)])], { ts: at(todayKey, 8.2) });
+  hist.appendSnapshot([mk("u9", at(todayKey, 8.4), 470, 30, 100, 0, [pk("2026-09-10", 0, 0)])], { ts: at(todayKey, 8.4) });
+  hist.appendSnapshot([mk("u9", at(todayKey, 8.6), 500, 0, 100, 0, [pk("2026-09-10", 0, 0)])], { ts: at(todayKey, 8.6) });
+  hist.appendSnapshot([mk("u9", at(todayKey, 8.8), 480, 20, 100, 0, [pk("2026-09-10", 0, 0)])], { ts: at(todayKey, 8.8) });
+  d = derive.deriveAccount("u9");
+  assert("今日已用 = 50(重置前 30 + 重置后 20,回退同步基线不产生负消耗)", d.todayUsed === 50, "got " + d.todayUsed);
+  assert("累计已用 consumed = 50", d.consumed === 50, "got " + d.consumed);
+
+  console.log("T11 基础包 + 赠送包同时消耗 → 两者相加");
+  // u10:基础包 0→20 + 赠送包 0→10(包级) → 今日消耗 = 30
+  hist.appendSnapshot([mk("u10", at(todayKey, 9.1), 500, 0, 100, 0, [pk("2026-09-10", 0, 0)])], { ts: at(todayKey, 9.1) });
+  hist.appendSnapshot([mk("u10", at(todayKey, 9.5), 480, 20, 90, 10, [pk("2026-09-10", 0, 10)])], { ts: at(todayKey, 9.5) });
+  d = derive.deriveAccount("u10");
+  assert("今日已用 = 30(基础包 20 + 赠送包 10)", d.todayUsed === 30, "got " + d.todayUsed);
+  assert("累计已用 consumed = 30", d.consumed === 30, "got " + d.consumed);
 } catch (e) {
   console.log("  FAIL 测试执行异常: " + e.message);
   failed++;
