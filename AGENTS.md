@@ -3,7 +3,7 @@
 > 给 AI 与"未来的你"看的精简规则。核心约束尽量短,细节放 `rules/` 按需 @引用。
 >
 > **接手先读**:[`docs/交接说明.md`](docs/交接说明.md)(运行实例/端口/数据文件/待办的状态快照)。
-> 当前版本 **v1.4.71**(见 CHANGELOG)。
+> 当前版本 **v1.4.72**(见 CHANGELOG)。
 > **发包规范**:每次发包只发**平台版(tools-center 托管 zip)+ bat 版(Windows 一键启动 zip)** 两个版本,均上传 GitHub Release(不含数据文件);完整流程见 [`docs/发布规范.md`](docs/发布规范.md)。
 
 ## 技术栈
@@ -22,7 +22,7 @@
 5. 历史快照**同分钟去重**(`src/compute/history.js`),读取后必须按时间升序排序(趋势方向)
 6. **子路径挂载自适应**:资源用相对路径,API 全部 `__BASE__ + "/api/.."`——否则挂载到 `/tool/<id>/` 后按钮全失效
 7. edge-daemon 端口 **8129**(HTTP API)/ Edge 调试 **9222**;发现机制用 CDP 标准(`/json/version`),**勿改回读 DevToolsActivePort 文件**(残留坑)
-8. **近1/2/3/7天过期口径**:有效(Status===0)且非"体验版"的赠送包,`CycleEndTime` 距今天 ≤n 天的 `CapacityRemain` 合计。已收口到 `src/compute/derive.js` 的 `deriveGiftExpiry()`(**单派生源**),`/api/dashboard/all` 返回 `expiring1d/2d/3d/7d/giftBuckets/expiryTier`,前端表格/卡片/排序全部消费派生结果
+8. **近1/2/3/7天过期口径**:有效(Status===0)的赠送包 + **基础包(体验版,v1.4.72 纳入)**,`CycleEndTime` 距今天 ≤n 天的 `CapacityRemain` 合计;基础包由 `deriveAccount` 从最新快照 `baseCycleEnd/baseRemain` 合成一条"体验版基础包"参与派生(仅当剩余>0,用光后无到期压力不参与)。已收口到 `src/compute/derive.js` 的 `deriveGiftExpiry()`(**单派生源**),`/api/dashboard/all` 返回 `expiring1d/2d/3d/7d/giftBuckets/expiryTier`,前端表格/卡片/排序全部消费派生结果
 9. **统一采样入口**:`src/compute/sample.js` 的 `sampleAll()` 是唯一"采集→落盘"路径,手动刷新(`/api/all`)与调度器(`scheduler`)都走它;新增写入 readings 的路径必须复用
 10. **前端文件清单改动(增删 script)必须同步 4 处**:`wb-gui.html` 引用 / `wb-gui.mjs` 静态路由 / `test/server-routes.test.mjs` 复制正则+断言 / `test/helpers/vm-env.mjs` FRONTEND_FILES——漏一处 `npm test` 就挂
 11. **消耗口径 = 已用正增量累加**(`consumeByPos`):官方赠送包数据调整(包消失/重置/新增)会让「首条剩余−当前剩余」漂移成 0,必须按时间扫描快照累计「已用」正增量,包重置时 prev 同步回退点重算(v1.4.31);`consumed` 死字段已删;**基础包(体验版)消耗必须计入(v1.4.70 修)**:`consumeByPack` 在赠送包包级首末差之后追加 `baseUsed` 正增量累加(回退=周期重置同步基线),否则基础包一旦消耗(官方"已用 106.92")工具消耗指标恒 0,与官方对不齐;赠送包走包级首末差、基础包走增量,两者不相交不重复
