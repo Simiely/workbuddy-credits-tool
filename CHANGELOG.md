@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## v1.4.70 (2026-08-31) · 修复:基础包(体验版)消耗未计入"今日消耗/累计已用"
+
+### 背景
+"今日消耗"与"累计已用"的包级口径 `consumeByPack` 只统计**赠送包**(`giftPackages` 已过滤体验版),基础包(体验版,容量 500)的 `CycleCapacityUsed` 增量被漏掉——基础包一旦有消耗(如官方显示"已用 106.92"),工具的消耗指标不体现,与官方"已用"对不齐。
+
+### 修复
+- **基础包消耗计入(P0)**:`src/compute/derive.js` `consumeByPack` 在赠送包包级首末差之后,追加**基础包 `baseUsed` 正增量累加**(回退=周期重置,同步基线,后续增量从新基线计)。赠送包走包级首末差、基础包走增量,两者不相交不重复;与 `consumeByPos` 的 base 口径一致。一处修复同时作用于今日已用 / 历史日消耗 / 累计已用 / 固化(gc)。
+
+### 测试
+- `test/derive-consume.test.mjs` 新增 T9(基础包 0→50 计入)、T10(周期重置 0→30→0→20 = 50)、T11(基础包+赠送包相加)。24 断言全过;`test/run-all.mjs` 15/15 通过。
+
+### 文档
+- README / DEVELOPMENT / AGENTS / CHANGELOG 同步;版本戳 v1.4.69 → v1.4.70。
+
 ## v1.4.69 (2026-08-31) · 修复:基础用量剩余虚高(体验版包 CapacityRemain 满额,改用 CycleCapacityRemain)
 
 ### 背景
