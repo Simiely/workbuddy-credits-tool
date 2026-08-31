@@ -84,6 +84,17 @@ try {
   const d2 = derive2.deriveAccount("u1");
   const restored = d2.dailyUsed.map((x) => x.day + ":" + x.used).join(",");
   assert("恢复库派生一致(含摘要补齐)", restored === before, "\n  before  =" + before + "\n  restored=" + restored);
+
+  console.log("T6 残留旧快照清理(v1.4.68:fixed=0 也删除已固化的残留)");
+  // 模拟陈旧镜像重灌:把已固化的前天快照重新塞回 readings(旧代码导入无过滤的场景)
+  hist.appendSnapshot([mk(at(dayBeforeKey, 1), 3300, 100)], { ts: at(dayBeforeKey, 1) });
+  hist.appendSnapshot([mk(at(dayBeforeKey, 8), 3270, 130)], { ts: at(dayBeforeKey, 8) });
+  const refilled = db.prepare("SELECT COUNT(*) c FROM readings").get().c;
+  assert("重灌后 readings 6 条(4+2)", refilled === 6, "got " + refilled);
+  const g3 = gc.gcDaySummaries();
+  assert("重灌后 gc fixed=0(前天已固化)", g3.fixed === 0, "got " + g3.fixed);
+  const afterClean = db.prepare("SELECT COUNT(*) c FROM readings").get().c;
+  assert("残留旧快照被清理(回到 4 条)", afterClean === 4, "got " + afterClean);
 } catch (e) {
   console.log("  FAIL 测试执行异常: " + e.message);
   failed++;
