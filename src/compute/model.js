@@ -14,9 +14,12 @@ export function parseAccountData(D) {
   const active = gifts.filter((a) => a.Status === 0);
   const expired = gifts.filter((a) => a.Status !== 0);
 
-  const baseRemain = base ? base.CapacityRemain : null;
-  const baseUsed = base ? base.CapacityUsed : null;
-  const baseSize = base ? base.CapacitySize : null;
+  // v1.4.69:基础包(体验版)的 CapacityRemain 是满额(实测 500),不反映周期内消耗;
+  // 官方 UI 的"版本基础用量剩余"用的是 CycleCapacityRemain(实测 393.08,已用 106.92)。
+  // 赠送包两者恒等(实测),故仅基础包切换 Cycle* 字段;缺失时兜底回 Capacity*。
+  const baseRemain = base ? (base.CycleCapacityRemain ?? base.CapacityRemain) : null;
+  const baseUsed = base ? (base.CycleCapacityUsed ?? base.CapacityUsed) : null;
+  const baseSize = base ? (base.CycleCapacitySize ?? base.CapacitySize) : null;
   const giftUsed = sum(active, "CapacityUsed");
   const giftSize = sum(active, "CapacitySize");
   const giftRemain = sum(active, "CapacityRemain");

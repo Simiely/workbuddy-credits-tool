@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## v1.4.69 (2026-08-31) · 修复:基础用量剩余虚高(体验版包 CapacityRemain 满额,改用 CycleCapacityRemain)
+
+### 背景
+工具"总剩余积分"比官方"累积剩余"虚高(实测 爸爸:工具 4306 vs 官方 4202.24,差 103.76)。根因:API 的**体验版基础包**返回两个剩余字段——`CapacityRemain`(满额 500,不反映周期内消耗)与 `CycleCapacityRemain`(实际周期剩余 393.08,官方 UI"版本基础用量剩余"用这个)。`parseAccountData` 误用 `CapacityRemain`,导致基础用量剩余永远显示满额、总剩余虚高;用户基础用量消耗越多差异越明显。赠送包的 `Capacity*` 与 `CycleCapacity*` 实测恒等,不受影响。
+
+### 修复
+- **基础包改用 Cycle* 字段(P0)**:`src/compute/model.js` `parseAccountData` 基础包 `baseRemain/baseUsed/baseSize` 由 `Capacity*` 改为 `CycleCapacity*`(缺失时兜底回 `Capacity*`,兼容旧接口)。修复后 爸爸 总剩余 = 393.08 + 3806 = 4199.08,与官方一致(截图后用户又消耗 3.16)。"今日消耗"(consumeByPack 只读赠送包)不受影响。
+
+### 测试
+- 新增 `test/model-parse.test.mjs`:T1 基础包取 Cycle* 字段、T2 无 Cycle* 兜底回 Capacity*、T3 无体验版包 base=null、T4 buildSnapshotEntry 透传。16 断言全过;`test/run-all.mjs` 15/15 通过。
+
+### 文档
+- README / DEVELOPMENT / AGENTS / CHANGELOG 同步;版本戳 v1.4.68 → v1.4.69。
+
 ## v1.4.68 (2026-08-31) · 修复:wb-history.json 仍 10MB 不收缩(残留旧快照清理 + 启动先固化)
 
 ### 背景
