@@ -84,9 +84,13 @@ export function consumeByPack(arr) {
 export function detectSignIn(firstPacks, lastPacks, todayKey) {
   const last = Array.isArray(lastPacks) ? lastPacks : [];
   if (!last.length) return false;
+  // 目标到期日 = 今天 + 1 自然月（对日；目标月天数不足则钳到月末，如 8/31 → 9/30）。
+  // 不能直接 new Date(y, m, d)：m 为 1 索引而 Date 月份是 0 索引，月末会溢出（8/31 → 10/1）漏判。
   const [y, m, d] = todayKey.split("-").map(Number);
-  const t = new Date(y, m, d); // JS Date 自动进位（月末罕见边界按 JS 行为）
-  const target = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+  const nextM = m + 1 > 12 ? 1 : m + 1;
+  const nextY = m + 1 > 12 ? y + 1 : y;
+  const dim = new Date(Date.UTC(nextY, nextM, 0)).getUTCDate(); // 目标月天数（Date.UTC month 为 0 索引，nextM 传 1 索引值恰好取目标月）
+  const target = `${nextY}-${pad(nextM)}-${pad(Math.min(d, dim))}`;
   // 完整 cycleEndTime 作为每个赠送包的唯一键（到秒，区分同日不同时刻的包）；trim 兼容空格/ISO 两种写法
   const firstKeys = new Set(
     (Array.isArray(firstPacks) ? firstPacks : []).map((p) => String(p.cycleEndTime || "").trim())

@@ -35,7 +35,7 @@ export function saveSyncConfig(cfg) {
 const auth = (user, pass) => "Basic " + Buffer.from(`${user}:${pass}`).toString("base64");
 
 // 统一请求：网络超时/连接错误自动退避重试 2 次(穿透线路抖动时提高成功率)；登录失败/HTTP 错误不重试
-// timeoutMs:小请求(建目录/测试)20s；上传/下载大文件(如 wb-history.json 3.6MB 走慢速穿透)给 60s
+// timeoutMs:小请求(建目录/测试)20s；上传/下载大文件(如 wb-history.json 慢速穿透)给 120s(v1.4.66 由 60s 放宽)
 async function req(method, url, user, pass, body, timeoutMs = 20000) {
   for (let attempt = 0; ; attempt++) {
     const ctrl = new AbortController();
@@ -82,12 +82,12 @@ export async function ensureDir(base, user, pass, dir = BACKUP_DIR) {
   }
 }
 
-/** 上传单个文件（PUT），自动建目录。423(资源被锁,瞬时)退避重试 3 次；大文件给 60s 超时 */
+/** 上传单个文件（PUT），自动建目录。423(资源被锁,瞬时)退避重试 3 次；大文件给 120s 超时 */
 export async function uploadFile(base, user, pass, dir, file, content) {
   await ensureDir(base, user, pass, dir);
   let lastStatus = 0;
   for (let attempt = 0; attempt < 3; attempt++) {
-    const r = await req("PUT", fileUrl(base, dir, file), user, pass, content, 60000);
+    const r = await req("PUT", fileUrl(base, dir, file), user, pass, content, 120000);
     if (r.status >= 200 && r.status < 300) return;
     if (r.status === 423 && attempt < 2) {
       await new Promise((res) => setTimeout(res, 1200 * (attempt + 1))); // 1.2s / 2.4s 退避
@@ -102,9 +102,9 @@ export async function uploadFile(base, user, pass, dir, file, content) {
   );
 }
 
-/** 下载单个文件（GET）；404 返回 null。大文件给 60s 超时 */
+/** 下载单个文件（GET）；404 返回 null。大文件给 120s 超时 */
 export async function downloadFile(base, user, pass, dir, file) {
-  const r = await req("GET", fileUrl(base, dir, file), user, pass, null, 60000);
+  const r = await req("GET", fileUrl(base, dir, file), user, pass, null, 120000);
   if (r.status === 404) return null;
   if (r.status >= 200 && r.status < 300) return await r.text();
   throw new Error(`下载 ${file} 失败(HTTP ${r.status})`);

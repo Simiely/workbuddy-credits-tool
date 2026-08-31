@@ -25,8 +25,10 @@ const dayBeforeKey = cnDateOf(dayStartUtc(todayKey) - 2 * 86400000);
 const at = (key, hour) => new Date(dayStartUtc(key) + hour * 3600 * 1000).toISOString();
 const addMonth = (key) => {
   const [y, m, d] = key.split("-").map(Number);
-  const t = new Date(y, m, d);
-  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+  const nextM = m + 1 > 12 ? 1 : m + 1;
+  const nextY = m + 1 > 12 ? y + 1 : y;
+  const dim = new Date(Date.UTC(nextY, nextM, 0)).getUTCDate();
+  return `${nextY}-${String(nextM).padStart(2, "0")}-${String(Math.min(d, dim)).padStart(2, "0")}`;
 };
 const targetToday = addMonth(todayKey);
 const targetYesterday = addMonth(yesterdayKey);
@@ -71,7 +73,7 @@ try {
 
   console.log("T4 完全没有目标包 → false");
   hist.appendSnapshot([mk("u4", at(todayKey, 1.7), 1000, 0, [])], { ts: at(todayKey, 1.7) });
-  hist.appendSnapshot([mk("u4", at(todayKey, 9.7), 1000, 0, [pack(targetYesterday, 100)])], { ts: at(todayKey, 9.7) });
+  hist.appendSnapshot([mk("u4", at(todayKey, 9.7), 1000, 0, [pack("2099-12-31T12:00:00Z", 100)])], { ts: at(todayKey, 9.7) });
   d = derive.deriveAccount("u4");
   assert("signedInToday = false", d.signedInToday === false, "got " + d.signedInToday);
 
@@ -97,6 +99,23 @@ try {
   const newSignIn = { packageName: "promo", status: 0, capacityRemain: 100, capacityUsed: 0, capacitySize: 100, cycleEndTime: "2026-09-13 09:00:50" };
   assert("碰撞下识别今日签到 = true", derive.detectSignIn([oldPromo], [newSignIn], "2026-08-13") === true, "got " + derive.detectSignIn([oldPromo], [newSignIn], "2026-08-13"));
   assert("完全相同包(非今日新增) = false", derive.detectSignIn([newSignIn], [newSignIn], "2026-08-13") === false, "got " + derive.detectSignIn([newSignIn], [newSignIn], "2026-08-13"));
+
+  console.log("T8 月末溢出修复:8/31 签到 → 9/30 到期包 → true(旧逻辑算出 10/1 漏判)");
+  assert("8/31→9/30 = true", derive.detectSignIn([], [pack("2026-09-30T12:00:00Z", 100)], "2026-08-31") === true, "got " + derive.detectSignIn([], [pack("2026-09-30T12:00:00Z", 100)], "2026-08-31"));
+  assert("8/31 只有 10/1 到期包(旧bug产物) = false", derive.detectSignIn([], [pack("2026-10-01T12:00:00Z", 100)], "2026-08-31") === false, "got " + derive.detectSignIn([], [pack("2026-10-01T12:00:00Z", 100)], "2026-08-31"));
+
+  console.log("T9 月末溢出修复:1/31 平年 → 2/28 到期包 → true");
+  assert("2026-01-31→2026-02-28 = true", derive.detectSignIn([], [pack("2026-02-28T12:00:00Z", 100)], "2026-01-31") === true, "got " + derive.detectSignIn([], [pack("2026-02-28T12:00:00Z", 100)], "2026-01-31"));
+  assert("2026-01-31 只有 3/3 到期包 = false", derive.detectSignIn([], [pack("2026-03-03T12:00:00Z", 100)], "2026-01-31") === false, "got " + derive.detectSignIn([], [pack("2026-03-03T12:00:00Z", 100)], "2026-01-31"));
+
+  console.log("T10 闰年:1/31 → 2/29 到期包 → true");
+  assert("2028-01-31→2028-02-29 = true", derive.detectSignIn([], [pack("2028-02-29T12:00:00Z", 100)], "2028-01-31") === true, "got " + derive.detectSignIn([], [pack("2028-02-29T12:00:00Z", 100)], "2028-01-31"));
+
+  console.log("T11 跨年:12/31 → 次年 1/31 到期包 → true");
+  assert("2026-12-31→2027-01-31 = true", derive.detectSignIn([], [pack("2027-01-31T12:00:00Z", 100)], "2026-12-31") === true, "got " + derive.detectSignIn([], [pack("2027-01-31T12:00:00Z", 100)], "2026-12-31"));
+
+  console.log("T12 平月对日不钳:4/30 → 5/30 到期包 → true");
+  assert("2026-04-30→2026-05-30 = true", derive.detectSignIn([], [pack("2026-05-30T12:00:00Z", 100)], "2026-04-30") === true, "got " + derive.detectSignIn([], [pack("2026-05-30T12:00:00Z", 100)], "2026-04-30"));
 } catch (e) {
   console.log("  FAIL 测试执行异常: " + e.message);
   failed++;

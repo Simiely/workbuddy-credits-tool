@@ -38,7 +38,8 @@ async function syncAct(action, silent) {
   syncBusy = true;
   // v1.4.49:同步链路=下载(60s)+合并+导出+上传(60s),默认 15s 会在慢速穿透下误报超时
   // (后端 handler 不随前端断开取消,用户会看到"失败"但实际已同步)→ 按动作放宽超时
-  const timeout = action === "sync" ? 90000 : action === "test" ? 30000 : undefined;
+  // v1.4.66:后端大文件超时已提至 120s,前端同步超时同步放宽至 120s 防慢速穿透误报
+  const timeout = action === "sync" ? 120000 : action === "test" ? 30000 : undefined;
   setSyncStatus(
     action === "test" ? "测试中…" :
     action === "sync" ? "同步中(拉取合并+上传)…" :

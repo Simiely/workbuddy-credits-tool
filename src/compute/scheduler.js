@@ -9,7 +9,7 @@
 //   - 其他                          → 15min（健康，低频即可）
 // 用量查询走「零成本接口」，后台采样不消耗额度。
 import { loadAccounts } from "./store.js";
-import { latestSnapshotEntries } from "./history.js";
+import { latestSnapshotEntries, exportLegacy } from "./history.js";
 import { sampleAll } from "./sample.js";
 import { gcDaySummaries } from "./gc.js"; // v1.4.58 历史固化独立模块
 import { dayKeyOf } from "../time.js"; // v1.4.58 时区口径统一引用
@@ -99,8 +99,12 @@ function scheduleNext() {
       // 历史固化：每天执行一次（幂等；T-2 及更早压缩为 day_summary 摘要后清理明细）
       const todayK = dayKeyOf(Date.now()); // +8 口径统一来自 time.js
       if (_gcDay !== todayK) {
-        try { gcDaySummaries(); } catch (e) { /* 固化失败不阻断采样 */ }
-        _gcDay = todayK;
+        try {
+          const { fixed } = gcDaySummaries();
+          // v1.4.66:清理后重导出镜像,防 wb-history.json 陈旧变大(9.7MB)导致 WebDAV 同步超时
+          if (fixed > 0) exportLegacy();
+          _gcDay = todayK;
+        } catch (e) { console.error("[gc] 固化失败(当天将重试):", e.message); }
       }
       await runOnce();
     } catch (e) {
