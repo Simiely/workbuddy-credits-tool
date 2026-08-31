@@ -209,9 +209,17 @@ export function importLegacy() {
       }
     }
     if (!j.snapshots || !j.snapshots.length) return;
+    // v1.4.67:跳过已固化的旧日快照(day_summary 已有该 uin+day),避免陈旧镜像把数据库重新灌满
+    // (否则同步下载 → 全量导入 → 上传重导出又变大 → 恶性循环)
+    const consolidated = new Set(loadAllDaySummaries().map((s) => s.uin + "|" + s.day));
     for (const snap of j.snapshots) {
+      const day = typeof snap.ts === "string" ? dayKeyOf(snap.ts) : null;
+      const entries = (snap.entries || []).filter(
+        (e) => !day || !consolidated.has((e.uin || "") + "|" + day)
+      );
+      if (!entries.length) continue;
       // 用快照原始 ts 追加(同分钟去重),而非导入时刻——否则历史全挤在当前分钟,且去重后只剩第一条
-      appendSnapshot(snap.entries || [], { ts: snap.ts });
+      appendSnapshot(entries, { ts: snap.ts });
     }
   } catch {}
 }

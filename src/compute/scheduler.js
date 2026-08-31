@@ -100,9 +100,10 @@ function scheduleNext() {
       const todayK = dayKeyOf(Date.now()); // +8 口径统一来自 time.js
       if (_gcDay !== todayK) {
         try {
-          const { fixed } = gcDaySummaries();
-          // v1.4.66:清理后重导出镜像,防 wb-history.json 陈旧变大(9.7MB)导致 WebDAV 同步超时
-          if (fixed > 0) exportLegacy();
+          gcDaySummaries();
+          // v1.4.67:固化后无条件重导出镜像——即使 fixed=0(数据库已固化但镜像陈旧)也要刷新,
+          // 否则 wb-history.json 保留固化前全量快照(9.7MB)导致 WebDAV 同步超时
+          exportLegacy();
           _gcDay = todayK;
         } catch (e) { console.error("[gc] 固化失败(当天将重试):", e.message); }
       }

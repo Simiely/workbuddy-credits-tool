@@ -61,6 +61,24 @@ try {
   hist.importLegacy();
   const n4 = db.prepare("SELECT COUNT(*) c FROM readings").get().c;
   assert("无 ts 兜底导入不崩溃", n4 >= 7, "got " + n4);
+
+  console.log("T5 已固化旧日快照跳过(防陈旧镜像重新灌满数据库)");
+  hist.saveDaySummary("u1", "2026-08-03", 80, 900, 820, 1); // 模拟 08-03 已固化
+  const cloud2 = {
+    summaries: [{ uin: "u1", day: "2026-08-03", used: 80, startRemain: 900, endRemain: 820, signedIn: 1 }],
+    snapshots: [
+      { ts: "2026-08-03T01:00:00.000Z", entries: [mk("2026-08-03T01:00:00.000Z", 900)] },
+      { ts: "2026-08-03T05:00:00.000Z", entries: [mk("2026-08-03T05:00:00.000Z", 850)] },
+      { ts: "2026-08-04T06:00:00.000Z", entries: [mk("2026-08-04T06:00:00.000Z", 700)] },
+    ],
+  };
+  fs.writeFileSync(path.join(tmp, "wb-history.json"), JSON.stringify(cloud2));
+  const before5 = db.prepare("SELECT COUNT(*) c FROM readings").get().c;
+  hist.importLegacy();
+  const n5 = db.prepare("SELECT COUNT(*) c FROM readings").get().c;
+  assert("08-03 已固化快照被跳过(只新增 08-04 一条)", n5 === before5 + 1, `before=${before5} after=${n5}`);
+  assert("08-04 未固化快照被导入", db.prepare("SELECT COUNT(*) c FROM readings WHERE ts LIKE '2026-08-04T06%'").get().c === 1);
+  assert("08-03 未新增快照", db.prepare("SELECT COUNT(*) c FROM readings WHERE ts LIKE '2026-08-03T%'").get().c === 3, "got " + db.prepare("SELECT COUNT(*) c FROM readings WHERE ts LIKE '2026-08-03T%'").get().c);
 } catch (e) {
   console.log("  FAIL 测试执行异常: " + e.message);
   failed++;

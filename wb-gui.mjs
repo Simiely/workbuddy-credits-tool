@@ -693,6 +693,8 @@ function listen(port, max) {
     setSchedulerNotifier((meta) => broadcastRefresh(meta));
     startScheduler();
     console.log("[启动] 采样调度器已启动（后台周期采集,实时推送）");
+    // v1.4.67:启动时重导出一次镜像,让陈旧 wb-history.json 立即收缩(否则要等当天 gc 才刷新)
+    try { exportHistory(); } catch {}
     // v1.4.65:edge-daemon 已归档,浏览器代理不再内置;账号采集统一走 Edge 插件导出 → 工具「导入账号信息」
   });
 }
