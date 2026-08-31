@@ -83,6 +83,7 @@ import {
   getStatus as getSchedulerStatus,
   setNotifier as setSchedulerNotifier,
 } from "./src/compute/scheduler.js";
+import { gcDaySummaries } from "./src/compute/gc.js"; // v1.4.68 启动时先固化,陈旧镜像立即收缩
 
 // 前端文件内嵌(SEA 单文件 exe 用,由构建脚本生成 build/frontend-files.mjs);
 // 原生运行时若该文件缺失则静默回退磁盘读取。加载在文件末尾 listen 前完成(见底部)。
@@ -693,7 +694,9 @@ function listen(port, max) {
     setSchedulerNotifier((meta) => broadcastRefresh(meta));
     startScheduler();
     console.log("[启动] 采样调度器已启动（后台周期采集,实时推送）");
-    // v1.4.67:启动时重导出一次镜像,让陈旧 wb-history.json 立即收缩(否则要等当天 gc 才刷新)
+    // v1.4.68:启动时先固化再重导出,让陈旧镜像立即收缩(否则要等首个调度 tick 的 gc 才收缩;
+    // 且 gc 无条件清理旧明细——v1.4.67 只挡未来重灌,清不掉已重灌的残留)
+    try { gcDaySummaries(); } catch {}
     try { exportHistory(); } catch {}
     // v1.4.65:edge-daemon 已归档,浏览器代理不再内置;账号采集统一走 Edge 插件导出 → 工具「导入账号信息」
   });
