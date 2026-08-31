@@ -111,14 +111,16 @@ export function detectSignIn(firstPacks, lastPacks, todayKey) {
 }
 
 /**
- * 赠送包到期派生（纯函数，单派生源）。
+ * 赠送包 + 基础包到期派生（纯函数，单派生源）。
  * 从快照持久化的子账号列表派生「到期口径」，前端不再从实时 r.data.Accounts 现算。
- * @param {Array} packs 非体验版赠送包列表 [{packageName,status,capacityRemain,capacityUsed,capacitySize,cycleEndTime}]
+ * v1.4.72:基础包(体验版)也纳入到期统计 —— deriveAccount 会把最新快照的 baseCycleEnd/baseRemain
+ * 合成一条"体验版基础包"传入(仅当剩余>0);giftPacks 本身已过滤体验版,故此处不再排除,不会重复。
+ * @param {Array} packs 赠送包列表 + 可选合成基础包 [{packageName,status,capacityRemain,capacityUsed,capacitySize,cycleEndTime}]
  * @returns {{expiring1d:number, expiring3d:number, giftBuckets:Array, expiryTier:{tier:number,amount:number}}}
  */
 export function deriveGiftExpiry(packs) {
   const clean = (packs || []).filter(
-    (p) => !(p.packageName || "").includes("体验版") && p.status === 0 && !!p.cycleEndTime
+    (p) => p.status === 0 && !!p.cycleEndTime
   );
   const parse = (s) => {
     const dt = new Date(String(s).replace(" ", "T"));
@@ -348,7 +350,20 @@ export function deriveAccount(uin, acct = {}) {
 
   // 赠送包到期派生（单派生源）：近1/3天过期积分、周桶、排序紧迫度
   const giftPacks = packagesFor(uin, lastFull);
-  const gift = deriveGiftExpiry(giftPacks);
+  // v1.4.72:基础包(体验版)纳入到期统计 —— 从最新快照取 baseCycleEnd/baseRemain 合成一条
+  // "体验版基础包"参与派生(仅当剩余>0;用光后剩余0无到期压力,不参与)。giftPacks 已过滤体验版,不会重复。
+  const basePacks =
+    lastFull && lastFull.baseCycleEnd && (lastFull.baseRemain ?? 0) > 0
+      ? [{
+          packageName: "体验版基础包",
+          status: 0,
+          capacityRemain: lastFull.baseRemain,
+          capacityUsed: lastFull.baseUsed ?? 0,
+          capacitySize: lastFull.baseSize ?? 0,
+          cycleEndTime: lastFull.baseCycleEnd,
+        }]
+      : [];
+  const gift = deriveGiftExpiry([...giftPacks, ...basePacks]);
   const expCount = giftPacks.filter((p) => p.status !== 0).length;
 
   const derived = {
