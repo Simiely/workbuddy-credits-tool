@@ -158,6 +158,8 @@ select.inp{background:var(--card2);border:1px solid var(--line);border-radius:8p
 .acct-rows{margin-top:14px;display:flex;flex-direction:column;gap:12px}
 .arow .l{font-size:11px;color:var(--sub);margin-bottom:4px;display:flex;justify-content:space-between}
 .arow .l b{color:var(--text)}
+.arow .l b.t-bad{color:var(--bad)}
+.arow .l b.t-warn{color:var(--warn)}
 /* 含改名/删除按钮的行:与左侧内容(今日消耗/错误信息)同一行,按钮靠右 */
 .arow.act-row{display:flex;align-items:center;gap:8px}
 .arow.act-row .l{flex:1;margin-bottom:0}
@@ -165,6 +167,7 @@ select.inp{background:var(--card2);border:1px solid var(--line);border-radius:8p
 .meter{height:7px;border-radius:999px;background:var(--chip);overflow:hidden}
 .meter i{display:block;height:100%;border-radius:999px;background:var(--grad);transition:width .5s}
 .meter.warn i{background:linear-gradient(90deg,var(--warn),#ffc08a)}
+.meter.bad i{background:linear-gradient(90deg,var(--bad),#ff8f8f)}
 .acts{display:flex;gap:6px}
 .signed{display:inline-flex;align-items:center;font-size:10px;font-weight:800;border-radius:999px;padding:1px 7px;margin-left:8px;white-space:nowrap;color:var(--ok);background:rgba(57,190,100,.12);border:1px solid rgba(57,190,100,.35)}
 .signed.no{color:var(--faint);background:rgba(255,255,255,.05);border-color:var(--line)}
@@ -403,12 +406,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 <div class="toast" id="toast"></div>
 <script>window.__BASE__ = (location.pathname.match(/^\/tool\/[^/]+/) || [""])[0];</script>
-<script src="./wb-gui.state.js?v=v1.4.70"></script>
-<script src="./wb-gui.core.js?v=v1.4.70"></script>
-<script src="./wb-gui.render.js?v=v1.4.70"></script>
-<script src="./wb-gui.chart.js?v=v1.4.70"></script>
-<script src="./wb-gui.ops.js?v=v1.4.70"></script>
-<script src="./wb-gui.sync.js?v=v1.4.70"></script>
-<script src="./wb-gui.actions.js?v=v1.4.70"></script>
+<script src="./wb-gui.state.js?v=v1.4.71"></script>
+<script src="./wb-gui.core.js?v=v1.4.71"></script>
+<script src="./wb-gui.render.js?v=v1.4.71"></script>
+<script src="./wb-gui.chart.js?v=v1.4.71"></script>
+<script src="./wb-gui.ops.js?v=v1.4.71"></script>
+<script src="./wb-gui.sync.js?v=v1.4.71"></script>
+<script src="./wb-gui.actions.js?v=v1.4.71"></script>
 </body>
 </html>
