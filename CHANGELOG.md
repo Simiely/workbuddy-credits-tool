@@ -2,6 +2,16 @@
 
 本文件记录 trae-credits-tool 的口径/架构/测试相关变更。遵循 Keep a Changelog 风格，语义化版本。
 
+## [1.5.2] - 2026-09-13
+
+### Fixed（过期排序顺序错误：`Infinity` 经 JSON 序列化变 `null` + 今天到期被漏计）
+
+- **根因一（主因）**：后端 `derive.js` 的 `expiryTier` 用 `{ tier: Infinity }` 表示「30 天内无到期压力」，但接口返回经 `JSON.stringify` 序列化后 `Infinity` 变 `null`；前端 `sortByExpiring()` 比较器 `ta.tier - tb.tier` 把 `null` 当 0 参与运算，导致**无到期压力的账号反而排到最前**，且「无压力按总剩余降序垫底」分支（`=== Infinity`）永不触发、组内顺序也乱。
+- **修复一**：`wb-gui.state.js` 的 `expiryTier()` 读取点统一归一——`tier` 非 number（null/缺失）→ `Infinity`，`amount` 兜底 0。单一入口处理，比较器与其它消费方无需改动；账号拉取失败/无派生数据（`r.derived` 为空）时同样正确落到无压力组。
+- **根因二**：tier 计算 `diff >= 1` 才计入，到期日为**今天**（diff=0）的积分包不算紧迫度，与 `expiring1d`（含今天）口径不一致——「今天就过期」的账号被误归入无压力组排最后。
+- **修复二**：`derive.js` tier 范围改 `diff >= 0`，今天到期 = 最紧迫层（tier 0）。
+- **实证确认**：`test/derive.test.mjs` 12/12 通过；模拟比较器实测顺序 = 今天到期 → 明天到期 → 5 天后到期 → 无压力组（按总剩余降序）；线上 `/api/derived` 实测返回 `{"tier":13,"amount":592.43}` 与 `{"tier":null,"amount":0}` 两种形态，前端归一后排序正确。
+
 ## [1.5.1] - 2026-09-12
 
 ### Fixed（账户管理视图单一真相缺口：`/api/accounts` 读前未对账）

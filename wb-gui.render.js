@@ -78,7 +78,7 @@ function renderCards() {
   const rs = (S && S.results) || [];
   if (!rs.length) {
     $("grid").innerHTML = '<div class="empty"><div class="big">📭</div>账号池为空<br>先运行 <b>trae-credits.bat scan</b> 扫描本机 TRAE 登录态建立账号池,或导入 trae-accounts.json 备份</div>';
-    $("foot").textContent = "v1.5.1 · 数据来自 TRAE 官方接口(api.trae.cn) · 暂无账号数据(先运行 trae-credits.bat scan 或从 WebDAV 下载)";
+    $("foot").textContent = "v1.5.2 · 数据来自 TRAE 官方接口(api.trae.cn) · 暂无账号数据(先运行 trae-credits.bat scan 或从 WebDAV 下载)";
     return;
   }
   $("grid").innerHTML = rs.map((r, i) => {
@@ -115,7 +115,7 @@ function renderCards() {
       </div></div>`;
   }).join("");
   initDrag();
-  $("foot").textContent = "v1.5.1 · 数据来自 TRAE 官方接口(api.trae.cn) · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新运行 trae-credits.bat scan 更新登录态 · 卡片可拖动排序";
+  $("foot").textContent = "v1.5.2 · 数据来自 TRAE 官方接口(api.trae.cn) · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新运行 trae-credits.bat scan 更新登录态 · 卡片可拖动排序";
 }
 
 // ---- 卡片拖拽排序(顺序随账号池持久化,经 /api/reorder 保存) ----

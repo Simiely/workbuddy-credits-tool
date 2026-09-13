@@ -119,7 +119,8 @@ export function deriveGiftExpiry(packs) {
     const dt = parse(p.cycleEndTime);
     if (!dt) continue;
     const diff = Math.floor((dayKey(dt) - t0) / 86400000);
-    if (diff >= 1 && diff <= SCAN_MAX) {
+    // diff >= 0：今天到期(diff=0)也算最紧迫层；此前 diff>=1 会把"今天到期"漏进无压力组
+    if (diff >= 0 && diff <= SCAN_MAX) {
       dayAmounts.set(diff, Math.round(((dayAmounts.get(diff) || 0) + (p.capacityRemain || 0)) * 100) / 100);
       if (diff < tier) tier = diff;
     }

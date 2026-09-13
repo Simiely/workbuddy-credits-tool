@@ -4,7 +4,7 @@
   "desc": "TRAE Work / WorkBuddy 多账号积分监控（独立仓库，平台托管）",
   "group": "监控",
   "icon": "📉",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "type": "app",
   "cmd": [
     "node",

@@ -51,4 +51,9 @@ const escAttr = (s) =>
 
 // 过期分层：直接读账号对象上挂载的 derived（doRefresh 时由后端派生合并，单一来源）
 function derivedOf(r) { return (r && r.derived) || {}; }
-function expiryTier(r) { return ((r && r.derived) || {}).expiryTier || { tier: Infinity, amount: 0 }; }
+// 后端 tier 用 Infinity 表示"无到期压力"，但 Infinity 经 JSON 序列化会变 null，
+// 此处统一归一：null/缺失/非数字 → Infinity，避免 null 当 0 参与比较导致无压力账号排最前
+function expiryTier(r) {
+  const t = ((r && r.derived) || {}).expiryTier || {};
+  return { tier: typeof t.tier === "number" ? t.tier : Infinity, amount: t.amount || 0 };
+}
