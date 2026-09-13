@@ -59,7 +59,7 @@ async function doRefresh(manual) {
     render(); // 卡片/hero/表格/折线全部从单一 model 重渲染(派生已就绪)
     if (manual) {
       const rs = all.results || [];
-      if (!rs.length) { toast("⚠️ 暂无账号数据(点「📥 导入账号信息」或从 WebDAV 下载)"); }
+      if (!rs.length) { toast("⚠️ 暂无账号数据(先运行 trae-credits.bat scan 扫描本机登录态,或从 WebDAV 下载)"); }
       else {
         const ok = rs.filter((r) => r.summary).length;
         const changed = fpS() !== oldSfp;

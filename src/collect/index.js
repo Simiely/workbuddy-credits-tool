@@ -1,44 +1,27 @@
-// src/collect/index.js - 采集层工厂与统一出口
-// 计算层/展示层只从这里导入，不直接 import 具体 collector，从而与"桌面/容器"方案解耦。
-import { COLLECTOR_SCHEME } from "../config.js";
-import { EdgeCollector } from "./edge-collector.js";
-import { FileCollector } from "./file-collector.js";
+// src/collect/index.js - 采集层出口（TRAE Work 版）
+// TRAE 登录态采集 = 本地 storage.json 解密（无浏览器 cookie 采集）。
+// 账号池由 scanLocalAuths 建立；此处仅提供状态与 WebDAV 账号池恢复（多设备镜像）。
 import { importLegacy } from "../compute/store.js";
 import { importLegacy as importHistory } from "../compute/history.js";
 
-export const scheme = COLLECTOR_SCHEME;
-const edge = new EdgeCollector();
-const file = new FileCollector();
-
-/** 当前采集方案信息（供状态接口/前端提示） */
+/** 采集方案信息（供状态接口/前端提示） */
 export function collectorStatus() {
   return {
-    scheme,
-    edgeAvailable: scheme === "edge",
-    webdavAvailable: scheme === "file",
+    scheme: "local",
+    edgeAvailable: false,
+    webdavAvailable: true,
+    // TRAE 采集=解密本机登录态,无浏览器插件
+    desc: "本地 TRAE 登录态解密",
   };
 }
 
 /**
- * 采集当前账号（桌面 Edge 方案）。
- * @param {string} [remark] 备注名
+ * 从 WebDAV 同步整个账号池（多设备镜像恢复）。下载后把遗留 JSON 镜像导入 SQLite。
+ * @param {object} [cfg] WebDAV 配置（由 webdav.syncNow 内部处理，此函数供兼容）
  */
-export async function captureCurrentAccount(remark) {
-  if (scheme !== "edge")
-    throw new Error(`当前方案(${scheme})不支持采集当前账号，请改用 WebDAV 同步`);
-  return edge.captureCurrentAccount(remark);
-}
-
-/**
- * 从 WebDAV 同步整个账号池（Docker 启动方案）。
- * @param {object} [cfg] WebDAV 配置
- */
-export async function syncFromWebDAV(cfg) {
-  if (scheme !== "file")
-    throw new Error(`当前方案(${scheme})不使用 WebDAV 同步`);
-  const r = await file.syncFromWebDAV(cfg);
-  // 下载完成后，把遗留 JSON 镜像导入 SQLite（新的唯一真相源）
+export async function syncFromWebDAV() {
+  // TRAE 版：GUI 启动 / WebDAV 同步后，把下载的 trae-accounts.json 镜像导入 SQLite。
   importLegacy();
   importHistory();
-  return r;
+  return { ok: true };
 }

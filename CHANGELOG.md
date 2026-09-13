@@ -1,1029 +1,159 @@
-# CHANGELOG
+# Changelog
 
-## v1.4.72 (2026-08-31) · 修复:基础包(体验版)纳入"近1/2/3/7天过期"统计
+本文件记录 trae-credits-tool 的口径/架构/测试相关变更。遵循 Keep a Changelog 风格，语义化版本。
 
-### 背景
-"近1/2/3/7天过期"口径 `deriveGiftExpiry` 的 `clean` 过滤写死排除"体验版"包,而所有账号的**基础包(体验版)都在周期末(如 08-31)到期**且正在消耗(爸爸 used=429/剩余70、坤坤剩余500、小黄/账号3 used=500)——基础包被排除后,"近1天过期"只统计赠送包,无论基础包怎么消耗/到期,该数字都不变,与用户感知不符。
+## [1.5.1] - 2026-09-12
 
-### 修复
-- **基础包纳入到期统计(P0)**:`src/compute/derive.js` `deriveAccount` 从最新快照取 `baseCycleEnd/baseRemain`,当 `baseRemain > 0` 时合成一条"体验版基础包"(status=0)传入 `deriveGiftExpiry`(仅当剩余>0,用光后剩余0无到期压力不参与);`deriveGiftExpiry` 的 `clean` 移除"体验版"排除(`packagesFor` 本身已过滤体验版,不会重复)。一处修复同时作用于 `expiring1d/2d/3d/7d`、周桶 `giftBuckets`、排序紧迫度 `expiryTier`。
+### Fixed（账户管理视图单一真相缺口：`/api/accounts` 读前未对账）
 
-### 测试
-- `test/derive-consume.test.mjs` 新增 T12(基础包今天到期 剩余70 + 赠送包3天后到期 100 → 近1天=70/近3天=170/近7天=170)、T13(基础包用光剩余0 → 近1天=0)、T14(基础包10天后到期 → 近1/7天=0)。30 断言全过;`test/run-all.mjs` 15/15 通过。
+- **根因**：`/api/accounts`（账户管理列表接口）此前直接 `loadAccounts()` 返回，**绕过** `reconcileFromDisk()`，而 `/api/all`、`/api/dashboard/all`、`/api/derived`、`getDerived` 等全部其它读路径都已先 `reconcileFromDisk()`（扫描本机/槽登录态、自动把新发现的登录态槽入库）。于是「账户管理」视图与「主列表/仪表盘」会出现**不一致**：新增的登录态槽进了主列表、却没进账户管理，违反单一真相。
+- **修复**：`/api/accounts` handler 改为 `async` + `await reconcileFromDisk()`，返回前先对账（与全部其它读路径一致），账户管理视图与主列表同步可见。分发层已统一 `try/catch`，handler 异步拒绝降级为 500 而非进程崩溃。
+- **实证确认（重启复现）**：构造临时登录态槽探针，`旧路径(loadAccounts)`=12、`新路径(reconcileFromDisk/mergeDiscovered)`=13，stale-read gap 真实存在（`oldPathMissedNewSlot=true`）；因 `mergeDiscovered` 仅改内存、不落库，DB 未被污染，临时槽已清理。结论：**确为真实 bug，已修复**。
 
-### 文档
-- AGENTS / CHANGELOG 同步;版本戳 v1.4.71 → v1.4.72。
+### Added（场景走查审计，发布质量门禁）
 
-## v1.4.71 (2026-08-31) · 修复:基础包用光的卡片 UI 显示
+- **scenario-walkthrough 技能 v3 全量走查**：覆盖能力 C-IDs + 场景脚本 S-01…S-11 + 覆盖矩阵 + 分级代码走读 + 风险评分问题清单（风险 = 复杂度 L × 影响 I）+ 结论三问。
+- 走查确认修复后 **8/8 读路径** 统一走 `reconcileFromDisk()`，单一真相闭环无残留旁路。
 
-### 背景
-基础包(体验版)用光后(如小黄/小陈 `CycleCapacityUsed=500`、剩余 0),卡片仍显示"剩余 0"+ 橙色警告进度条——"用光"被当成"快用完"的警告,语义不清。
+### Changed（发布规范：每次发包只发两个形态）
 
-### 修复
-- **用光状态区分(P0)**:`wb-gui.render.js` 卡片基础包行新增三态——`baseUsed/baseSize ≥ 100%`(用光)显示红色 **"已用完"** + 红色实心进度条(`.meter.bad`);`> 85%`(快用完)保持橙色警告;其余正常。`wb-gui.html` 新增 `.meter.bad` 与 `.arow .l b.t-bad/.t-warn` 样式。
+- 平台版（tools-center 宿主，端口 8133，`node trae-gui.mjs 8133`）+ Windows/bat 桌面版（端口 8080，`trae-gui.bat` 一键启动）双形态发布；`Dockerfile`/`docker-compose.yml`/`.dockerignore` 同步修正为 TRAE 形态（原遗留为 WorkBuddy `wb-*` 旧版）。
+- `.gitignore` 补 `backups/`、`*.db*`、`_probe.mjs`、`trae-admin.json`，杜绝登录态槽/管理员密码入库泄漏。
 
-### 文档
-- AGENTS / CHANGELOG 同步;版本戳 v1.4.70 → v1.4.71。
+## [1.5.0] - 2026-09-11
 
-## v1.4.70 (2026-08-31) · 修复:基础包(体验版)消耗未计入"今日消耗/累计已用"
+### Changed（两程序标准树联动：切先器推「积分标准树」、积分程序直拉即用，根治路径错位）
 
-### 背景
-"今日消耗"与"累计已用"的包级口径 `consumeByPack` 只统计**赠送包**(`giftPackages` 已过滤体验版),基础包(体验版,容量 500)的 `CycleCapacityUsed` 增量被漏掉——基础包一旦有消耗(如官方显示"已用 106.92"),工具的消耗指标不体现,与官方"已用"对不齐。
+- **根因**：此前积分程序需到切先器的 `workbuddy/workbuddy登录积分/<app_id>/` 目录找 `.zip`、凭「app 名映射(`traework-cn`→`trae`)」猜目录、下载 zip 再解压，再靠 uid 匹配——逻辑绕、跨机路径易失效，导致平台版查询失败。
+- **切换程序侧（本仓库 `sync_engine.py`）**：同步/上传每个槽时，额外输出第二份，把登录态凭证按积分程序标准目录树直接布放到 WebDAV `trae-credits/登录态`：
+  - WorkBuddy → `<root>/workbuddy/<槽>/workbuddy-desktop.info`
+  - TRAE → `<root>/trae/<槽>/User/globalStorage/storage.json`
+  只推凭证文件、不带多余缓存，格式与积分程序 discover/config 完全一致。
+- **积分程序侧**：
+  - `webdav.js`：`pullRemoteSlots` 重写为从 `trae-credits/登录态` 直接列目录 + 下载标准凭证文件落盘到本工具指定登录态根，去掉 zip 解压与 app 名映射。
+  - `paths.js`：`resolveSlotPath` 失效路径时，**WorkBuddy 与 TRAE 都先按槽内凭证 `uid` 对照账号 `uin` 精确路由**（uid 是两程序一致的稳定身份），匹配不到才退回槽名目录兜底；删除对桌面切先器绝对路径的依赖。
 
-### 修复
-- **基础包消耗计入(P0)**:`src/compute/derive.js` `consumeByPack` 在赠送包包级首末差之后,追加**基础包 `baseUsed` 正增量累加**(回退=周期重置,同步基线,后续增量从新基线计)。赠送包走包级首末差、基础包走增量,两者不相交不重复;与 `consumeByPos` 的 base 口径一致。一处修复同时作用于今日已用 / 历史日消耗 / 累计已用 / 固化(gc)。
+### Verified
 
-### 测试
-- `test/derive-consume.test.mjs` 新增 T9(基础包 0→50 计入)、T10(周期重置 0→30→0→20 = 50)、T11(基础包+赠送包相加)。24 断言全过;`test/run-all.mjs` 15/15 通过。
+- 真实联调（WebDAV `192.168.2.1:6086`）：切先器 `_push_credits` 推送部署机 7 槽（5 WorkBuddy + 2 TRAE）到 `trae-credits/登录态` 成功；积分程序 `pullRemoteSlots` 直拉 7 槽全部落盘，目录结构符合标准。
+- 部署机场景模拟（cookieHeader 全指失效路径，仅标准树落盘）：7 账号全部按 uid 精确命中标准树，`fetchAllAccounts` 真实查询 7/7 成功、积分数据完整，不再读任何桌面旧路径。
 
-### 文档
-- README / DEVELOPMENT / AGENTS / CHANGELOG 同步;版本戳 v1.4.69 → v1.4.70。
+## [1.4.79] - 2026-09-11
 
-## v1.4.69 (2026-08-31) · 修复:基础用量剩余虚高(体验版包 CapacityRemain 满额,改用 CycleCapacityRemain)
+### Fixed（两程序联调：账号 ↔ 槽 按 uid 精确路由，根治平台版查询失败）
 
-### 背景
-工具"总剩余积分"比官方"累积剩余"虚高(实测 爸爸:工具 4306 vs 官方 4202.24,差 103.76)。根因:API 的**体验版基础包**返回两个剩余字段——`CapacityRemain`(满额 500,不反映周期内消耗)与 `CycleCapacityRemain`(实际周期剩余 393.08,官方 UI"版本基础用量剩余"用这个)。`parseAccountData` 误用 `CapacityRemain`,导致基础用量剩余永远显示满额、总剩余虚高;用户基础用量消耗越多差异越明显。赠送包的 `Capacity*` 与 `CycleCapacity*` 实测恒等,不受影响。
+- **根因**：切换程序(LloginStateSwitcher)上传的槽目录以手机号/字母命名（如 `15182508595`、`A`），账号池里的显示名（`小黄`/`小陈`/`鲁妈妈`）与此**完全对不上**；且槽内 `.info` 无 displayName/name，只有 `uid`。原「按槽名目录/显示名匹配」必然错位，导致平台版 `指定根/<槽>/workbuddy-desktop.info` 找不到。
+- **修复**：`resolveSlotPath` 失效路径时，WB 优先**扫描本工具指定根下的槽、按槽内凭证 `uid` 对照账号 `uin` 精确路由**（uid 是两程序一致的稳定身份键），匹配不到才退回槽名目录兜底。`rewriteAccountPaths` 同步复用同一套解析，保证落库 cookieHeader 规范一致，查询不再 ENOENT。
+- **风险隔离**：TRAE 槽因切换程序本地 `backups/trae/` 缺失而拉不到，属切换侧数据缺失；本版在槽缺失时给出明确「未找到登录态槽，请云同步/在切换程序建槽」提示，不再误报「既非路径也非内联 token」。
 
-### 修复
-- **基础包改用 Cycle* 字段(P0)**:`src/compute/model.js` `parseAccountData` 基础包 `baseRemain/baseUsed/baseSize` 由 `Capacity*` 改为 `CycleCapacity*`(缺失时兜底回 `Capacity*`,兼容旧接口)。修复后 爸爸 总剩余 = 393.08 + 3806 = 4199.08,与官方一致(截图后用户又消耗 3.16)。"今日消耗"(consumeByPack 只读赠送包)不受影响。
+### Verified
 
-### 测试
-- 新增 `test/model-parse.test.mjs`:T1 基础包取 Cycle* 字段、T2 无 Cycle* 兜底回 Capacity*、T3 无体验版包 base=null、T4 buildSnapshotEntry 透传。16 断言全过;`test/run-all.mjs` 15/15 通过。
+- 真实联调：`小黄`(uin f1cb…)→槽`19149458590`、`鲁妈妈`(f076…)→槽`15182508595`、`小陈`(520b…)→槽`B`，全部 uid 命中且凭证文件存在。
+- 端到端 pack→extract：切换程序 `slot_pack` 打包出的 zip 内含规范 `workbuddy-desktop.info`，积分程序解压后文件存在，格式契约吻合。
 
-### 文档
-- README / DEVELOPMENT / AGENTS / CHANGELOG 同步;版本戳 v1.4.68 → v1.4.69。
+## [1.4.78] - 2026-09-11
 
-## v1.4.68 (2026-08-31) · 修复:wb-history.json 仍 10MB 不收缩(残留旧快照清理 + 启动先固化)
+### Changed（依可信来源修正「路径的写法」，规避跨机绝对路径 + JSON 反斜杠转义陷阱）
 
-### 背景
-v1.4.67 只挡了「未来再灌满」(导入过滤),但**清不掉已被灌满的残留**:若数据库被陈旧镜像重灌过(旧代码导入无过滤),day_summary 已含旧日 → gc `fixed=0` → `deleteReadingsBefore` 被 `fixed>0` 条件挡住 → 残留旧快照永不删除 → 重导出仍 10MB。实测复现:重灌 27330 行/4967 组后跑 v1.4.67 gc,`fixed=0` 不删除,导出仍 10052KB。
+- **持久化路径一律正斜杠**：`paths.rewriteAccountPaths` 重写的 `cookieHeader` 与 `discover.toAccountRec/toWbAccountRec` 采样入库的 `cookieHeader` 都改为 `\`→`/`（内联凭证 JSON `{ `[` 开头原样不动）。跨机池经 WebDAV/JSON 同步时不再被 `\b \n \t \u` 等合法转义吞字符写坏（如 `\backups` 会被 `\b` 吞成退格字符），路径裸奔安全。
+- **fs 层才转回原生路径**：`trae-decrypt.readAccountAuth`、`query.fetchWbAccount` 在 `existsSync/read` 前 `path.normalize()`（内部正斜杠统一，仅外部交互转原生），符合路径最佳实践。
+- 查询仍是「按槽名确定性拼本工具指定根」一条直路，绝不再读跨机绝对路径、不再目录扫描/同名猜测。
 
-### 修复
-- **gc 无条件清理旧明细(P0)**:`gcDaySummaries` 固化循环结束后**无条件 `deleteReadingsBefore(cutMs)`**(原 `fixed>0` 才删)。循环结束后所有 `<cut` 旧日都已进 day_summary(既有或本次新增),删除安全;保留 T-1 与今天。重灌残留一次 gc 即清(27330→455 行,导出 10052KB→368KB)。
-- **启动先固化再重导出**:`wb-gui.mjs` listen 回调由「直接 exportHistory」改为「先 `gcDaySummaries()` 再 `exportHistory()`」——升级重启后陈旧镜像**立即收缩**,不必等首个调度 tick(5-15 分钟)的 gc。
-- **前端页脚版本号显示修正**:`wb-gui.render.js` 页脚两处仍显示 v1.4.67(平台版可见),统一改 v1.4.68;`wb-gui.html` 全部 `?v=` 缓存戳 v1.4.67 → v1.4.68。
+### Verified
 
-### 测试
-- `test/gc-summary.test.mjs` 新增 T6:重灌已固化旧日快照后 gc `fixed=0` 仍清理残留(6 条→4 条)。15 断言全过;`test/run-all.mjs` 14/14 通过。
+- 平台型全新安装模拟（含中文槽名 + 反斜杠池 + 非本机路径 + `TRAE_TOOLS_DIR`=自身 data）：7 账号全部解出 token，0 失败；全程不读桌面绝对路径。
 
-### 文档
-- README / DEVELOPMENT / AGENTS / CHANGELOG 同步;版本戳 v1.4.67 → v1.4.68。
+## [1.4.77] - 2026-09-11
 
-## v1.4.67 (2026-08-31) · 修复:wb-history.json 镜像陈旧膨胀根治(导入跳过已固化旧日 + gc 后无条件重导出)
+### Changed（按要求砍掉「太绕」的路径逻辑）
 
-### 背景
-v1.4.66 只修了「gc 有新增固化(fixed>0)时重导出」,但用户实况是**数据库已固化好、镜像已陈旧**——下次 gc `fixed=0` 不触发重导出,9.7MB 镜像(4965 组快照)一直保留;且同步下载会把陈旧镜像重新灌入数据库,上传又重导出成大文件,恶性循环。
+- **凭证路径解析改为「直读指定目录」一条直路，删除全部扫描/猜测**：旧的 `resolveSlotPath` 会在查询时去 `<指定根>` 里遍历目录、按 `slot.includes(displayName)` 做同名模糊匹配、再叠 `infoUidMatch` 精校、`latestInfo` 兜底等一堆耗时又易错的逻辑。现在只有一个确定性动作——账号槽名 = `slotName` 字段，或从现有 `cookieHeader` 的 `backups/<app>/<槽>` 段确定性回填，然后直接拼 `<指定根>/<槽>/<凭证文件>`。不再 `readdir` 扫描、不再按名字猜目录。
+- **槽根收敛为单一真源**：`config.js` 新增 `trailSlotRoot(wb)`（env `WB_SLOT_ROOT`/`TRAE_SLOT_ROOT` 优先，否则 `TOOLS_DIR/backups/<app>`）；`wbSlotRoots()`/`traeSlotRoots()`、`paths.js`、`webdav.js` 的拉取落盘（`resetSlotDir`/`autoPullSlotsIfMissing`）全部共用这一个根，删掉原先 4~7 条的桌面切换器路径候选列表。
+- **不再猜 displayName/name 作槽名**：`坤坤`(槽=`花轮的丸子樱桃味`)、`爸爸`(槽=`擎天柱`)、`小陈 trae`(槽=`小陈`) 这类「展示名 ≠ 槽目录名」的情况，旧逻辑靠模糊匹配勉强对上，新逻辑一律不猜：取不到确定性槽名就直接报「未找到登录态槽」，提示先云同步/设环境变量。
+- **错误提示明确**：`trae-decrypt:readAccountAuth` 与 `query:fetchWbAccount` 计算出槽路径但文件缺失时，报「本机未找到该账号登录态槽: <路径>，请先「云同步」拉取登录态或设置 WB_SLOT_ROOT/TRAE_SLOT_ROOT」，不再误报「凭证既非文件路径也非合法 JSON」。
+- 账号扫描入库（`discover.js`）补 `slotName` 字段，新采集的账号不再依赖路径回填。
 
-### 修复
-- **导入跳过已固化旧日(P0)**:`importLegacy` 恢复 day_summary 后,构建 `uin|day` 已固化集合,导入快照时**跳过已有摘要覆盖的旧日**——陈旧镜像不再把数据库重新灌满(同步下载 → 全量导入 → 上传重导出又变大 的循环被切断)。无 ts 旧格式兜底不受影响。
-- **gc 后无条件重导出**:scheduler 的 gc 分支由 `fixed>0` 才重导出改为**每次 gc 后都 `exportLegacy()`**——即使 `fixed=0`(数据库已固化但镜像陈旧)也刷新镜像,保证 wb-history.json 始终与数据库一致。
-- **启动时重导出**:`wb-gui.mjs` listen 回调新增 `exportHistory()`,升级重启后陈旧镜像**立即收缩**(实测 9.7MB → 0.34MB,93 组快照 + 157 条摘要),不必等当天 gc。
+### Verified
 
-### 测试
-- `test/history-import.test.mjs` 新增 T5:已固化旧日快照被跳过(只导入未固化日),防陈旧镜像重新灌满。11 断言全过;`test/run-all.mjs` 14/14 通过。
+- 真实账号池 7 账号端到端：本机桌面路径存在 → 直接命中；模拟平台（原 `cookieHeader` 保留槽段、文件本机不存在）→ **7/7 全部确定性重指到本工具指定根下的槽并存在**，无 `readdir` 扫描、无同名猜测。
 
-### 文档
-- README / DEVELOPMENT / AGENTS / CHANGELOG 同步;版本戳 v1.4.66 → v1.4.67。
+## [1.4.76] - 2026-09-11
 
-## v1.4.66 (2026-08-31) · 修复:签到月末漏判(对日+月末钳制) + WebDAV 同步超时(镜像陈旧/超时放宽)
+### Fixed
 
-### 修复（签到,月末溢出根治）
-- **月末签到漏判(P0)**:`detectSignIn` 目标到期日 `new Date(y,m,d)` 的 m 是 1 索引而 Date 月份是 0 索引,月末溢出——8/31 签到期望 9/30(对日),实际算出 10/1 → 漏判「已签到」。改为「对日+月末钳制」纯算术:`Date.UTC(nextY,nextM,0)` 取目标月天数再 `Math.min(d,dim)`(8/31→9/30、1/31→2/28/29、12/31→次年1/31)。一处修复同时作用于今日签到与历史固化 signedIn。实测 8/31 三账号实际签到(新增 09-30 到期包)旧逻辑全部漏报,修复后全部正确识别。
+- **查询自愈找不到部署机专用槽（平台版一直报错 ENOENT 的根因）**：`paths.js:resolveSlotPath` 此前固定只在 `TOOLS_DIR/backups/<app>` 下找槽，而部署机把登录态拉到自己的**专用目录**（经 `WB_SLOT_ROOT`/`TRAE_SLOT_ROOT` 环境变量指向），账号发现 `discoverDataRoots`/`discoverWbInfoFiles` 能命中、查询自愈却完全搜不到 → 自愈返回空 → 回退失效桌面路径 → ENOENT。
+  - 根因修复：把「槽根候选」收敛为 `config.js` 的 `wbSlotRoots()`/`traeSlotRoots()`，**账号发现与查询自愈共用同一套根**（env 显式指向的部署机专用目录优先 + 常见切换器路径 + `TOOLS_DIR/backups`），`resolveSlotPath` 改为遍历全部候选根 + 同名槽去重匹配。部署机无论登录态放在哪，只要通过环境变量指向，查询即自愈，不再 ENOENT。
+- **凭证防泄漏**：`wb-sync.json` 模板脱敏——`user`/`pass` 置空（仅保留默认可用 `url`），彻底移除进发布包/仓库的明文 WebDAV 凭据。
 
-### 修复（WebDAV 同步超时）
-- **同步超时(90s)根治**:`wb-history.json` 陈旧变大(实测 9.7MB/4965 条快照,而 readings 表 gc 后仅剩 2 天)——`exportLegacy` 只在同步/上传时重写,gc 清理后未重导出。scheduler 的 gc 分支 `fixed>0` 后新增 `exportLegacy()` 重导出镜像,保持备份精简。
-- **超时放宽**:后端 WebDAV 大文件下载/上传 60s→120s(`webdav.js`),前端同步请求 90s→120s(`wb-gui.sync.js`),防慢速穿透误报。
-- **gc 健壮性**:固化失败不再静默吞(console.error 记录),`_gcDay` 失败不置位、当天可重试。
+### Verified
 
-### 测试
-- `test/signin-detect.test.mjs` 新增 T8-T12 月末边界(8/31→9/30、1/31→2/28、闰年 2/29、跨年 12/31→次年1/31、平月 4/30→5/30)与「旧 bug 产物 10/1 到期包 → 未签到」回归保护;修复 `addMonth` 辅助函数同源溢出。16 断言全过;`test/run-all.mjs` 14/14 通过。
-- 真实数据验证:8/31 三账号实际签到,旧逻辑全部漏报、修复后全部正确识别。
+- 端到端实测（真实账号池 7 账号 + 槽放在**模拟部署机专用目录**、原桌面路径不存在、`TOOLS_DIR` 为空）：`resolveSlotPath` **7/7 全部自愈到专用目录并读到 token**；真实在线查询官方接口 **7/7 全部成功**（小黄3822/坤坤3973/爸爸3901/鲁妈妈3445/小陈trae3540/小陈6219/小黄trae3642），无 ENOENT。
 
-### 文档
-- README / DEVELOPMENT / AGENTS(新增坑 24)/ CHANGELOG 同步;版本戳 v1.4.65 → v1.4.66。
+## [1.4.75] - 2026-09-11
 
-## v1.4.65 (2026-08-21) · 采集重构:Edge 插件统一采集 + 新增「导入账号信息」,移除 CDP/edge-daemon
+### Fixed
 
-### 变更（采集架构,正式发布）
-- **账号采集统一走 Edge 插件**(`extensions/wb-credits-capture/`,chrome.cookies 官方 API 读登录态)→ 导出 `wb-accounts.json` → 工具「📥 导入账号信息」。
-- **移除旧 CDP 采集**:GUI 删除「添加账号」「打开网页」按钮与 `/api/save-current`、`/api/open-workbuddy` 端点、内嵌 edge-daemon 启动;`edge-daemon.mjs` **归档到 `legacy/`**;`/api/status` 不再探测 daemon。
-- **新增「导入账号信息」**:GUI 文件选择按钮 + CLI `import <wb-accounts.json>` 子命令(替代旧 `save-current`/`cookie`),经 `mergeAccountsSmart` 按 uin 合并进账号池(含墓碑三态)。
-- **维护策略**:本仓库只维护 **平台版 + Edge 插件版**;**bat 版保留、随版本自然迭代,不专门测试**。
-- 版本戳 1.4.64 → 1.4.65;`pack-platform.mjs` 打包列表剔除 `edge-daemon.mjs`。
+- **界面版本号统一（此前一直显示旧版，导致误判旧包/查询失败）**：界面底部 `v1.4.73` 与 HTML 缓存版本号 `?v=v1.4.73` 是硬编码，此前仅改 `package.json`/`tool.json`，漏改了界面展示——把 `wb-gui.render.js` 与 `wb-gui.html` 全部统一为当前版本号。
+- **凭证防泄漏**：`.gitignore` 补充 `trae-credits-tool/backups/`（`TOOLS_DIR/backups` 存放从 WebDAV 拉回的账号登录态槽，根级 `backups/` 规则命中不到该子目录，未排除则推送时写入仓库泄漏全部 `.info` 登录态）。
 
-### 修复（环境,2026-08-16 实测事故复盘,随本版一并发布）
-- **官方 UA 风控致添加凭证/查询全量 401(P0)**:`billing/meter/get-user-resource` 接口新增 UA 风控,只放行特定 `Edg/xx.0.0.0` 占位版本。工具硬编码 `Edg/148.0.0.0` 落后于官方当前版本,被 APISIX 网关 401 拦截——表现为「换账号重登仍 401」「全部账号凭证过期」。实测仅 `Edg/151.0.0.0` 稳定放行(148/150/151 精确版本均 401,重复 3 次确认)。`src/config.js` 的 `UA` 已更新;官方前端升级后放行值可能再变,排查/实测方法见 `docs/问题记录/官方UA风控致添加凭证401.md`。
-- **`edge-daemon.mjs` 硬编码打包机路径(P1)**:`USER_DATA` 曾硬编码 `C:\Users\2504\...`(打包机用户名),迁移到其他机器路径不存在;改为 `os.homedir()` 动态拼 `AppData\Local\Microsoft\Edge\User Data`,任何机器自适应。
-- **调试 Edge 独占约束(桌面方案)**:Edge 151 检测到系统已有其他 Edge 实例(即使不同 profile)时,拒绝启动带 `--remote-debugging-port` 的新实例并直接退出 → GUI 报「浏览器代理未连接」。必须清空 msedge 进程后单独启动调试实例;已提供 `start-all.bat` 一键启动(自动关旧 Edge → 起调试 Edge 9222 → 起 GUI)。
+### Verified
 
-### 文档
-- **README 新增「迁移与重新打包」章节**:重新打包/换机器后必查清单(UA 风控 / USER_DATA 硬编码 / bat 的 Node 探测 / 调试 Edge 启动姿势),以及迁移到新机器的数据+环境步骤。
-- **`docs/发布规范.md` 铁律新增「打包前必检环境硬编码」**:三查——① UA 实测放行 ② `grep "C:\\Users\\\\"` 无打包机路径 ③ bat 启动器冒烟。
-- **新增 `docs/问题记录/官方UA风控致添加凭证401.md`**:完整排查链(三层状态 → cookie 端到端 → 页面 fetch 对照 → 请求头对照 → UA 多版本循环测试)、修复、官方再次改版时的实测方法、关联坑(调试 Edge 存活 / USER_DATA / 凭证统一到期)。
-- **AGENTS.md 新增坑 21~22**:UA 风控与 USER_DATA 动态化、调试 Edge 独占。
+- 端到端实测（真实账号池 7 账号 + 已拉满 `TOOLS_DIR/backups`）：`fetchAllAccounts()` **7/7 全部查询成功**（WorkBuddy 4 + TRAE 2 + WorkBuddy 小陈），总剩余等积分数值正确，路径自愈 + 自动拉槽 + token 解密 + api.trae.cn 查询整条链路正常。
 
-### 平台版( tools-center 托管)注意
-- 平台版部署包若为旧 UA,即使拷贝最新 cookie 数据仍会 401 显示「凭证过期」——**数据没问题,需同步更新平台版 `src/config.js` 的 UA 后重启工具**。
-- 平台版只在启动时 / 手动点「一键同步」时从 WebDAV 拉取账号池,不自动跟随桌面版;桌面版续期凭证后需在平台版手动同步或重启。
+## [1.4.74] - 2026-09-11
 
-## v1.4.64 (2026-08-15) · 修复:点击「截止日期」输入框不再折叠趋势面板
+### Added
 
-### 修复（交互）
-- **点「截止日期」输入框误折叠面板**:`trendEnd` 日期输入框位于 `.phead.foldable` 面板标题内部,而 `toggleFold` 的守卫只排除 `button` → 点击/打开日期选择器会冒泡触发折叠,趋势面板被意外收起。守卫扩展为排除全部可交互元素 `button,input,select,textarea,label,a`,标题内其余空白仍可正常折叠/展开。
-- 新增回归测试 `test/toggle-fold.test.mjs`(4 例:点输入框不折叠 / 点按钮不折叠 / 点标题文本折叠 / 往返展开)。
+- **查询端凭证路径自愈（平台版/换机，关键修复）**：新增 `src/compute/paths.js`（`resolveSlotPath` + `rewriteAccountPaths` 单一真源）。此前失效路径只在「一键同步」时重写，若平台部署后未触发同步，旧账号池 `trae-accounts.json` 仍指向本机桌面绝对路径 → 查询 ENOENT「查询失败」。
+  - `resolveSlotPath(account)`：**读取凭证时**，若 `cookieHeader` 路径不存在，自动按 `appKey` + 槽名/displayName/name（workbuddy 追加 auth.account.uid 精校）回退到本地已拉取槽（`TOOLS_DIR/backups/workbuddy|trae/<槽>`），workbuddy 走 `readWbInfo`、TRAE 走 `readAccountAuth`，均自愈。
+  - 效果：只要槽已被拉取到本地，查询即自动命中，**无需依赖手工再跑同步**；本机桌面场景路径有效则零影响。
+- **路径逻辑收敛**：`rewriteAccountPaths` 由 `webdav.js` 收敛到 `paths.js`（`webdav.js` 再导出兼容），消除重复实现。
+- **测试**：`test/paths.test.mjs` 新增 5 项（失效路径命中本地槽 / uid 不符同名槽不误配 / 有效路径与内联原样返回 / batch 重写），`npm test` 26/26。
+- **部署机免手动同步（自动拉槽）**：`webdav.js` 新增幂等 `autoPullSlotsIfMissing()`，`query.js` 的 `fetchAllAccounts` / `fetchOneAccount` 在查询前调用——`wb-sync.json` 已配 `url/user` 且本地 `TOOLS_DIR/backups` 完全无槽时，自动触发一次 `pullRemoteSlots` 拉回登录态槽（进程内只尝试一次，成功或失败均标记，避免周期刷新反复重建目录；失败静默不影响查询）。部署机**配好 WebDAV 后无需手动点同步**，刷新/重启即自愈。
 
-### 验证
-- node --check 通过;`test/run-all.mjs` 12/12 通过(含新 toggle-fold 用例)。
-- 版本戳 v1.4.64(前端改动,浏览器刷新即生效;html 缓存参数 `?v=` 已同步升版)。
+## [1.4.73] - 2026-09-11
 
-## v1.4.63 (2026-08-15) · 修复:日消耗跨天跳变(同一日期两套口径打架,500+→70+)
+### Added
 
-### 修复（口径,跨天跳变根治）
-- **日消耗跨天跳变(P0 口径)**:同一指标「日消耗」存在两套并存口径——当天走 v1.4.62 的「残差守恒」(今日已用 = 昨日末剩余 + 今日到账 − 当前剩余),历史日/GC 固化走 v1.4.43 的「包级净增量 `consumeByPack`」。一过午夜,昨天的条目失去残差覆盖、回落到包级口径 → 同一天数值跳变(实测:张妈妈 8/14 当天显示 611,跨天后显示 37;六账号合计 674 → 73)。
-- **`consumeByPack` 漏算"用光失效"包(P0)**:末快照统计对象仅 `status===0`(active)包;包被用光(used=size, remain=0)后 `status 0→3`,其当日消耗被整包丢弃(8/14 张妈妈 574/611 被丢)。改为「active ∪ 用光失效(remain=0)」,仍排除「到期回收(remain>0)」防 v1.4.43 的 342 虚高(8/6 张妈妈)复现——用光失效 remain 必为 0,可精确区分两种失效。
-- **`todayUsed` 统一为包级口径**:删除 v1.4.62 残差口径特殊分支,今日/历史日/固化全走 `consumeByPack`,任意跨天不再跳变;`yesterdayRemain`/`todayAdded` 保留供前端展示。副作用:今日已用不再计入「到期回收的剩余」(语义上非用户消耗,更准确)。
-- **测试更新**:`derive-consume` T7 改断言「到期回收(status=3 且 remain>0)不计入消耗」(7→3, consumed 14→10),新增 T8「用光失效(remain=0)当日消耗必须计入」(100);`gc-summary` 无包快照降级口径断言 70→40。
+- **云同步拉取账号槽（只读）**：`webdav.js` 新增 `pullRemoteSlots(cfg)`，一键同步（`syncNow`）时从 MultiSwitch 同步到 WebDAV 的 `workbuddy/workbuddy登录积分/{workbuddy,traework-cn}` 目录**只读拉取**登录态槽 `.zip`，解压到本机 `TOOLS_DIR/backups/workbuddy|trae/<槽>`（远端 app 名映射回本机切换器目录结构），供 `discoverDataRoots()` / `discoverWbInfoFiles()` 识别。
+  - 换机后仅需配置 WebDAV 并「一键同步」→ 账号登录态即被拉回并扫描建池；**只拉不传**，账号数据不上传。
+  - 槽拉取失败不影响原有 `trae积分/` 镜像同步；成功时在完成提示追加 `,拉取账号槽 …`。
+  - 解压优先系统 `tar`，回退 PowerShell `Expand-Archive`，保持零第三方依赖。
+- **槽发现候选根**：`config.js` `discoverDataRoots()` 与 `wb.js` `discoverWbInfoFiles()` 各增补 `TOOLS_DIR/backups/trae`、`backups/workbuddy` 候选根，覆盖独立部署（含 Docker 平台版）拉取槽的发现。
 
-### 验证
-- 独立脚本复用真实 `consumeByPack`/`deriveAccount` 于实库复核:张妈妈 8/14 dailyUsed=611、8/15 used==todayUsed、consumed==ΣdailyUsed 全部 PASS;8/8–8/13 历史摘要按新口径重算(与权威残差逐条核对,8/11 用前日末快照补基线)。
-- 版本戳 v1.4.63(后端改动,需重启 GUI 服务生效;历史摘要修正即时可见)。
+### Fixed
 
-## v1.4.62 (2026-08-14) · 修复:今日已用漏算"用光后失效"包的真实消耗(对账恒等式破)
+- **平台版/换机后查询失败（失效路径）**：账号池 `cookieHeader` 常指向【本机桌面】MultiSwitch 槽绝对路径（`Desktop\登录态切换器\backups\...`），部署到平台版/新机后该路径不存在 → 查询报 ENOENT /「凭证既非文件路径」。新增 `rewriteAccountPaths(accounts)`，在「一键同步」拉取账号槽到 `TOOLS_DIR/backups/<app>/<槽>` 后，把仍指向不存在路径的 `cookieHeader` 按槽名重写为本地新拉取槽，重写结果随 `uploadAll` 上传保证跨端一致（重写条数计入完成提示 `,重写凭证路径 N 条`）。
+- **端口冲突**：平台版由 8123（与 `wb-credits` 在册冲突）迁至 **8133**，已登记 `tools-center/docs/ports.md`，`tool.json` 与 README「平台版」同步更新。
 
-### 修复（口径）
-- **今日已用对账恒等式破(🟡 对账)**:`todayUsed` 原走 `consumeByPack`(仅统计末快照仍 active 的包的 used 增量),会把"今天把包用光后失效(status≠0)"的包的真实消耗漏掉;而 `yesterdayRemain`/`currentRemain` 来自权威聚合 `totalRemain`,两口径打架,导致「昨日结余 + 今日到账 - 今日已用 ≠ 总剩余」。张妈妈 2026-08-14 实测:昨日 3683 + 到账 100 - 已用 7 = 3776 ≠ 总剩余 3302(差 474)。
-- **改为残差守恒口径**:`todayUsed = 昨日末 totalRemain + 今日到账 - 今日末 totalRemain`,由权威 `totalRemain` 守恒直接得出,恒等式必然成立。无昨日基线(今日首发)回退原包级口径。`dailyUsed` 今日那条与 `seriesOut` 今日点同步回填为残差,`consumed`(累计已用)随之重算,口径一致。
-- 副作用:若某包今日到期且仍有未用积分被回收,残差会把它并入「今日已用」(不再单列过期回收)。张妈妈该笔过期包剩余为 0,无影响。
+### Notes
 
-### 验证
-- node --check 通过;独立脚本复用 `deriveAccount` 复核张妈妈:今日已用 7 → 481,恒等式 3683+100-481=3302 精确成立;`dailyUsed[今日].used=481`、`consumed` 同步修正。
+- v1.4.72 与 v1.4.73 绑定发布，v1.4.72 Release 已被 v1.4.73 取代删除。
 
-## v1.4.61 (2026-08-13) · 修复:签到漏判 + 今日到账/昨日结余卡片 + CLI 口径对齐
+## [0.1.0] - 2026-09-10
 
-### 修复（功能/健壮性）
-- **签到检测漏判(🟡 功能)**:`detectSignIn` 原用 `cycleEndTime` 的「日期」部分做唯一键;当某账号存在「老促销包」与今日签到包同到期日(如均 09-13、时刻不同 08:48 vs 09:00)时,老包掩盖新包 → 今日签到被误判为「未签到」。改为按 `cycleEndTime` 完整串(到秒)判定新包,历史固化(`gc.js`)一并受益。新增回归测试 `signin-detect.test.mjs` T7(同日期碰撞仍识别今日签到;完全相同包不误报)
-- **`model.js` 空值防护(P0)**:`parseAccountData` 对 `PackageName` 直接 `.includes` 无防护,接口返回缺该字段的账号会抛 `TypeError` 被误标「错误」;改为 `(a.PackageName || "")`(与 `buildSnapshotEntry` 一致)
-- **CLI `report` 死列删除(P0)**:`dailyRate`/`daysToEmpty` 已于 v1.4.15 下线,`report` 仍打印「日均消耗(7日)/预计耗尽(天)」两列恒为「—」(死功能);删除该两列及 `dte`/`rate` 变量
-- **CLI `report` 累计已用口径对齐**:「累计已用」列由 `d.used`(最新快照净额,包失效日远小于真实消耗)改为 `d.consumed`(历史每日消耗之和),与前端仪表盘「累计已用」统一口径
-- **调度采样间隔 O(全表) 解析优化(P1)**:`computeIntervalMin` 原每周期 `loadHistory()` 读出整个 `readings` 表并逐条 `JSON.parse` 仅取最新剩余;新增 `latestSnapshotEntries()` 定点查询(只取 `baseRemain/giftRemain` 列),实测 6136 条下 24.78ms → 1.59ms(~15×)
+### Added（本轮「长远项目审视」加固）
 
-### 变更（仪表盘 hero 卡片）
-- 第二张 hero 卡「⏳ 近3天过期」→「📥 今日到账」(今日相对昨日末**新增赠送包容量之和**,恒非负、不含消耗);右侧新增「昨日结余」大数字(昨日末剩余)
-- 后端 `derive.js` 新增 `todayAdded` / `yesterdayRemain` 字段;前端 `wb-gui.render.js` 卡片大数字并排(左「昨日结余」/右「今日到账」+绿),刷新即生效
+- **P0 · 派生口径单测与业务常量上移**
+  - 新增 `test/derive.test.mjs`：锁定 `consumeByUsed`（正增量累加 + 新旧格式感知）、`todayAddedFrom`（`SIGNIN_CREDIT`）、`deriveGiftExpiry`（空/非法包过滤）。
+  - 新增 `test/db.derive.test.mjs`：真实 SQLite 隔离（临时 `TRAE_TOOLS_DIR`）验证 `deriveAccount` 与 `gcDaySummaries` 固化窗口。
+  - 业务常量 `SIGNIN_CREDIT = { workbuddy:100, traework:150 }`、`DEFAULT_SIGNIN_CREDIT` 从 `derive.js` 上移到 `config.js`；新增可测纯函数 `todayAddedFrom`。
+- **P1 · WebDAV 双写桥接收敛**
+  - 新增 `src/store/syncbridge.js` 作为同步账本文件清单的**唯一真源**（`ACCOUNTS_FILE` / `HISTORY_FILE` / `SYNC_FILES`），`store`/`history`/`webdav` 三处统一引用，消除清单漂移。
+  - 新增 `test/syncbridge.test.mjs`：同步"导出→清空→导入"幂等往返，锁定时序/账号归位行为。
+  - `webdav.js`：`syncNow` 拉取文件名由写死字面量改为 `SYNC_FILES` 解构（`ACC_FNAME`/`HIST_FNAME`）；移除未使用的 `importAccounts` 导入；保留 `ACCOUNTS_FILE`/`SYNC_FILES` 兼容导出供 `trae-gui` 消费。
+- **P2 · 凭据防入库鉴扫**
+  - `.gitignore` 补齐 `wb-sync.json`（WebDAV 同步配置，含用户名/密码）。
+  - 新增 `test/security.test.mjs`：断言凭据/账本文件必须被 `.gitignore` 覆盖、清单真源与忽略规则闭环、`workbuddy-checkin/` 子模块忽略 token 文件。
 
-### 验证
-- node --check 全部改动文件;`test/run-all.mjs` 12/12 通过(含 signin-detect T7);`report` 列对齐、累计已用非零;8081 服务运行正常、`/api/dashboard/all` 已含 `todayAdded` 字段
-- 版本戳 v1.4.61(前端卡片刷新即生效;后端 `todayAdded/yesterdayRemain` 字段需重启服务)
+### Changed
 
-## v1.4.60 (2026-08-10) · 截止日期默认显示今天
+- `package.json`：新增 `"test": "node --test"`。
+- README：新增「架构」章节（单真源/单采集入口/分层无环依赖 + 口径不变量），开发与测试补充 `npm test`。
 
-> **2026-08-11 补发(同版本号,无代码行为变更)**:公开发布 zip 凭证安全修复——v1.4.60 旧 Release 资产 `wb-sync.json` 曾含明文 WebDAV 密码,已替换为空壳干净包;`pack-platform.mjs` 部署说明改为动态标注(空壳包提示手动填 WebDAV),发布规范/配置要求补充「公开 zip 必须空壳」铁律。文档同步见 GitHub commits(d98173d4 / 9e463301 / b639dc63)。
+### Notes
 
-### 变更
-- **启动默认**:趋势面板「截止日期」输入框默认填入今天(`trendEnd = todayStr()` 在启动段、首次渲染前设置)→ 每日/每月视图默认以今天/当月为终点;清空输入框仍可恢复动态窗口/全量
-- 测试:render-lines.test.mjs 新增 T18(启动默认=今天+输入框同步);T1 改为显式清空后测动态窗口(3 天下限补未来仍保留)
-
-### 验证
-- node --check + npm test 12/12(趋势 74 断言);版本戳 v1.4.60(仅前端改动,服务实时读文件,刷新即可生效)
-
-## v1.4.59 (2026-08-09) · 低成本清理:+8 口径全收敛 / upload·download 共用循环 / 死导出清理
-
-### 变更（行为零变化，全量测试 12/12 通过）
-- **+8 时区常数全部收敛**:scheduler.js 固化节流键、history.js 的 exportLegacy 日键与 readingsForDay/oldDayKeys 的 CN_TZ_MS 全部改引 `src/time.js`(dayKeyOf/TZ_MS)——全后端 `8*3600` 仅存于 time.js 一处
-- **upload/download 共用循环**:webdav.js 新增 `uploadAll(cfg)`/`downloadAll(cfg)`;`syncNow()` 上传阶段复用 uploadAll;`/api/webdav/upload|download` handler 从各 15-16 行收薄到接线(循环不再重复)
-- **清理死导出**:derive.js 删除无调用方的 `export { dayKeyOf, dayOfOffset, startOfToday }` re-export(时区工具已由 time.js 直接提供)
-
-### 验证
-- node --check 全部改动文件;grep 确认 `8*3600` 内联零残留(仅 time.js);npm test 12/12;版本戳 v1.4.59
-
-## v1.4.58 (2026-08-09) · 架构重构:解循环依赖 / 薄路由 / 时区口径收敛
-
-### 重构（行为零变化，全量测试 12/12 通过）
-- **解 derive↔history 循环依赖**:
-  - 历史固化 `gcDaySummaries()` 从 derive.js 拆出到新模块 **`src/compute/gc.js`**（依赖 derive+history+time 单向）
-  - `history.js` 删除无调用方的 `buildDashboard()` 及其 `import { deriveAll }` → **依赖环断开**（history 不再依赖 derive）
-  - `derive.js` 恢复"纯派生"纯度（不再写库）；其 import history 收敛为只读函数
-- **薄路由**:`/api/webdav/sync` 的 85 行内嵌业务（拉/合/墓碑/清空保护/导/传/purge）抽回 **`src/compute/webdav.js` 的 `syncNow()`**，路由 handler 只接线 + SSE 广播
-- **时区口径收敛**:新建 **`src/time.js`**（TZ_MS/cnWall/cnDay0/dayKeyOf/dayOfOffset/startOfToday/cnNow），derive/history/present/gui 统一引用；删除 `cnNow` 在 present/render.js 与 wb-gui.mjs 的两份逐字重复
-- scheduler.js 改从 gc.js 取固化；gc-summary/signin-detect 测试改引新模块
-
-### 验证
-- node --check 全部改动文件 + npm test 12/12 通过；同步链路由 webdav-sync/tombstone-ttl 测试覆盖；版本戳 v1.4.58
-
-## v1.4.57 (2026-08-09) · 修复:每月视图清空截止日期误切回每日(场景走查 P-1)
-
-### 修复(🟡 UX,场景走查发现)
-- **根因**:`onTrendEnd()` 原逻辑「非每日模式一律 `changeMode('day')`」——在每月视图清空日期框想恢复"每月全量"时,被意外切回每日视图(操作跳转不符合预期)
-- **修复**:仅「选值」时自动切每日(日期框=每日视图专用语义);「清空」保持当前模式,恢复该模式默认窗口(每日=动态窗口/每月=全部月份)
-- 新增 `test/render-lines.test.mjs` T17(每月视图清空 → 保持每月模式 + 全量)
-
-### 验证
-- 全量测试 12/12 通过(趋势 72 断言);版本戳 v1.4.57
-
-## v1.4.56 (2026-08-09) · 趋势图每日/每月窗口上限 5 + 截止日期/月份选择 + 数据不足自动收缩
-
-### 变更
-- **每日视图窗口上限 7 天 → 5 天**:`dayWindow()` 动态窗口夹取 `[3,7]` → `[3,5]`(数据多时默认只看最近 5 天)
-- **「每日」按钮 = 以今天为终点**:点击即截止日期重置为今天(窗口 = 今天-4 ~ 今天,输入框同步)
-- **「每月」按钮 = 以当月为终点**:点击即截止日期重置为今天,每月视图以当月为终点取最近 5 个月(`monthWindow()`,跨年自动进位);未点击时每月视图仍显示全部月份
-- **截止日期选择**:趋势面板头部「截止日期」+ 原生日期输入框;每日视图以所选日为终点固定 5 天,清空输入框恢复默认窗口
-- **数据不足自动收缩(v1.4.56)**:手动指定截止日/月时,若窗口内有数据的天/月 < 5 → 收缩到 [窗口内最早数据日/月, 截止日/月],不留空刻度(如仅今天 1 天数据 → 只画当天一根柱);窗口内无数据 → 保持固定 5 格
-
-### 验证
-- `test/render-lines.test.mjs` T5 断言改 5 天窗口,新增 T8/T9/T10/T11(每日交互)、T12/T13(每月窗口/全量)、T14/T15(每日收缩 1/3 天)、T16(每月收缩);全量测试通过;版本戳 v1.4.56
-
-## v1.4.51 (2026-08-09) · 修复墓碑 TTL 过期同步复活 P0(墓碑物理清理晚于上传)
-
-### 修复(数据安全 P0,对齐 edge-multi-account-cookie v2.11.3 教训)
-- **根因**:`/api/webdav/sync` 合并阶段原执行 `purgeOldTombstones()`(顺带清理过期墓碑)——**时机早于第二步上传**。墓碑 TTL 30 天过期后,同步时墓碑在"写入远端备份"前就被本地删除 → ① 合并时墓碑已删,`mergeAccountsSmart` 把远端旧账号当"无墓碑"导入 → **当次同步就复活**;② `exportAccounts()` 导出不含墓碑 → 远端备份被覆盖丢失删除标记 → **其他设备(本地有旧账号)同步时删除"复活"**(mock 复现:首次同步远端含墓碑 → 再次同步远端墓碑消失 → 设备 C 的 bob 复活)
-- **修复**:`purgeOldTombstones()` 从合并阶段移除,**移到上传成功之后**——墓碑先随本次上传写入远端权威备份,确认传播后再清理本地过期墓碑,与"墓碑须存活足够久(传播删除)后被物理移除"语义一致
-- 新增 `test/tombstone-ttl-bug.test.mjs`(3 断言:过期墓碑再同步远端标记不丢 + 设备 C 删除不复活)
-
-### 验证
-- 全量测试 12/12 通过(含新增墓碑 TTL 过期回归);既有 e2e S3 删除传播/S4 清空保护/S5 清空不写墓碑不回归
-
-## v1.4.50 (2026-08-09) · 接入网站图标 favicon(打包标准 emoji 📉)
-
-### 新增
-- **网站图标**:wb-gui.html `<head>` 加内联 SVG data-URI favicon(`<svg><text>📉</text></svg>`,与 tool.json icon 一致)——**零文件、零后端改动**,子路径挂载自适应;PNG 文件方案已撤回
-
-### 验证
-- npm test 11/11 通过(191 断言);端到端 GET /favicon 页面 data-URI 正常解析
-
-## v1.4.49 (2026-08-09) · 场景走查修复:同步/测试前端超时放宽
-
-### 修复（场景走查发现）
-- **根因**:一键同步/自动同步/保存并测试走前端 `api()` 默认 **15s 超时**;但同步链路=下载 2 文件(各 60s 超时)+合并+导出+上传 2 文件(各 60s 超时),DDNSTO 慢速穿透下易超 15s → 前端误报「请求超时」,而**后端 handler 不随前端断开取消**——用户看到"失败"但数据实际已同步,可能误导重复点击
-- **修复**:`syncAct` 按动作放宽超时——`sync`=90s、`test`=30s(其余默认 15s)
-- 影响:手动同步、自动同步(autoSync→syncAct('sync',true))、保存并测试(saveSyncCfg→syncAct('test',true))全部受益
-- 验证:auto-up 14 断言 + 全量 11 文件通过;版本戳 v1.4.49
-
-
-## v1.4.48 (2026-08-09) · 紧急修复:清空账号池误写墓碑致同步清空云端
-
-### 事故(严重,已修复)
-- **现象**:用户「清空本地数据」后点「一键同步」→ 远端(WebDAV)账号被覆盖为空
-- **根因**:
-  1. v1.4.46 的 `/api/clear-data`(清空账号池)对**全部账号写墓碑**——把"本地重置"误当成"全设备删除"
-  2. 同步合并时墓碑判定:`mergeAccountsSmart` 见远端账号 `updatedAt ≤ deletedAt` 即从本地删除
-  3. 清空后墓碑时间(now)必然 > 账号 updatedAt(历史时间) → **远端全部账号被删** → 本地空账号池 → 导出上传 → **云端被清空**
-- **修复**:
-  1. `/api/clear-data` 清空账号池**不再写墓碑**(本地重置不传播删除;仅 `/api/del` 单账号删除保留墓碑语义)
-  2. `/api/webdav/sync` 加**清空保护**:拉取成功且远端有账号、但合并后本地账号池为空 → **拒绝上传**并报错(防墓碑误删/异常把云端清空)
-- **数据恢复**:云端数据未被实际清空(NAS 上 wb-accounts.json 6 账号完整,系用户旧副本重新上传);本地误写墓碑已清理、账号已从云端恢复
-
-### 验证
-- e2e 新增 S4(清空保护:墓碑误删→同步报错、云端不丢)+ S5(clear-data 不写墓碑),**19/19 通过**
-- 全量测试通过;版本戳 v1.4.48
-
-
-## v1.4.47 (2026-08-09) · 修复备份剥离导致包级口径降级(今日已用被放大)
-
-### 根因(v1.4.32 瘦身与 v1.4.43 包级口径的历史冲突,被同步功能暴露)
-- **现象**:同一份数据,旧副本(v1.4.44,原始快照)今日已用 321/累计 4664;新副本(同步导入)今日 1169/累计 5655——数字被放大
-- **根因链**:
-  1. v1.4.32 备份瘦身:`exportLegacy` 导出 wb-history.json 时**只保留最新一组快照的 giftPackages**,历史快照全部剥离(上传 7.3s→0.4s 的代价)
-  2. v1.4.43 包级口径 `consumeByPack` 需要**每天「首条+末条」快照的 giftPackages** 计算存活包净增量
-  3. 同步/下载恢复后,历史快照(含当天首条)无 giftPackages → `consumeByPack` 首条无包 → **自动降级为增量口径 `consumeByPos`** → 失效包当天消耗被计入 → 今日已用/累计被放大(退回 v1.4.43 修掉的毛病)
-- **实测证据**:8/8 全天 1020 条快照仅 24 条(1%)含 giftPackages,6 账号当天首条全被剥离;包级=降级=增量=1169(旧副本包级=321)
-
-### 修复
-- `exportLegacy`(history.js)剥离策略改为 **「每天保留首条+末条快照组完整(含 giftPackages),中间组剥离」**
-  - `consumeByPack` 只读每天首末两条 → 恢复后口径不降级,数字回到包级
-  - 体积几乎不变:每天 100+ 组快照 → 仅 2 组带包(备份仍百 KB 级)
-
-### 数据恢复指引(已同步的剥离数据无法自愈)
-1. 旧副本(原始 readings 完整)更新到本版本 → 手动「上传」一次(新剥离策略导出)
-2. 其他设备「一键同步」→ 下载导入 → 派生自动回到包级口径
-3. 也可直接整体替换 credits.db(从旧副本复制)
-
-### 验证
-- 新增 T6(webdav-sync.test.mjs,23 断言):失效包场景(包级 30 vs 增量 90)验证——导出后**首末组保留 giftPackages、中间组剥离、恢复库派生仍包级 30 不降级**
-- 全量测试通过;版本戳 v1.4.47
-
-
-## v1.4.46 (2026-08-08) · WebDAV 一键同步(上传/下载合并) + 删除墓碑传播
-
-### 核心:上传+下载 → 一键同步(参考 edge-multi-account-cookie「先拉后传」方案)
-- **新接口 `POST /api/webdav/sync`**：① 拉取远端 wb-accounts.json + wb-history.json(404=首次,跳过拉取) → ② 账号 **smart 合并**进本地(双向取最新)、历史**合并导入**(原有逻辑) → ③ 导出本地全量覆盖上传(远端固定保留最新 1 份)
-- **拉取失败(非 404)即中止,不上传**——防本地旧数据覆盖远端新数据(与参考项目一致)
-- 前端:「⬆️ 上传」「⬇️ 下载」两个动作/按钮**全部合并为「🔄 同步」**——操作条快捷 `[🔌][⬆️][⬇️]` → `[🔄]`,弹窗「保存配置+测试连接」→「💾 保存并测试」、「上传+下载」→「🔄 一键同步」;同步为无损合并,无需删除确认弹窗
-- 旧 `/api/webdav/upload|download` 接口保留(向后兼容),前端不再调用
-
-### 删除墓碑传播(v1.4.46,解决"删除不跨设备")
-- **根因**:普通合并只能"双向取最新",无法表达"某个账号被删了"——远端没有它,合并时被当成"本地独有保留",旧备份会把已删账号复活
-- **修复**:新表 `tombstones(uin, deletedAt)`;删除账号(/api/del)与清空账号池(/api/clear-data)写墓碑;`mergeAccountsSmart()` 合并时墓碑三态判定——
-  - 远端账号 updatedAt ≤ deletedAt → 保持删除(不复活)
-  - 远端新数据 > deletedAt → 复活导入
-  - 本地账号 updatedAt ≤ deletedAt → 删除传播到本地;> deletedAt → 删除不生效(删后又更新过)
-- 墓碑随 wb-accounts.json 备份传播(`exportLegacy` 导出带 tombstones,旧格式兼容);TTL 30 天 `purgeOldTombstones` 自动清理
-- rename 补 `updatedAt`(防 smart 合并被远端旧显示名覆盖)
-
-### 自动上传 → 自动同步
-- 定时任务由"只上传"升级为"先拉合并再上传"(同步无损);文案「自动上传」→「自动同步」;守卫保留(WebDAV 配置被清空自动关开关)
-
-### 验证
-- 新增 `test/webdav-sync.test.mjs`(17 断言:smart 四态/墓碑三态/导出往返/TTL)+ `test/webdav-sync-e2e.test.mjs`(14 断言:mock WebDAV 端到端——首次同步/双向合并/墓碑跨设备不复活);auto-up 适配 autoSync
-- 全量 **11 文件 190+ 断言全过**;版本戳 v1.4.46
-
-
-## v1.4.45 (2026-08-08) · 前端 XSS 转义收口 + 冗余清理
-
-### 安全（前端 innerHTML 注入收口）
-- **根因**：账号「显示名/名称」可自定义，但 `acctName()` 返回值在 5 处渲染点直接拼接进 innerHTML **未转义**（`escAttr` 此前只在图表 data-n 使用）——含 `<img onerror>` 等 HTML 时会被浏览器解析执行（存储型 XSS 面，可破坏页面/注入脚本）
-- **修复**：全部 innerHTML 注入点统一过 `escAttr()` 转义——
-  - `renderCards`：卡片名 `nm` + 查询失败行错误信息
-  - `renderDashTable`：手机卡片版（`.dname`）+ 桌面表格版（账号列）
-  - `renderLines`（chart.js）：图例账号名（此前漏网）
-  - `openDetail`（ops.js）：明细弹窗标题
-  - `openRename`（ops.js）：改名输入框 value 属性
-- **增强 `escAttr`**（state.js）：补 `>` 与 `'` 转义（原仅 `& " <`），属性上下文彻底防逃逸
-- 验证：恶意 displayName 注入复现（`<img src=x onerror=alert(1)>`）→ 修复后渲染为纯文本转义实体；正常名称渲染不变
-
-### 清理
-- `wb-gui.mjs` `/api/credits`：移除冗余三元（两分支状态码恒为 200）
-
-### 备注（排查结论，未改）
-- **时区口径**：经 48 时刻 + 跨日临界快照验证——「后端容器(UTC) + 浏览器(+8)」形态下前端本地时区计算与后端 +8 口径**完全一致**（v1.4.29/30 已修后端即足够）；仅当浏览器自身时区 ≠ +8（跨时区访问）才需前端配合，本版不加（避免过度修改）
-- **性能**：`deriveAll` 每账号 2 次 SQL（走 uin+ts 索引）实测 14.4ms/30 账号 × 18000 快照，批量全表扫描反而更慢（22.5ms）——保持现状
-- **scheduler `sessionExpiresAt`**：非死代码（edge-collector 仍在采集写入，用于凭证临期加密采样），保留
-
-- 验证：`npm test` 8 文件 120+ 断言全过；版本戳 v1.4.45（改前端必须 bump，浏览器缓存兜底）
-
-
-## v1.4.44 (2026-08-06) · 二轮审计安全加固(daemon 鉴权 / CORS 同源 / admin 写面)
-
-### 安全(高危)
-- **edge-daemon `/eval` `/cmd` 加 token 鉴权**(edge-daemon.mjs):启动生成随机 token 落盘 `edge-daemon.token`(cwd),除 `/status` 外所有端点必须携带 `X-Daemon-Token`,否则 401——**浏览器跨域带自定义头会 preflight 失败,恶意网页无法再对已登录 WorkBuddy 页面执行任意 JS 窃取 cookie**。`daemon-client.js`/`wb-gui.mjs` 请求自动读 token 文件携带;平台浏览器桥模式(CAP_ENSURE_EP)由平台代管不受影响。实测:无/错 token 401、正确 token 放行、/status 开放
-- **CORS `*` 收窄为同源**(wb-gui.mjs):跨源请求不再返回 `Access-Control-Allow-Origin`,浏览器同源策略拦截——防任意网页跨域读取本机 API(账号 cookie 等敏感数据)。实测跨源请求无 CORS 头
-- **未鉴权写面挂 admin**:`/api/scheduler/run`(写库)与 `/api/open-workbuddy`(打开浏览器,副作用)设置密码后需 `X-Admin-Token`(未设置密码仍开放)
-
-### 数据一致性
-- `db.js` 加 `PRAGMA busy_timeout=5000`(GUI+CLI 双进程并发写不再立即 SQLITE_BUSY)
-- `store.js saveAccounts` / `history.js appendSnapshot` 多步写包事务,失败回滚,避免半写状态
-
-### 验证
-- 8/8 测试全过;daemon 鉴权(无/错/对 token)、CORS 跨源拦截本地实测
-
-## v1.4.43 (2026-08-06) · 消耗口径收口包级 + WebDAV 自动上传
-
-- **fix(口径最终方案:包级净增量)**:「今日已用 342、累计才 38」的根因——增量口径(`consumeByPos`)在官方**包失效日**把今日已用算得比累计还大:今天消耗集中发生在当天从 active 转失效(status≠0)的包上,失效包的 used 不再计入累计净值,增量口径却永久保留它们的正增量(2026-08-06 实测:张妈妈今日 342、累计 38)
-  - 新口径 `consumeByPack`:只统计**末快照仍 active 的包**的 used 增量;基线取**首快照全部包**(不过滤 status,防官方状态波动把存量包误判为"今天新增"而虚高);**首/末快照任一无包数据(采集异常/旧快照)降级 `consumeByPos`**;应用于 todayUsed/dailyUsed/gcDaySummaries
-  - 效果:**今日已用必然 ≤ 累计已用**(用户直觉),历史日(8/5 包到期日)不再被抹成 0;真实库验证:坤坤今日 279≤累计 753、张妈妈 356≤1207,8/5 保留;小陈首快照无包数据(00:48 采集缺失)降级增量 → 今日 0(修复虚高 1789)
-- **fix(累计已用语义修正)**:原「累计已用」取最新快照 used **净值**,包失效日远小于真实历史消耗(张妈妈今日 42、累计也 42,用户报"累计应该比今日大很多")。新增 `derived.consumed` = **历史每日消耗之和**(Σ dailyUsed.used,含固化摘要日),前端 hero/仪表盘卡/表格行/合计的「累计已用」统一改读它;真实库验证:张妈妈累计 899 > 今日 48、坤坤 493 > 19、爸爸 1027 > 88
-- **fix(口径尝试后回滚,勿再改回)**:净值口径 `max(0, 末−首)` 曾让三数字自洽,但包到期日会把当日消耗算成 0(8/5 消耗 271 显示 0,用户报"5/6 日数据没了")→ 已废弃;包级口径是最终方案(真实 + 自洽)
-- **feat**:WebDAV **自动上传**(登录/配置过云同步后,操作条出现「⏫ 自动上传 [N] 小时 开/关」控件):可填写间隔(默认 12 小时,1~168),到点自动把账号池+历史备份到 WebDAV;开关与间隔 localStorage 持久化,与「页面自动刷新」同构(前端定时,静默上传、失败必 toast)
-- **ui**:操作条「自动刷新」文案统一为「页面自动刷新」(控件/toast/页脚三处),明确其语义=前端定时拉数据刷新界面(与后端 15 分钟固定采样频率无关)
-- **ui**:「页面自动刷新」「自动上传」的开关由文字按钮改为 **iOS 风格滑块**(`.switch` 组件,勾选=开/绿色);移除 SSE 状态灯 `streamDot`(`setStreamStatus` 仅保留 `streamOk` 供刷新策略判断);新增正式脚本 `sea-build/gen-frontend.mjs` 重新生成前端内嵌
-- **build**:`src/config.js` 支持 `WB_TOOLS_DIR` 环境变量覆盖数据目录(本地预览/测试用,生产不设即原行为);重新生成 `build/frontend-files.mjs`(本地源码版预览必须重新生成,否则前端走打包时的旧内嵌,新控件/文案不出现)
-- **refactor(审计修复)**:①actions.js 两个间隔 change 监听器抽公共 `bindIntervalInput()`(core.js,autoMin/autoUpH 共用);②`autoUpload` 合并进 `syncAct("upload")` 单一路径,silent 语义改为"静默成功、失败必报";③autoUpload 加守卫:WebDAV 配置被清空时自动关闭开关并提示(防周期失败骚扰),`syncAct("clear")` 联动关闭;④`updateAdminBtn` 从 actions 归位 core(消除 core→actions 层级倒挂);⑤清理死码/过期注释(renderDash 告警条残留、state/actions 文件头);⑥`LS_FOLD` 常量归位 state.js;⑦HTML `.auto` 内联样式收敛为 `.auto-box` 类
-- 验证:derive-consume 保持增量口径(9 项)+ auto-up 控件仿真测试扩至 14 项(含守卫),8/8 测试全过
-
-## v1.4.42 (2026-08-06) · 平台版不自动弹浏览器 + 工具声明版本
-
-- **fix**:平台版(file 采集)跑在 Windows 上时,启动/添加工具不再自动弹浏览器(仅桌面版 edge 采集自动打开)
-- **feat**:tool.json 声明 `version`(供 tools-center 覆盖导入识别升级/降级并确认)与 `group: 监控`(平台单分类隐藏 tab)
-
-## v1.4.41 (2026-08-06) · 趋势图点击柱子独显 / 点击空白恢复
-
-- **点击柱子** → 每天只显示该账号的柱子(独显该柱数据);点击合计柱 → 每天只显示合计;再点同一柱子或**点击图表空白** → 恢复全部柱子一起显示
-- 实现:barChart 支持 `soloKey` 参数(渲染时只保留选中账号/合计);柱子加 `data-key`;新增 `initChartSolo()` 点击事件委托(actions 启动段接线)
-- 验证：7/7 回归测试 + 图表仿真(默认/solo=账号/solo=total 三种模式输出断言全过)
-
-## v1.4.40 (2026-08-06) · 「打开网页」按钮(登录收录 cookie 一键直达)
-
-- GUI「＋ 添加账号」旁新增 **「🌐 打开网页」** 按钮:一键经 edge-daemon 在调试 Edge 中打开 `workbuddy.cn` 登录页,登录后直接点「添加账号」收录 cookie(免手动开浏览器)
-- 后端新增 `GET /api/open-workbuddy`(调 daemon `/newtab`,daemon 不可用时返回明确提示);前端 `openLoginPage()` 处理
-- 实测:调用后在调试 Edge 中成功新开 `https://www.workbuddy.cn/` 标签页
-- 验证：7/7 回归测试通过
-
-## v1.4.39 (2026-08-06) · 全账号查询恢复 + 串号防护 + 签到基线修正 + SEA 单文件 exe
-
-- **修复账号查询全部失败(400 Cookie Too Large)**:采集端 `Network.getAllCookies` → `Network.getCookies({urls})` 精确采集(治本);查询端新增 `sanitizeCookieHeader()`(剔除 KC_RESTART 等一次性令牌/广告跟踪 cookie + 同名去重 + 超 7KB 降级认证白名单),历史脏数据即时生效(治标)。详见 `docs/问题记录/账号查询400-CookieTooLarge.md`
-- **修复账号串号**:`sanitizeCookieHeader` 同名去重"保留最后一份"在多会话混合的脏数据下把"爸爸"的凭证换成"鲁妈妈"会话;`src/compute/query.js` 新增 `assertOwner()` —— 接口返回 Uin ≠ 登记 Uin 即报错不落库(防再次污染);已修复数据并清理串号期 10 条污染快照。详见 `docs/问题记录/账号串号-清洗后爸爸查到鲁妈妈.md`
-- **修复签到检测误判**:`detectSignIn` 基线由「今日首条快照」改为「昨日最后一条快照」(用户清晨签到早于首条快照时误判未签到;签到包只在签到当天新增);`gcDaySummaries` 同因修正,新增 `dayOfOffset()`。详见 `docs/问题记录/签到检测误判-首条快照晚于签到.md`
-- **SEA 单文件 exe 支持**(免装 Node 双击即用):
-  - `src/config.js` 路径双兼容(原生 ESM `import.meta.url` / SEA bundle `__filename`=exe 路径,数据目录=exe 所在目录)
-  - `edge-daemon.mjs` 重构为 `createDaemonServer()` 可导入模块 + 独立运行入口;`wb-gui.mjs` 启动时内嵌 daemon(一个进程同时提供 GUI 8080 + 浏览器代理 8129)
-  - `wb-gui.mjs` 前端文件内嵌(`build/frontend-files.mjs`,构建产物,已 gitignore),静态路由内存优先、磁盘回退
-  - 构建脚本 `build-sea.mjs`(esbuild bundle → SEA blob → postject),产物 `WorkBuddy-Credits-Monitor.exe`(Windows 单文件,~83MB)
-- **文档**:新增 `docs/新手使用手册.md`(面向新手的完整使用说明,含 exe 方式)
-- 验证：7/7 回归测试通过；6/6 账号归属校验通过；签到 6/6 与快照签到包逐一吻合
-
-## v1.4.38 (2026-08-05) · 前端结构优化（折叠/图表交互归位）
-
-- 折叠逻辑 `toggleFold/applyFold` 从 state.js 归位 **core.js**（UI 基础设施），state.js 恢复纯状态/helper
-- 图表 hover 委托从 actions.js 聚合归位 **chart.js**（`initChartTip()`，由启动段接线，副作用仍收敛 actions 启动段）
-- tool.json icon `💎 → 📉`（与「积分消耗趋势」标题 emoji 同款）
-- 验证：7/7 测试全过；服务端 curl 确认函数分布正确（toggleFold 仅 core、initChartTip 仅 chart、state 无折叠）
-
-## v1.4.37 (2026-08-05) · 修复日期标签锚点（首尾组不居中的真根因）
-
-- **根因**：X 轴日期标签旧逻辑首尾用 `text-anchor="start"/"end"`，x 是文字边缘而非中心 → 首尾日期视觉中心偏离柱子组中心 16px（中间组 middle 所以"4 日居中"）
-- 修复：统一 `text-anchor="middle"` + x 夹取 `Math.max(L+16, Math.min(w-R-16, cx))` 防压 Y 轴/右缘
-- 验证：node:vm 真实渲染 6+1 柱，三组文字中心 == 柱子组中心 **0.0px 偏差**
-
-## v1.4.36 (2026-08-05) · 图表整列触发区（矮柱子好 hover）
-
-- 每根账号柱/合计柱追加透明触发区（`fill="transparent"` 整列高=绘图区全高，宽=柱宽，data 与柱子一致）
-- 鼠标移到柱子所在竖列任意高度都能触发悬浮浮层，矮柱子（2-3px）不再难 hover；透明不挡视觉与日期
-
-## v1.4.35 (2026-08-05) · 柱子组居中 + 全版本戳兜底
-
-- 合计柱取消右侧 `+bw` 间隔改为**紧贴**账号柱；柱子组总宽（账号+合计）在组内居中 → 日期标签（组中心）与柱子组中心对齐
-- bw 公式分母改为含合计柱数（slotCount），语义清晰且 7 天窗口更紧凑
-- 全版本戳 v1.4.34 → v1.4.35（URL 变，绕开浏览器强缓存——排查"改了没生效"的兜底手段）
-
-## v1.4.34 (2026-08-05) · 面板标题点击折叠 + 图表字号微调
-
-- 「📉 积分消耗趋势」「📋 账号总览」标题区域**点击即折叠/展开**（无按钮，`.phead.foldable` + `.folded + .pbody{display:none}`，状态存 localStorage `wb_fold` 刷新保持；标题内模式按钮不误触发）
-- 图表辅助文字调小：「单位:积分/日」与 X 轴日期 10px → **8px**
-
-## v1.4.33 (2026-08-05) · 每日签到检测（元数据推断，卡片标记）
-
-- **需求**：账号每日签到领积分（第 1-6 天 100 分/天、第 7 天 1000 分），卡片标记"已签到"。
-- **调研**：WorkBuddy 官方签到接口存在（`/billing/meter/check-gift-claimed`、`claim-gift`）但直连被 APISIX 网关 401 拦截；改用**纯元数据推断**（用户思路）——数据实证：签到 = 新增一个「到期日 = 领取日 + 1 自然月（对日）」的满额赠送包（8/5 签到 → 新增 9/5 到期的包；0813 08:50 包数 46→47、配额 +100 铁证）。
-- **实现**：
-  - derive 新增 `detectSignIn(firstPacks, lastPacks, todayKey)`：最新快照存在「今日首条没有 + cycleEndTime 对日 = 今天+1月」的包 = 已签到；对日匹配防昨天包误判、不要求满额防签到后消耗漏判、对比首条防已存在包误报
-  - deriveAccount 输出 `signedInToday`（今日首条 vs 最新快照对比）
-  - 前端卡片「今日消耗」行加签到徽标：✅ 已签到 / ⏰ 未签到
-  - **固化摘要补签到字段**：day_summary 加 `signedIn` 列（含 ALTER 迁移），gcDaySummaries 固化时记录当天签到状态 → 历史签到可回查；备份镜像 summaries 带 signedIn
-- **验证**：新增 test/signin-detect.test.mjs（7 断言：今天签/昨天不误判/已消耗仍识别/无包/首条已存在/固化 signedIn）；全量 **7 文件 120 断言全过**；真实数据 6 账号检测正确（5 签 1 未签）
-- 版本戳 v1.4.33，服务已重启
-
-## v1.4.32 (2026-08-05) · 历史数据固化 + 备份瘦身（存储与同步优化）
-
-- **P1 备份瘦身**：
-  - `wb-last-data.json`(最近刷新缓存,非账本数据)移出 WebDAV 备份 → 上传少 0.6MB
-  - 删除死配置 `HISTORY_LIMIT=500`(import 未用)
-- **P0 历史固化(规划落地)**：防止历史无限增长
-  - 新表 `day_summary`(uin,day,used,startRemain,endRemain,PK uin+day) = dailyUsed 摘要持久化
-  - `gcDaySummaries()`：把「T-2 及更早」每日快照压缩为摘要后清理明细；幂等(摘要已存在即跳过)；保留窗口=昨天+今天(供 todayUsed/dailyUsed 现算)；只处理有快照的账号(不依赖账号池)
-  - scheduler 每轮 tick 按天节流自动执行一次(服务重启当天会再跑,幂等无害)
-  - derive 双源读取：旧日从 day_summary 补齐,快照日期优先
-- **P0 备份镜像含摘要**：`wb-history.json` 导出格式扩展为 `{snapshots(近期), summaries(全部摘要)}`；importLegacy 恢复时同步恢复 day_summary
-  - **剥离历史快照的 giftPackages**(单条 6.5KB 体积大头,expiring 只读最新快照,仅最新一组保留) → 镜像 **3.8MB → 294KB(-92%)**,上传 7.3s → **0.4s**
-- **P2 环境清理**：删除 10 个旧发布 zip,保留最新版(平台/Windows v1.4.30 + docker-update v1.4.28)
-- **验证**：新增 test/gc-summary.test.mjs(12 断言:固化/幂等/派生不变/镜像恢复);全量 6 文件 **113 断言全过**;真实库固化 8/3(6 账号摘要)派生值不变、expiring 正常;云端上传实测 0.4s
-- 版本戳 v1.4.32
-
-## v1.4.31 (2026-08-05) · 消耗口径改为「已用正增量累加」,修复官方赠送包数据调整日今日已用归零
-
-- 用户反馈:今日(8/5)部分账号明明有使用,但今日已用显示 0(其余人「刷新不出来」)。
-- **根因**:官方今天(8/5)对多个账号的赠送包数据做了调整——包消失/重置导致「已用」回退(如 0813: 296→0、6627: 92→0),「剩余」漂移甚至增加(0813 首条 3250→最新 3280)。旧口径「今日首条剩余 − 当前剩余」被干扰 → 算出 0 或负值(钳 0)。
-- **修复(derive.js)**:新增 `consumeByPos(arr)`——对按时间排序的快照序列,累计「已用」正增量(正常消耗累加,包重置导致的已用回退时 prev 同步到回退点、重新从低值累计)。应用于 todayUsed 与 dailyUsed/series(每日趋势),口径统一。
-- **同类漏洞审查(本轮)**:
-  - `consumed`(累计消耗)是唯一剩余「剩余差」口径(`first.totalRemain - last.totalRemain`),官方包变更时同样失真,且**前端/CLI/测试零消费**(死字段)→ 已删除,派生层只保留被消费字段
-  - 审查确认安全:前端明细表用 `dailyUsed.used`(新口径)、hero 环比昨日用新口径、expiring1/2/3/7d 与 giftBuckets 基于最新快照 giftPackages(当前视角,包变更后自动反映新状态)、采样/调度/同步/导入链路无类似问题
-  - 遗留(非漏洞):官方数据反复震荡时正增量口径仍偏高(如坤坤 125),属数据源本质限制
-- **验证**:新增 test/derive-consume.test.mjs(9 断言:正常消耗=60/包重置=66/持平不变/昨日今日序列/回退无负消耗);全量 5 文件 **101 断言全过**。真实数据:张妈妈 0→77、鲁妈妈 0→74、坤坤 52→125(官方震荡导致略偏高,数据源本身问题)。
-- 版本戳 v1.4.31,服务已重启。
-
-- 用户反馈:页面左上角(header「积分指挥中心」下)时间显示 `8/4 16:47`,实际本地是 `8/5 00:47`。
-- **根因**:与 v1.4.29 同源——`/api/all` 的 `fetchedAt` 用 `new Date().toLocaleString("zh-CN")` 依赖进程时区,Docker 容器(UTC)下显示 UTC 时刻。
-- **修复**:wb-gui.mjs 与 src/present/render.js 新增固定中国时区(+8)的 `cnNow()`,替换全部依赖进程时区的时间显示(Web UI fetchedAt 2 处 + CLI 渲染 3 处),与 derive 自然日口径一致。
-- 验证:模拟 `TZ=UTC` 运行 `cnNow()` 输出 `2026/08/05 00:49:29` 与本机一致;实跑 `/api/all` fetchedAt 正确。92 断言全过。
-
-## v1.4.29 (2026-08-05) · 派生自然日固定中国时区(+8),修复容器 UTC 错位
-
-- **根因**:docker 容器(node:alpine)默认 UTC,而 derive 的自然日计算用"进程本地时区" → 容器里 8/3 数据被算成 8/2(趋势缺 8/3)、今日已用基线取到 8/4 晚间(800 多)。edge 桌面(Windows GMT+8)正常,所以"edge 对、docker 错"。
-- **修复**:derive.js 的 `dayKeyOf`/`startOfToday`/`deriveGiftExpiry`(fmtD/dayKey/limit)全部改为**固定 UTC+8 口径**(cnWall/cnDay0 辅助),与部署环境时区无关;容器/桌面结果一致。
-- 双保险:docker-compose.yml、Dockerfile 加 `TZ=Asia/Shanghai`。
-- 验证:模拟容器 `TZ=UTC` 跑 derive → dailyUsed 正确含 8/3、todayUsed 7(原 800+)、expiring3d 正常。92 断言全过(沙箱 +8 行为不变)。
-- 版本戳 v1.4.29;服务已重启。
-
-## v1.4.28 (2026-08-05) · WebDAV 网络超时自动重试 + 大文件超时放宽
-
-- 用户反馈云同步不稳定、间歇超时。实测 DDNSTO 连接 86~209ms、上传 3.16MB(wb-history.json,快照含赠送包明细导致 3.6MB)仅 7.3s——超时根因是 15s 临界 + 穿透抖动。
-- 修复:`req()` 对网络超时/连接错误退避重试 2 次(0.8s/1.6s);上传/下载大文件超时放宽到 60s(小请求仍 20s)。叠加 423 重试,穿透抖动+大文件不再失败。
-- 附:排查中发现 wb-sync.json 的 url 被清空(00:24),上传报 URL 解析错误——配置地址需重新填写。
-- 92 断言全过;服务已重启。
-
-## v1.4.27 (2026-08-05) · 图例区加「合计」标签 + 合计柱去文字
-
-- 趋势图图例区**最右侧新增「合计」标签**(灰色,与合计柱同色;点击隐藏/显示合计柱,交互与账号图例一致)。
-- 合计柱顶部**去掉「合计」二字,只保留数字**(说明由图例承担,柱上不重复)。
-- TOTAL_COLOR 提升为 chart.js 顶层常量(barChart 与 renderLines 共用)。
-- 测试 T10 更新(图例含「合计」、柱上无「合计」文字);92 断言全过。纯前端无需重启。
-
-## v1.4.26 (2026-08-05) · WebDAV 上传 423 锁重试
-
-- 用户反馈「上传 wb-history.json 失败(HTTP 423)」。探测确认:DDNSTO 穿透的 WebDAV 服务器**无持久锁**,423 是瞬时锁(文件被其他程序/同步任务短暂占用)。
-- 修复:`uploadFile` 对 423 做**退避重试 3 次**(1.2s/2.4s),仍失败时提示"文件被服务器锁定,请稍后重试"。
-- 恢复:探测期间意外用 probe 覆盖了云端 wb-history.json,已用本地完整版(338 条快照,8/3×292 + 8/4×46)重新上传恢复。
-- 91 断言全过;服务已重启(后端改动)。
-
-## v1.4.25 (2026-08-05) · 每日窗口改为「数据对齐」+ 上限 7 天
-
-- 窗口语义调整:不再"以今天为中心对称",改为**从最早数据日向右延伸**(2 天数据 → 8/3 8/4 8/5,折线有伸展空间);数据超过上限取**最近 span 天**(终点 = 最晚数据日)。
-- 上限 10 → **7 天**;跨度仍夹在 [3,7]。
-- 修复时区错位:daySet 日期键改用本地自然日(getFullYear/Month/Date),原 toISOString().slice(0,10) 是 UTC 日期会错位一天。
-- 测试 T1(1 天→今天/明天/后天)、T5(15 天→最近 7 天=今天-6~今天)重写;91 断言全过。纯前端无需重启。
-
-## v1.4.24 (2026-08-04) · hover 浮层改为三段式（名字最上）
-
-- 浮层排版：第一行**名字**(15px)→ 第二行**数量**(26px 粗体)→ 第三行**占当前 X%**(14px 灰)。删除 .ct-top 行内结构。91 断言全过。纯前端无需重启。
-
-> **合并远程提交(2026-08-04 上午,另一环境推送)**：本大提交同时合入远程 1d9f393 / 74c2a32 的增量——
-> 浏览器桥客户端双模式(平台托管 CAP_ENSURE_EP 懒加载 + 独立降级直连 8129,合入 `src/collect/daemon-client.js`)、
-> 平台接入配置 `tool.json`(tools-center app 型托管,端口 8123)、
-> Linux 容器启动兼容(win32 判断 + spawn 静默,已含)、
-> `mergeAccounts`(WebDAV 账号池合并导入,补入 `src/compute/store.js`)、
-> `DEVELOPMENT.md` 与 `docs/问题记录/edge-daemon连接发现机制.md` 更新。
-> 远程对旧 `lib/*` 的 fetch 化/写盘简化等已由 src/ 重构版覆盖,不重复合入。
-
-## v1.4.23 (2026-08-04) · hover 浮层去时间 + 排版重排
-
-- 浮层去掉时间信息;排版改为两行:第一行「数量(26px 粗体) + 占当前 X%(15px 灰)」baseline 对齐,第二行名字(14px)。合计柱显示「110 · 占当前 100% + 当日合计」。91 断言全过。纯前端无需重启。
-
-## v1.4.22 (2026-08-04) · 趋势图表拆分为 chart.js + 合计柱标签 + hover 浮层增强
-
-- **结构**：图表相关（barChart/dayZero/dayWindow/renderLines/toggleLine/changeMode）从 render.js 拆到新文件 **wb-gui.chart.js**（render.js 378→216 行）；HTML 加载 7 个脚本、wb-gui.mjs 静态路由 6→7、server-routes 断言与 vm-env 文件列表同步加 chart.js（并修了 server-routes 复制文件正则漏 chart.js 的坑）。
-- **合计柱标签**：合计柱顶部在数字上方加小字「合计」说明（#94a3b8，柱身同色）。
-- **hover 浮层增强**：显示「大数字 + 名字 + 占当前 X%（该组合计占比）+ 时间」三行；账号柱渲染时算好 `data-pct`（v/dayTotal），合计柱 data-pct=100；CSS 放大（.ct-v 20→26px、新增 .ct-s 14px/.ct-p 12px、padding 6/10→8/12）。
-- **清理**：删 `.acct-foot` 死 CSS；render.js 头注释去"折线"、actions.js 浮层注释同步。
-- 验证：npm test 4 文件 **91 断言全过**；首页 7 脚本 v1.4.22；服务已重启（后端路由改动）。
-
-## v1.4.21 (2026-08-04) · 柱状图每组右侧隔一个柱宽新增「当日/当月合计」柱
-
-- 每个时间点（每日=天、每月=月）账号柱右侧**间隔一个柱宽**画一根中性灰（#94a3b8）合计柱 = 该组所有账号消耗之和，`data-n="当日合计"/"当月合计"`，独立 `<g id="line-total">` 不随图例显隐。
-- **Y 轴最大值纳入组合计**（否则合计柱超出顶部）；「组内最高只标一个数字」规则改为单柱与合计柱共同参与（合计通常是最高 → 数字标在合计柱顶）。
-- 测试 T10 重写（2 账号 30+80：合计 110 标数字、单柱不标、组内 1 个标签）；85 断言全过。纯前端无需重启。
-
-## v1.4.20 (2026-08-04) · 柱状图每组最高的柱子标注数值
-
-- 消耗趋势柱状图：每个时间点（每日=天、每月=月）分组内**最高的柱子顶部标注数值**（`font-weight:700` 加粗、柱同色）；只标一根（同值取先出现者），标签随 `<g id="line-key">` 跟随图例显隐。
-- 测试：T1 补最高柱标签断言；新增 T10（2 账号同天对比：最高柱 80 有标签、较低柱 30 无、组内仅 1 个标签），断言用 `font-weight="700">` 特征区分柱顶标签与 Y 轴刻度（`>80<` 会撞上 Y 轴顶部刻度）。84 断言全过。纯前端无需重启。
-
-## v1.4.19 (2026-08-04) · 卡片改名/删除按钮真正与「今日消耗」同行靠右
-
-- **根因**：v1.4.15 把按钮写进了「今日消耗」同一行的 HTML，但 `.arow` 无 flex 布局（只有内部 `.l` 是 flex）→ 按钮实际被换行挤到下一行、`margin-left:auto` 失效。用户看到的效果与代码意图不符。
-- **修复**：新增 `.arow.act-row{display:flex;align-items:center}`（含 `.l{flex:1}` / `.acts{flex-shrink:0}`），仅对「今日消耗」行与「查询失败」行启用（带进度条的体验包/赠送包行保持原 column 布局）；按钮经 `margin-left:auto` 靠右。
-- 版本戳 v1.4.19；npm test 4 文件 80 断言全过；纯前端改动无需重启。
-
-## v1.4.18 (2026-08-04) · 趋势图改柱状图 + 图例横排到图表上方
-
-- **折线图 → 柱状图**：每日消耗按天分组柱状（每账号一根柱、同账号同色、同账号柱包在 `<g id="line-key">` 内，图例单击隐藏/再点显示逻辑复用）；柱子自带 hover 数据（复用原浮层）；month 模式同样柱状（X 轴按月）。
-- **图例横排**：桌面端不再占左侧 150px 竖栏，改为横排多行在图表上方（`.line` column、`.legend` row+wrap、`.lg` width auto），图表全宽更清晰；同时删除标题行残留的「点击图例隐藏折线」提示（v1.4.11 已取消提示但 html 静态 hint 未删）。
-- 文件：wb-gui.render.js（barChart 替换 lineChart）、wb-gui.html（CSS + 删 hint），版本戳 v1.4.18。纯前端无需重启。
-- 验证：render-lines 测试断言更新（柱状 rect + cpt hover），npm test 4 文件 80 断言全过。
-
-## v1.4.17 (2026-08-04) · 趋势每日窗口改为以今天为中心对称
-
-- 用户反馈：默认应从最左边显示，2 天数据时应显示 8/3、8/4、8/5。此前窗口终点为今天（8/2~8/4），左端多一天空白。
-- 修改：dayWindow 以今天为中心对称分布（half = floor((span-1)/2)，i 从 -half 到 span-1-half）——3 天窗口 = 昨天/今天/明天，10 天窗口 = 今天-4 ~ 今天+5；数据点自然从窗口最左开始。
-- 文件：wb-gui.render.js（dayWindow），版本戳 v1.4.17。纯前端无需重启。
-- 验证：render-lines 测试更新（T1 左=昨天/右=明天；T5 10 天窗口 今天-4~今天+5），npm test 4 文件 80 断言全过。
-
-## v1.4.16 (2026-08-04) · 趋势图例宽度减半 + 账号总览新增「近7天过期」列
-
-- **图例（人名框）宽度减半**：根因是桌面端媒体查询里 `.legend` 固定 150px 竖排且每个 `.lg{width:100%}` 撑满栏宽。改为图例栏 `flex-direction:row;flex-wrap:wrap` 两列排布，`.lg{width:calc(50% - 3px)}`（长名省略号截断）；移动端 `.lg` max-width 100%→50%。
-- **账号总览新增「近7天过期」列**：derive.js 新增 `expiring7d = expiringSum(7)` 派生；表格版加列（表头/行/汇总）、手机卡片版与合计卡加 cell、空表 colspan 7→8。
-- 文件：derive.js/render.js/html，版本戳 v1.4.16。
-- 验证：npm test 4 文件 80 断言全过（T9 补充近7天断言）；实跑派生 expiring7d=1292 生效。服务已重启。
-
-## v1.4.15 (2026-08-04) · 告警/耗尽预测全量下线 + 卡片按钮移到今日消耗行右侧
-
-- **告警引擎整体下线**（用户要求"告警及相关内容代码都不要了"）：
-  - 删除 `src/compute/alerts.js` 整个文件（evaluateAlerts/levelOf/evaluateAll）；
-  - derive.js：删除 alerts 派生、dailyRate/daysToEmpty（含"即将耗尽"预测）、capacity/remainPct、level 字段及导入；
-  - config.js：删除 ALERT_LOW_PCT/ALERT_LOW_DAYS/ALERT_CRIT_DAYS；
-  - wb-gui.mjs：删除 /api/alerts 路由、dashboard/all 的 alertsSummary；
-  - 前端：state.js 删 alertBadges/alertsSummary、render.js 删 acctAlertStrip/告警徽标/告警芯片/表格告警列、html 删 alert CSS 与 alertSummary 元素、表头"告警"列（colspan 8→7）。
-- **卡片布局**：改名/删除按钮从卡片底部移到「今日消耗」同一行右侧（`acts` 靠右），查询失败卡片按钮放错误行右侧。
-- 文件：derive.js/alerts.js(删)/config.js/wb-gui.mjs/state.js/actions.js/render.js/html，版本戳 v1.4.15。
-- 验证：npm test 4 文件 80 断言全过（server-routes 断言 state.js 改用 derivedOf）；实跑 dashboard/all 无告警/耗尽字段、/api/alerts 404。服务已重启。
-
-## v1.4.14 (2026-08-04) · 修复 v1.4.13 回归：renderDashTable 的 cell 工具函数被误删
-
-- 症状：页面报 `cell is not defined`，刷新失败提示"已显示上次数据"。
-- 根因：v1.4.13 清理凭证字段时，误删了 renderDashTable 里 `const cell = ...` 工具函数定义（手机卡片版/合计卡仍在使用），运行时 ReferenceError。
-- 修复：恢复 `cell` 定义；新增回归测试 T9（渲染 dashCards/dashTbody 断言"近2天过期"标签与数值存在），防此类"删了还在用的函数"再犯。npm test 4 文件 80 断言全过。版本戳 v1.4.14（纯前端，无需重启）。
-
-## v1.4.13 (2026-08-04) · 凭证过期全量下线 + 近2天过期列 + 当日使用排序
-
-- **凭证过期(sessionExpiresAt/expired)展示与代码全量删除**（用户要求"所有和凭证过期的内容都不需要显示"）：
-  - 前端：hero 的"X 个凭证过期"提示、卡片"凭证至 X/⚠️ 凭证过期"标记、仪表盘 dtag 凭证状态、doRefresh toast 的"X 个凭证过期"、fpS/rebuildDash 的凭证字段、footer 文案；
-  - 后端：alerts.js 凭证过期/将过期告警规则(cred_expired/cred_expiry)、derive.js 的 sessionExpiresAt 输出、config.js 的 ALERT_EXPIRY_DAYS（连同 JSDoc 注释）。
-  - 保留：查询失败统一显示"❌ 查询失败"；采集层 query.js 的 expired 错误归因(内部用,不再展示)。
-- **账号总览增加「近2天过期」列**：derive.js 新增 `expiring2d` 派生（expiringSum(2)），表格/手机卡片/合计行同步加入。
-- **排序按钮重排为 过期 | 当日使用 | 剩余**：新增 `sortByTodayUsed()`（按 derived.todayUsed 从多到少）。
-- 文件：derive.js/alerts.js/config.js/render.js/actions.js/ops.js/html，版本戳 v1.4.13。
-- 验证：npm test 4 文件 77 断言全过；实跑派生接口 expiring2d 生效、sessionExpiresAt 已移除、凭证告警 0。服务已重启（后端改动）。
-
-## v1.4.12 (2026-08-04) · 今日已用环比改为「较昨日」（自然日）
-
-- 用户要求：今日已用的 ↑/↓ 箭头应以**昨天**为基准（自然日），而非"上一次刷新的值"。
-- 实现：renderHero 从各账号 `derived.dailyUsed` 取昨天（本地自然日 YYYY-MM-DD）的消耗求和作基准，`delta = 今日总消耗 - 昨日总消耗`；昨天无记录则只显示数值不显示箭头（无对比基准）；箭头带 title 提示"较昨日多用/少用 X"。
-- 顺带：fpS 指纹加入 dailyUsed 长度（昨日记录出现时 hero 才会重绘刷新箭头）；删除 state.js 死变量 prevTodayUsed。
-- 文件：wb-gui.render.js（renderHero/fpS）、wb-gui.state.js（删 prevTodayUsed）、版本戳 v1.4.12。
-- 验证：render-lines.test.mjs 新增 T6/T7/T8（上升 ↑488 / 下降 ↓70 / 昨天无记录无箭头），19 断言；npm test 4 文件 77 断言全过。
-
-## v1.4.11 (2026-08-04) · 趋势图例交互简化：单击隐藏/再点显示
-
-- 图例（左侧人名）点击行为改为**单击隐藏该账号、再点一次重新显示**（纯切换）；取消原"单击独显、双击隐藏"。
-- 移除图例上方提示文字「单击=只看TA · 双击=隐藏TA」及 `lg-tip` 样式；删除 onLegendClick/onLegendDbl/soloLine 死代码。
-- 文件：wb-gui.render.js（图例生成 + toggleLine 保留）、wb-gui.html（删 .lg-tip CSS）、版本戳 v1.4.11。
-- 验证：npm test 4 文件 73 断言全过；无残留引用。
-
-## v1.4.10 (2026-08-04) · 趋势图每日窗口动态化：下限 3 天、上限 10 天
-
-- 用户反馈：数据少时无需显示 20 天。每日视图窗口改为**按实际有数据的自然日天数动态取值**：`span = clamp(有数据天数, 3, 10)`，窗口终点为今天。
-- 同时**裁剪窗口外的历史数据点**（每日视图只画窗口内；更早的历史由「全部显示」查看），避免窗口外数据点把 X 轴时间轴撑大。
-- 文件：wb-gui.render.js（dayWindow 动态化 + renderLines 窗口裁剪）、版本戳 v1.4.10。
-- 验证：render-lines.test.mjs 更新为动态窗口断言（1 天数据→3 天窗口 8/2~8/4；15 天数据→10 天窗口 7/26~8/4、今天-10 不出现），15 断言；npm test 4 文件 73 断言全过。
-
-## v1.4.9 (2026-08-04) · 积分消耗趋势：每日视图补全 ±20 天窗口 + 新增「全部显示」
-
-- **每日视图 X 轴补全「今天 ±20 天」刻度**：此前 X 轴只取实际有数据的日期,数据只有 1 天时折线图只画一个孤点。现每日视图补全窗口内每天一个刻度(无数据日只显示日期不画点),折线点归一化到本地当天 00:00 与刻度对齐。
-- **新增「全部显示」按钮**(位于「每日」左侧)：显示全部历史数据,不再限制窗口;`changeMode` 支持 day/month/all 三态。
-- 文件：wb-gui.html(新增 btnAll + ?v=v1.4.9)、wb-gui.render.js(dayWindow/dayZero/lineChart 支持 xTicks/changeMode 三按钮)、wb-gui.render.js footer。
-- **数据核查结论**：readings 表当前只有 2026-08-04(74 行),8 月 3 日数据不在本地(系 v1.4.6 修复前"清空+只导第一条" bug 的遗留后果)。若 8/3 数据存在于云端 WebDAV 备份,点「从 WebDAV 下载」即可用修复后的合并导入补回;本次合并导入与 X 轴窗口补全双管齐下,恢复后历史折线立即完整显示。
-- 验证：新增 test/render-lines.test.mjs(每日窗口边界刻度/全部显示/每月/按钮状态,11 断言);vm-env mock 修复 className↔classList 联动。npm test 4 文件 69 断言全过。
-
-## v1.4.8 (2026-08-04) · Bug 筛查修复：拆分后漏静态路由（严重）+ 派生缓存键 + 只读采样误弹密码
-
-系统性筛查发现的 5 个小 bug，全部修复：
-- **[严重] 静态 JS 路由漏文件**：v1.4.7 前端拆成 6 个文件，但 wb-gui.mjs 静态路由仍只注册 4 个 → 浏览器请求 `wb-gui.ops.js`/`wb-gui.sync.js` 拿到 200 + `// missing` 占位（空脚本）→ 删除/排序/WebDAV 等函数全部 undefined 崩溃。已补全 6 文件路由（顺序 state→core→render→ops→sync→actions）。
-- **[中低] /api/dashboard/all 派生缓存键缺账号池指纹**：原键 = 最新快照时间 + 日期；同分钟去重场景下增删账号后返回旧派生（新账号今日消耗滞后最多 1 分钟）。键追加账号 uin/id 列表签名。
-- **[低] 手动采样误弹密码**：`/api/scheduler/run` 是只读采样（后端明确不要求管理员），但前端会话级预验证对所有 POST 生效 → 有密码时点「手动采样」先弹密码窗。已在 api() 预验证排除。
-- **[低] sync.js `$("syncQuick").hidden` 无判空**：与 showSyncQuick 统一判空。
-- **[低] 前端死代码**：删除从未被调用的 `syncCfg()`（配置读取走后端 loadSyncConfig）。
-- 验证：新增 `test/server-routes.test.mjs`（临时副本起服务，断言 6 文件真实返回 + 关键 API，防此类回归）；`npm test` 3 文件 58 断言全过；服务已重启。
-
-## v1.4.7 (2026-08-04) · 架构优化：拆分 actions.js + 沉淀 test/ 回归骨架
-
-- **拆分 wb-gui.actions.js（447 行"杂物抽屉"）**：按职责拆为三个文件（classic script 共享全局作用域，加载顺序 state→core→render→ops→sync→actions）：
-  - `wb-gui.ops.js`（新，~190 行）：排序(拖拽/一键) · 明细弹窗 · 改名/删除 · 添加/导出 · daemon 探测 · 清空本地数据；
-  - `wb-gui.sync.js`（新，~70 行）：WebDAV 云同步（配置弹窗/测试/上传/下载/清空/快捷按钮）；
-  - `wb-gui.actions.js`（~200 行）：刷新编排 · 自动刷新策略(轮询/SSE/兜底) · 🔒 管理按钮状态 · 启动接线（唯一副作用入口）。
-- **新增 test/ 回归骨架**（`npm test` 一键跑）：
-  - `test/helpers/vm-env.mjs`：node:vm 模拟浏览器环境，真实加载 6 个前端文件（跨文件共享作用域回归）；
-  - `test/admin-flow.test.mjs`：管理员三态全流程（设置不算验证/删除首验/会话放行/清除/开放模式）+ 20 个拆分后函数引用检查，35 断言；
-  - `test/history-import.test.mjs`：时序导入回归（合并不覆盖/原始 ts 落盘/去重/今日基线），临时目录隔离真实库，8 断言；
-  - `test/run-all.mjs`：统一 runner，任一失败非零退出。
-- 验证：6 文件 node --check 通过；`npm test` 43/43 通过；首页返回 6 个 v1.4.7 脚本引用；服务在线无需重启（后端未改动，静态文件实时读盘）。
-
-## v1.4.6 (2026-08-04) · 修复：删除时密码窗被确认窗挡住 + 下载数据后今日消耗变 0
-
-- **修复删除时密码窗层级/时序**:`confirmSmall()` 原来在 `await api(...)` 成功后才 `closeSmall()`,导致有密码且未验证时,密码验证窗在删除确认窗(仍开着)后面被挡住。改为点确认后**先关确认窗**再调接口,验证窗必然出现在最前。
-- **修复「从 WebDAV 下载」后今日消耗变 0(双 bug)**:
-  1. `importLegacy()` 原来 `clearReadings()` 清空整个时序表 → 本地今天的快照(今日消耗基线)被删;改为**合并导入**(不清空,保留今天基线)。
-  2. `appendSnapshot()` 原来用「导入时刻」做时间戳,且同分钟去重基于"现在" → 导入的多条历史快照 ts 全挤在当前分钟,去重后**只剩第一条写入**,历史几乎全丢、今天基线只剩一条 → todayUsed=0。改为支持 `opts.ts`(快照原始时间),去重基于快照自身 ts。
-- 文件:wb-gui.actions.js(confirmSmall 关窗时序)、src/compute/history.js(appendSnapshot 支持 opts.ts + importLegacy 合并导入)。版本戳 v1.4.6。
-- 验证:node --check 通过;临时目录集成测试 9 项断言全过(本地今天快照保留/导入历史按原始 ts 全部落盘/同分钟去重/今日已用=基线-当前=50/无 ts 兜底)。服务已重启(后端模块内存加载,必须重启才生效)。
-
-## v1.4.5 (2026-08-04) · 管理员逻辑简化：设置/清除/会话验证三态
-
-按用户要求简化密码交互（此前清除流程需「二次确认 + 验证以清除」两层弹窗,偏复杂）:
-- **「🔒 管理」按钮 = 密码唯一入口**:无密码 → 弹窗直接设置（两次输入一致即启用）;有密码 → 弹窗输入当前密码即清除（单请求 POST /api/admin/clear,body 带 token,后端 readAdminToken 自校验,不再依赖残留缓存）。
-- **危险操作(写类接口)会话级验证**:有密码且本次页面会话未验证 → 首次操作弹「输入管理密码」验证一次,通过后本会话内所有危险操作放行;刷新页面后重新验证。无密码 = 完全开放。
-- 删除:白色「清除密码」独立按钮、二次确认弹窗、pendingClear 标志、「验证以清除」模式;token 从 localStorage 改为内存变量(刷新即失效,贴合"本次登录")。
-- 文件:wb-gui.html(删 adminClear 按钮 + 4 script ?v=v1.4.5)、wb-gui.core.js(openAdmin 三态/confirmAdmin 三态/api 会话预验证)、wb-gui.actions.js(updateAdminBtn 文案)、wb-gui.render.js(footer v1.4.5)。后端零改动(readAdminToken 已支持 body token)。
-- 验证:node --check 四文件通过;VM 集成测试真实加载 state+core 两文件,25 项断言全过(T1 无密码→设置 / T2 设置+两次不一致拒绝 / T3 有密码→清除 / T4 危险操作会话首验→重试成功 / T5 会话内二次不弹窗 / T6 验证失败拒绝 / T7 清除 / T8 清除后开放)。
-- 修正(用户实测反馈):设置密码成功**不算已验证**,紧随其后的危险操作仍需输入刚设置的密码验证一次(原实现设置后本会话直接放行,与"危险操作本次登录需验证一次"预期不符);会话内验证过一次后仍保持放行。补充 VM 测试 9 项断言(S1 设置后 _sessionAuthed=false / S2 设置后首次删除先弹验证窗 / S3 验证后会话内二次直接放行)。
-
-## v1.4.4 (2026-08-04) · P5 部署：Docker Compose + 桌面启动器
-
-- 新增 `Dockerfile`（node:22-alpine，零第三方依赖，仅 node 内置模块）+ `docker-compose.yml`（一键起，8080 端口，`WB_COLLECTOR=file`，`.:/app` bind mount）+ `.dockerignore`（凭据/数据不进镜像）。
-- 新增 `wb-gui.bat` 桌面双击启动器：`%~dp0` 相对定位（修复原 bat 硬编码指向昨日旧目录的失效路径）、`where node` 检测并提示、纯 ASCII。
-- 数据互通：桌面(edge) 与容器(file) 共用项目根同一份 `wb-accounts.json` / `wb-sync.json` / `credits.db`，切换无需迁移（docs/部署.md）。
-- 验证：Dockerfile/comp.yml/.dockerignore/bat 全 ASCII；docker-compose.yml 经 PyYAML 解析校验通过；wb-gui.mjs 桌面启动已实跑验证。容器一键起需在有 Docker 的机器上验收（本沙箱无 docker）。
-- 安全补漏：.gitignore 增加 `wb-admin.json`（明文管理密码文件此前未被忽略，存在误传仓库风险）。
-
-## v1.4.3 (2026-08-04) · 采样入口统一：抽取 sampleAll 抽象（审计 #33）
-
-- **消除重复采样逻辑**:此前 `/api/all`（wb-gui.mjs 路由内）与 `scheduler.js runOnce` 各自实现「fetchAllAccounts → filter(summary) → buildSnapshotEntry → appendSnapshot」,存在重复与漂移风险。新增 `src/compute/sample.js` 唯一入口 `sampleAll({ onSampled })`,两条路径共享:单采集入口（fetchAllAccounts 只在此调用一次）、单落盘入口（appendSnapshot 只在此调用一次）。
-- 差异留在调用方:`/api/all` 额外 `saveLastData` 本地缓存 + 直接 render(不传 onSampled,避免与 SSE 刷新风暴);`scheduler.js runOnce` 传 `onSampled` 维护 lastCount/lastError 并驱动 SSE 广播。
-- 只读路径 `/api/export.md` 仍直接 `fetchAllAccounts` 生成报告,不落盘,不走 sampleAll。
-- 验证:node --check 三文件通过;实跑 8096 端口,`/api/all` 返回真实 6 账号数据、`/api/scheduler/run` 返回 `{ok:true,count:6}`、status.lastCount=6/lastError=null,readings 表落盘 6 行新快照(同分钟去重合并)。
-
-## v1.4.2 (2026-08-04) · 修复：清除密码跳过验密 + 浏览器自动填充绕过两次密码校验
-
-- **修复"清除密码"不弹窗直接清除(实际 bug)**:根因是此前「🔒 管理」按钮做验证时把密码 token 缓存在 localStorage 且不被烧毁(只在随后写操作才烧毁);之后点「清除密码」复用了这个残留 token,`/api/admin/clear` 直接放行。改为:`clearAdmin()` 先二次确认 → 弹窗「验证以清除」要求输入当前密码 → `/api/admin/verify` 校验通过后才调用 `/api/admin/clear`;开始时清掉残留 token,确保每次清除都必须重新输入当前密码(符合预期)。
-- **修复"设置时两个不同密码也能成功"(浏览器自动填充)**:两个密码框原为 `autocomplete="off"`,但浏览器密码管家仍会把两个框都填成同一已保存值,使 `v!==v2` 校验"通过",真正落盘的是浏览器填的未知密码 → 后续无法清除。改为 `autocomplete="new-password"`,阻止自动填充,强制手动输入;同时「验证以清除」弹窗也要求手输当前密码。
-- 验证:`node --check` 通过;逻辑走查覆盖 设置/验证/清除/取消 各分支。
-- 版本戳 html 4 个 script `?v=v1.4.1` → `?v=v1.4.2`(缓存爆破)。
-
-## v1.4.1 (2026-08-04) · 修复"多次刷新今日已用回落为 0"
-
-- **修复刷新瞬间今日已用闪成 0 并永久卡住(前端渲染竞态)**:`doRefresh` 先 `S = all`(派生被清空)再 `renderCards()`/`renderHero()`(此刻 `r.derived` 为空 → 今日已用渲染为 0),随后 `mergeDerived` 才把真实 `todayUsed` 写回。而 `render()` 用 `fpS()` 指纹(含 `todayUsed`)做跳过判断——当本次刷新的值与上一次成功渲染相同,`render()` 判定"未变"直接跳过重绘,导致卡片/hero 永久停留在前面那帧的 0。刷新次数越多越稳定呈现 0。
-- **修复方式**:`doRefresh` 在 `S = all` 后,用上一轮 `S.results` 的 `r.derived`(以 uin 为键)回填新账号对象,使即时首屏显示上一次真实值而非 0;`mergeDerived` 到达后用新数据覆盖。即使 `render()` 跳过,显示的也是正确值。派生作为跨刷新缓存,仅在拿到新数据时刷新,语义更清晰。
-- 验证:VM 集成测试加载真实 4 个前端文件,模拟两次刷新。修复版两次刷新今日已用均为 20(早期首屏亦 20);对照版(去掉回填)早期首屏=0、最终=0,精确复现 bug。
-- 版本戳 v1.4.0 → v1.4.1(renderer footer / html 4 个 script / HANDOFF)。
-
-## v1.4.0 (2026-08-04) · 密码模块审计修复：删除真正落盘 + 敏感操作每次验密 + 清除密码
-
-- **修复"删除提示成功但内容还在"(真实 bug)**:根因 `src/compute/store.js` 的 `saveAccounts` 用 `INSERT OR REPLACE`,只覆盖"仍存在的"账号,被删账号残留在 SQLite 表中,`/api/all` 重读又拉回。改为**先 `DELETE FROM accounts` 再插入**(事务包裹),成为真正的全量覆盖,删除/重排/改名均正确持久化。
-- **敏感操作每次重新验密**:原 `api()` 把明文密码缓存在 `localStorage`、全会话自动附带 `X-Admin-Token`,导致设置密码后所有写操作(删除/清空/配置)静默放行、不再弹窗。改为 `api()` 收到 `needAuth` 时弹出密码窗、经 `_adminGate` 闸门等待验证通过后再重试原请求;验证成功后**清除 token**,下一次写操作再次要求密码。集中在 `api()` 一处,所有 `admin:true` 写接口统一受益;`confirmAdmin`/`closeAdmin` 联动解析/拒绝闸门。
-- **新增"清除密码"模块**:后端 `/api/admin/clear`(删除 `wb-admin.json`、置空 `adminPass`,`admin:true` 需先验证当前密码);前端管理弹窗"已启用"态新增「清除密码」按钮(`clearAdmin()` + `cfm` 二次确认),`updateAdminBtn` 联动。
-- 验证:`node --check` 全过;VM 行为测试覆盖 saveAccounts 覆盖写入、api needAuth→闸门→重试→清 token、clear 流程。
-- 版本戳 v1.3.9 → v1.4.0(renderer footer / html 4 个 script / HANDOFF)。
-
-## v1.3.9 (2026-08-04) · 支线可读性重构：cfm 去全局状态、applyAuto 抽策略(无行为变更)
-
-- **`cfm` 去全局状态**：原实现用全局 `cfmResolve` + `closeSmall` 兜底 resolve(false)，存在"先 resolve 再关否则误吞 true"的易错点。改为每次调用自建 `Promise` 与局部 `resolve`，确认/取消按钮用 `.onclick` 局部闭包绑定，✕/遮罩关闭经 `smallCloseHook` 统一走"取消"，彻底消灭全局变量与兜底竞态。`closeSmall` 现按 `smallCloseHook` 分派（普通弹窗如改名为 null 仅关闭）。删除 `cfmRes`。
-- **`applyAuto` 抽策略**：原三分支（显式轮询 / SSE 推送 / 5 分钟兜底）混在 `if/return` 中。新增 `pickStrategy()` 返回 `'poll' | 'sse' | 'fallback'` 枚举，`applyAuto` 按策略拍平，意图一眼可读。
-- 验证：`node --check` 全过；`cfm` 三种关闭路径（确认/取消/✕）均单发 resolve 且取值正确；`pickStrategy` 三态映射正确。
-- 版本戳 v1.3.8 → v1.3.9(renderer footer / html 4 个 script / HANDOFF)。
-
-## v1.3.8 (2026-08-04) · 收口双数组：dashPer 改为 S.results 的投影(无行为变更)
-
-- **架构收口(接 v1.3.7)**:`S.results` 与 `dashPer` 仍是两个平行数组、靠 `mergeDerived` 用 uin 桥接,存在"拖拽排序后卡片重排、仪表盘表格不跟着重排"的不一致,以及 uin 不匹配时静默缺数据的风险。
-  - 改为:`mergeDerived` 在把派生合并进 `r.derived` 后,**直接由 `S.results` 投影重建 `dashPer`**(只带展示字段 + `expired`/`sessionExpiresAt` 凭证状态);仪表盘表格/折线现在与卡片同序同源,手动排序后两者一致。
-  - 删除 `renderDashTable` 内冗余的 `credMap` 桥接(原本再从 `S.results` 按 uin 查凭证状态),改用投影已带的 `a.expired`;同步清理 `state.js`/`render.js`/`actions.js` 内指向旧双数组设计的注释。
-  - 后端 `/api/all` 与 `/api/dashboard/all` 同源于 `loadAccounts()`,账号集合一致,投影不会丢账号。
-- 验证:`vm` 拼接 4 文件实跑断言全过;起服 8080 实测两接口 200、`render()` 无异常、拖拽排序后表格跟序。
-- 版本戳 v1.3.7 → v1.3.8(renderer footer / html 4 个 script / HANDOFF)。
-
-## v1.3.7 (2026-08-04) · 前端数据架构重构：单一数据源(无行为变更)
-
-- **核心重构(非补丁)**:消除「双数据源竞态」——原 `S`(`/api/all`)与 `dashPer`(`/api/dashboard/all`)两套数据,且 `dashPer` 通过 `syncCardsToday`/`syncHeroExpiry`/`syncCardsAlerts` 命令式 patch 回卡片/hero DOM,新人难以判断"卡片上的今日消耗到底被谁写"。
-  - 改为:`doRefresh` 同时取两份数据,`mergeDerived()` 把仪表盘派生(按 uin)合并进每个账号对象 `r.derived`;**所有渲染只读 `r.derived`**,`render()`/`renderDash()`/`renderDashTable()`/`renderLines()` 全部为纯函数、自身不再发请求。
-  - 删除 `syncCardsToday`/`syncHeroExpiry`/`syncCardsAlerts`/`buildTodayUsedMap`/`fpDash` 及全局 `todayMap`/`alertMap`/`lastDfp`; `fpS` 指纹纳入派生字段,派生就绪后卡片自动重绘。
-- **死代码清理**:`wb-gui.core.js` 移除 `adminPendingResolve` 占位变量、`api()` 内"从请求体抠 token"的兜底分支、`confirmAdmin` 内 `typeof updateAdminBtn === "function"` 探测(改为直接调用)。
-- **图例交互**:`onLegendClick` 手写 300ms 定时器区分单/双击 → 改为浏览器原生 `ondblclick="onLegendDbl(...)"`,删 `lgLastKey/lgLastTime/lgTimer`。
-- 验证:`vm` 拼接 4 文件实跑断言全过(派生合并正确、渲染无 ReferenceError、今日消耗/近3天过期从 `r.derived` 读取);起服 8080 实测 `/api/all`+`/api/dashboard/all` 200、`render()` 无异常。
-- 版本戳 v1.3.6 → v1.3.7(renderer footer / html 4 个 script / HANDOFF)。
-
-## v1.3.6 (2026-08-04) · 管理员密码改为「默认不启用,首次点击可设置」
-
-- **行为变更**:管理员密码不再依赖环境变量 `GUI_ADMIN_PASS`,改为**运行时由前端「设置密码」持久化到 `wb-admin.json`**,默认未启用(写操作自由)。
-  - 默认状态:🔒 按钮显示「设置密码」,点击打开「设置密码」弹窗(密码 + 确认两栏),设置后所有写接口(增删账号/重命名/清空/WebDAV 配置等)需输入密码。
-  - 已启用状态:🔒 按钮显示「管理」,点击打开「输入密码」弹窗,验证通过后方可执行写操作。
-- **后端**:`wb-gui.mjs` 启动从 `wb-admin.json` 读密码(空=开放);新增 `POST /api/admin/setup`(首次设置,≥4 位)与 `POST /api/admin/verify`(验证密码);`/api/admin/status` 返回 `enabled` 字段;`adminDenied` 改为比对文件密码。
-- **前端**:`wb-gui.core.js` 的 `openAdmin()` 按 `adminEnabled` 切换「设置/输入」两态;`confirmAdmin()` 设置时校验两次一致并调用 setup、输入时调用 verify;`wb-gui.state.js` 新增共享状态 `adminEnabled`;`wb-gui.actions.js` 的 `checkAdminStatus()` 据 `/api/admin/status` 更新按钮文案。
-- 移除 `src/config.js` 的 `GUI_ADMIN_PASS` 导出及其 env 依赖。
-- 版本戳 v1.3.5 → v1.3.6(renderer footer / html 4 个 script / HANDOFF)。
-
-## v1.3.5 (2026-08-04) · 修复 WebDAV 登录失败(密码被意外清空)
-
-- **根因**:前端 `openSync()` 打开同步弹窗时无条件清空密码框,用户未重输密码就点「保存配置」→ 空密码发往后端;后端 `/api/webdav/config` 又无条件覆盖 `pass` → 已保存的密码被清空 → 之后连接测试/上传/下载均用空密码 → 401 登录失败。
-- **修复**:
-  - 后端保存配置时,若传入 `pass` 为空且已有配置含非空密码,则**保留原密码**(清空配置仍走「清空配置」按钮,整体删除 `wb-sync.json`)。
-  - `src/compute/webdav.js`:401/403 现在返回明确提示「WebDAV 登录失败：用户名或密码错误」,不再含糊报「创建目录失败」。
-  - 前端 `openSync()`:密码框在已有配置时显示占位「留空则保留原密码」,避免误清空。
-- 验证:本地 mock WebDAV 实测——正确密码连接成功;空密码再保存后密码保留(不再被清空);错误密码提示明确。
-
-## v1.3.4 (2026-08-04) · 前端拆模块(纯重构,无行为变更)
-
-- **前端巨石拆分**:原 `wb-gui.js`(962 行单文件)拆为 4 个 classic `<script>`,无打包器,靠顶层 `const/let/function` 共享全局词法作用域:
-  - `wb-gui.state.js`(共享状态/常量/`escAttr`/`derivedOf`/`expiryTier` 等纯 helper)
-  - `wb-gui.core.js`(网络 api + 通用 UI 反馈/遮罩/管理员鉴权)
-  - `wb-gui.render.js`(纯渲染:Hero/卡片/仪表盘/表格/折线/到期柱图/增量同步)
-  - `wb-gui.actions.js`(用户动作/弹窗/生命周期/启动接线,须最后加载)
-- 服务器 `wb-gui.mjs` 路由由单 `/wb-gui.js` 改为 4 条静态路由;`wb-gui.html` 顺序加载 4 个 script
-- 旧 `wb-gui.js` 已删除;`node --check` 4 文件全过;inline `onclick` 处理器全部解析到全局 `function` 声明
-- 注意:本重构不改任何用户可见行为,版本戳仅因"改了前端"按 HANDOFF 约定 +1
-
-## v1.3.3 (2026-08-04 02:00) · 确认弹窗修复(下载/清空恢复)
-
-- **严重:确认弹窗点「确定」无效**(v1.3.0 引入):`cfmRes()` 先调 `closeSmall()` 再 resolve,而 `closeSmall` 的兜底 `cfmResolve(false)` 抢先执行 → 点确定实际=取消 → **WebDAV 下载、清空数据全部被"已取消"**
-- 修复:先 `cfmResolve(v)` 再 `closeSmall()`;兜底仅在遮罩/✕ 关闭时触发
-- 单测:确认→true / 取消→false / 遮罩→false 全通过
-
-## v1.3.2 (2026-08-04 01:56) · WebDAV 默认地址 + 空账号显示
-
-- WebDAV 默认地址 `https://w2e0b1d6av.ddnsto.com`(内网穿透,NAS 不可达)→ **`http://192.168.2.1:6086/`**(前后端统一,链接框留空即用默认)
-- 空账号池时 footer 不再被清空(显示版本号 + 引导文案)
-- 空账号手动刷新提示「暂无账号数据」,不再误报「已是最新无变化」
-
-## v1.3.1 (2026-08-04 01:52) · 自动刷新免闪屏
-
-- 数据指纹 `fpS()`/`fpDash()`:刷新时比较,未变则跳过 hero/卡片/表格/折线重绘(节点保留 → 拖拽事件与滚动位置自然保留)
-- 手动刷新无变化时 toast「✅ 已是最新数据(无变化)」
-
-## v1.3.0 (2026-08-04 01:40) · 模块化重构(子代理全量审核后执行)
-
-- **P0**:cfm 确认弹窗遮罩关闭不 resolve → Promise 悬空 → 上传/下载永久失效;`closeSmall` 兜底 `cfmResolve(false)`
-- 弹窗显隐统一 `openMask/closeMask`(4 个 mask 共用)
-- 拖拽排序去重 → 统一 `saveOrder(ids, okMsg)`
-- 内联样式抽 CSS 类(`.bar-*/.ph-sm/.t-faint/.t-bad/.btn-lg/.num-b/.row-total/.tbl-short` 等):33 处 → 11 处(仅动态值)
-- 两段式渲染合并:`todayMap/prevTodayUsed` 模块级变量替代 `window.*`
-- 清死代码:`mergeAccounts/deleteFile/sleep/后端 totals/残留 .bucket CSS`
-- ⚠️ 过程事故:脚本清理 CSS 误删 HTML 大段,已 git 恢复并改用精确编辑重做
-
-## v1.2.1 (2026-08-04 01:28) · 审核修复
-
-- `data-n` 账号名 HTML 属性转义(escAttr)防注入
-- 单点账号补 hover 区(悬浮大数字)
-- dashboard 缓存键加本地日期,跨午夜自动失效
-
-## v1.2.0 (2026-08-04 01:25) · 计算架构收敛
-
-- **后端唯一计算源**:`/api/dashboard/all` 按自然日(本地时区)统一聚合 → series 直接返回每日消耗;`todayUsed` 与折线图同源
-- 前端删 `toLocalKey/aggregateConsumption` 死代码,纯展示
-
-## v1.0.16 (2026-08-03) · 手机端 UI 大修 + 性能优化 + CSS 恢复
-
-### 手机端 UI
-- **账号总览重设计**:手机端每账号一卡(渐变顶条 + 总剩余大数字 + 2×2 指标网格 + 凭证状态),桌面保持 7 列表格
-- **2 列网格**:手机端账号总览改为 `grid-template-columns:1fr 1fr` 紧凑卡,合计卡跨整行,消除大面积空白
-- **断点同源根治**:JS 同时渲染卡片+表格两套 DOM,CSS media query 决定显示哪套(删除 JS 分支判断与 matchMedia 监听),彻底消除"JS/CSS 不同步 → 表格 td 挤成一坨"问题
-- **布局**:自动刷新控件移到操作条「导出 MD」后,顶栏只留品牌+刷新(手机一行)
-- 拖拽排序触屏禁用(`matchMedia("(hover:none)")`);hero 手机 2x2 均分
-
-### 修复
-- **严重:CSS 丢失**(此前脚本批量替换误删):
-  - 弹窗/抽屉类:`.mask/.sheet/.shead/.sbody/.toast/.finput/.factions/.tip`(4 个弹窗曾裸显示在页面流)
-  - 明细弹窗内:`.cards/.mcard/.sect/.stitle/.bucket/.bh/.bd/.bday*`
-  - 账号卡片列表:`.grid/.acct*/.remain/.acct-rows/.arow/.meter/.acct-foot/.empty/footer` 共 22 条
-  - 已从 git 历史完整恢复,并加 Python 审计脚本比对(JS 引用 class vs CSS 定义,0 缺失)
-- `cell is not defined` 作用域 bug(定义在 map 回调内,合计卡用时已出作用域)
-- 首屏长时间"加载中" → 缓存秒开 + 后台刷新
-
-### 性能
-- **首屏缓存秒开**:启动先加载 `/api/last` 本地缓存渲染,再后台 `/api/all` 实时覆盖;手动刷新强制实时
-- **超时分级**:批量刷新 30s,其他请求 15s(≥12 账号时旧 15s 会被查询时长打爆)
-- **dashboard/all 内存缓存**:按 wb-history.json mtime 失效,命中 0.2s
-- **缓存异步写**:history.js 写盘队列(fs.promises),610KB 缓存不阻塞事件循环
-- **后端健壮性**:body 1MB 限流、`/api/status` daemon 探测 2.5s 超时、edge-daemon CDP send 15s 超时+清理 pending
-- **防缓存**:html meta no-cache + JS 引用版本戳 `?v=v1.0.6`
-- 常量统一:删 `MAX_HISTORY`,用 util.js `HISTORY_LIMIT`
-
-### 变更
-- 原生 `confirm()` 全部改自定义 `cfm()` Promise 弹窗(复用 smallMask,与 tools-center 风格一致)
-- hero「今日已用」初始 0(非 —);删死代码 `shortName`
-
-## v1.0.15 (2026-08-03) · 模块化重构 + UI 优化 + 多项修复
-
-### 重构
-- **前后端模块化**:后端 per 新增 `todayUsed` 字段预计算,删除前端 `updateTodayUsed`/`buildTodayUsedMap` 两处重复计算;`renderLines` 提取通用 `aggregateConsumption(pts, keyFn)` 消除 day/month 40 行重复代码
-- **bot排序逻辑分层**:`expiryTier` 逐层扫描(1~30天),近1天过量优先,再无压力按总剩余垫底;p `persistOrder` 复用保存机制
-- **findAccount 修复**:纯数字 key 先精确匹配 uin 再按序号,解决 uin 查询 404
-
-### 修复
-- 消耗历史 `/api/history?account=<uin>` 返回 404(纯数字 uin 被误判序号)
-- 折线图单天聚合丢失数据点 → `aggregateConsumption` 保证每天一个消耗点
-- 按月模式耗值恒为 0 → first/last 方向修正
-- 累积已用(used)数据不可靠 → 日消耗改为剩余差值计算
-- 折线图单点标签顶部裁切 → 顶留白 34px + 标签位置调整
-
-### 变更
-- **按钮文案**:「近1天过期排序」→「过期排序」;趋势面板「按天/按月」→「每日」「每月」按钮
-- **布局**:操作按钮下移至账号卡片上方;云同步按钮留顶部
-- **消耗历史按自然日聚合**:明细弹窗表格每天一行(起/终/日消耗)
-- **折线图**:标题→「📉 积分消耗趋势」,x 轴中文标签,单点 r=1
-- 删除死代码:`todayExpiringOf`、`.sep` CSS、`agg` 函数
-
-### 新增
-- **云同步清空配置**:弹窗内「🗑 清空配置」删除本地 WebDAV 登录信息
-- **账号卡片今日消耗**:刷新后卡片显示各账号今日消耗数
-- **Hero 变化趋势**:今日已用旁显示 ↑+N / ↓-N 变化量
-- **折线图 hover 提示**:悬停显示时间+消耗量
-- **近3天过期加粗**:有过期量的账号数字加粗提醒
-- **图例滚动**:账号多时 max-height 200px
-- **面板刷新时间**:趋势面板显示"6 个账号 · 08-03 18:11"
-- 密码框回车保存云同步配置,消耗标记点缩小
-
-## v1.0.14 (2026-08-03) · 到期预警 + 交互优化 + 换 AI 交接
-
-### 新增
-- **账号总览表格新增 3 列**:今日消耗 / 近1天过期 / 近3天过期(含合计行;近1/3天过期取 `CycleEndTime` 距今天 ≤1/≤3 天的有效赠送包剩余,今日消耗取该账号今日最早→最新快照差值)
-- **Hero 卡片**:「今日会过期」→「近3天过期」;固定 4 卡布局(宽屏 1 行 4 列、窄屏 2×2,消除 auto-fit 临界跳行)
-- **明细弹窗到期柱状图**最前面新增 2 根:1天到期(今+明,红色)/ 3天到期(至3天后,橙色),数值与表格列一致
-- **操作条新增「⏰ 近1天过期排序」**:按 1 天内到期积分从多到少一键排序并持久化
-- **消耗趋势图消耗标记点**:数据点相对上一快照剩余下降(当天有消耗)时画散点标记,不连线;右上角注「● 当日/当月有消耗」(按天/按月视图文案自适应)
-
-### 变更
-- **操作条布局重构**:移除左右分组(`.ops-l`/`.ops-r`),全部按钮平铺一条流,`flex-wrap` 自适应换行(最多 2 行,超出纵向滚动);按钮文字不再因窄屏隐藏(删 `.ops .txt{display:none}`)
-- `.btn` 加 `flex-shrink:0`:每个按钮为完整单元,不压缩、emoji 与文字不拆开
-- 按钮文字精简:添加当前账号→添加账号;总剩余排序→剩余排序
-- 排序逻辑泛化:`sortByTotal` 重构为 `sortByMetric(getV, label)`,剩余排序与近1天过期排序共用一套保存机制
-
-### 修复
-- Hero 卡片 auto-fit 在宽度临界值时 1 行/2 行反复跳变 → 固定 `repeat(4,1fr)`(≥640px)/ `repeat(2,1fr)`(<640px)
-
-### 文档
-- README / DEVELOPMENT / AGENTS / `docs/交接说明.md` 同步至 v1.0.14
-
-## v1.0.13 (2026-08-03) · 交接文档
-
-### 文档
-- 新增 [`docs/交接说明.md`](docs/交接说明.md):接手者快速上手(三处同步/端口/数据文件/命令/核心约定/待办/文档地图)
-- AGENTS.md 顶部指向交接文档,标注当前版本 v1.0.12
-- rules/常见坑.md +2(聚合指标被加账号污染、不要补丁套补丁)
-- docs/问题记录/ +1(今日已用恒为 0,与 v1.0.7 修复对应)
-- DEVELOPMENT.md 问题索引同步
-
-## v1.0.12 (2026-08-03)
-
-### 重构
-- **操作条布局改为标准 flex 分组**:移除中间 `flex:1` 幽灵占位元素,左组(`.ops-l`)/右组(`.ops-r`)各为 flex 子项,用 `margin-right:auto` 做弹性两端对齐——无补丁、纯 flexbox 原生机制
-- 保留:单行不换行(`nowrap`)、超宽可水平滑动(`overflow-x:auto`)、窄屏只显示 emoji
-
-## v1.0.11 (2026-08-03)
-
-### 修复
-- **操作条窄屏换行**:之前 `flex-wrap:wrap` + 中间 `flex:1` 占位在窄屏把右组挤到第二行 → 改为 `flex-wrap:nowrap` + `overflow-x:auto` 强制 1 行,内容超出可水平滑动
-- 左组靠左、右组靠右的两端对齐保留
-
-## v1.0.10 (2026-08-03)
-
-### 变更
-- **操作条按钮响应式**:窄屏(≤640px)只显示 emoji,文字隐藏(`.ops .txt{display:none}`),方便手机使用
-- 按钮结构:`<span class="em">emoji</span><span class="txt">文字</span>`,宽屏显示完整,窄屏只余 emoji
-- 操作条 5 个按钮已全部包 span(添加/排序/清空/导出/云同步);云同步已配 WebDAV 时右侧 3 个纯 emoji 快捷按钮不受影响
-
-## v1.0.9 (2026-08-03)
-
-### 变更
-- **操作条简化为两端对齐**:移除两个竖线分隔(sep),用 `flex:1` 占位,左组(＋添加 / 📊排序 / 🧹清空 / 📝导出)靠左,右组(☁️云同步 + 快捷按钮)靠右,中间留白
-- `.sep` 样式已无引用,保留无影响(后续清理)
-
-## v1.0.8 (2026-08-03)
-
-### 变更
-- **首页操作条云同步快捷按钮改纯 emoji**:去掉"测试/上传数据/下载数据"文字,只保留 🔌 ⬆️ ⬇️(更紧凑);加 `title` 悬停提示(测试连接/上传数据/下载数据),不影响功能
-- 弹窗内的同名按钮保留文字(弹窗空间充足,文字更清晰)
-
-## v1.0.7 (2026-08-03)
-
-### 修复
-- **「今日已用」恒为 0**:原算法用全账号聚合 totals 的"今日最早−最新",但**当天新加入账号会让聚合总量跳增**(如 4227→28898),差值变负 → 显示 0
-  - 改为**按账号分别计算**(该账号今日最早快照总剩余 − 最新,>0 计入再求和),新账号加入只贡献自身消耗,不再污染总量
-  - 实测:今日已用 486(正确反映今天消耗)
-
-## v1.0.6 (2026-08-03)
-
-### 变更
-- Hero 第 2 块「账号」→ **「⏳ 今日会过期」**:所有账号中到期日为今天的有效赠送包剩余积分合计(基于 `CycleEndTime` 日期比对)
-
-## v1.0.5 (2026-08-03)
-
-### 变更
-- **Hero 总览区改等宽 4 块**(手机 2×2、桌面 4 列,每块大小一致,手机浏览正确换行):
-  ① 总剩余积分(含状态文本)② 账号 ③ **今日已用**(新,基于历史快照:今日最早−最新总剩余)④ 累计已用
-- 「凭证过期」不再单独成块(其信息已并入状态文本:⚠️ N 个凭证过期),总剩余数字 38px→30px 适配等宽块
-
-## v1.0.4 (2026-08-03)
-
-### 修复
-- **云同步快捷按钮(测试/上传/下载)显示逻辑**:`syncQuick` 的 `hidden` 属性被内联 `style="display:flex"` 覆盖(内联样式优先级更高),导致未配置 WebDAV 也一直显示
-  - 移除内联样式,改 CSS 控制:`#syncQuick{display:flex}` + `#syncQuick[hidden]{display:none !important}`
-  - 验证:未配置 → hidden(不显示);已配置 → 显示。保存配置/测试成功/页面加载检测到配置三条路径均触发显示
-
-## v1.0.3 (2026-08-03)
-
-### 修复
-- **edge-daemon 连接发现机制重写**:弃用读 `DevToolsActivePort` 文件(可能残留旧 uuid,连不存在的 ws 路径永久挂起),改为标准 CDP 发现——轮询 `GET :9222/json/version` 取真实 `webSocketDebuggerUrl`
-- 修正常驻子进程端口失效:改 lib/util.js 后需重启进程(模块加载时读值)
-
-### 变更
-- 全部 daemon 端口 **9333 → 8129**(lib/util.js / lib/daemon.js / edge-daemon.mjs / edge-ctl.mjs):daemon HTTP API 8129(平台端口段内,可被 tools-center 托管)、Edge 调试端口 9222(默认,EDGE_DEBUG_PORT/argv[3] 可覆盖)
-- 前端 daemon 提示文案场景化:工具中心挂载 → 指向接入 edge-daemon 工具;独立运行 → 指向 `node edge-daemon.mjs 8129`
-
-## v1.0.2 (2026-08-03)
-
-### 新增
-- **子路径挂载自适应**:页面可在工具中心等平台 `/tool/<id>/` 子路径下运行
-  - `wb-gui.html`:`__BASE__` 自动检测注入 + script 改相对路径 `./wb-gui.js`
-  - `wb-gui.js`:15 处 API 调用全部 `__BASE__ + "/api/.."` 前缀化(独立运行 `__BASE__=""`,行为不变)
-
-### 修复
-- 挂载到子路径后 JS/API 绝对路径 404 → 所有按钮失效的问题
-
-## v1.0.1 (2026-08-03)
-
-### 新增
-- 账号卡片**拖拽排序**:HTML5 DnD,拖到目标卡片即换位,顺序保存到账号池(`/api/reorder`)
-- 操作条「📊 总剩余排序」按钮:按总剩余积分从多到少一键排序(失败/过期账号排后),同样持久化
-
-### 修复
-- 明细弹窗错位:卡片点击由渲染索引改为**账号 id 定位**,拖拽/排序后点哪张开哪张
-
-## v1.0.0 (2026-08-03)
-
-首版发布。多账号 WorkBuddy 积分采集与仪表盘,CLI + GUI 双入口,共享 `lib/` 模块层。
-
-### 核心功能
-- 多账号池(每账号独立 cookie,按 Uin 去重,显示名自定义,凭证到期提醒)
-- CLI:save-current / accounts / rename / del / all / 单账号查询(--json / --csv)
-- GUI 仪表盘:倒金字塔布局(状态层 → 消耗趋势 → 账号明细)
-  - 状态层:总剩余大数字 + 状态色(正常/查询失败/凭证过期)
-  - 消耗趋势:表格版(含合计)+ 折线版(每账号一条,图例点击隐藏/显示,按天/按月聚合)
-  - 账号卡片:右上角两行"总剩余积分"徽章,体验版/赠送进度条,点击钻取明细
-  - 明细弹窗:统计卡(剩余总积分)/ 7 天到期柱状 / 到期列表 / 消耗历史表
-- 消耗历史:每次刷新记快照(同分钟去重,上限 500),折线/表格跟踪剩余变化
-- 本地缓存(`wb-last-data.json`):离线可看,打开页面先显缓存再后台刷新
-- WebDAV 云同步:账号池+历史+缓存上传/下载到 `workbuddy/workbuddy积分/`(自动建多级目录)
-- 导出 MD 报表(按账号分节)、导出 CSV(CLI)
-- 自动刷新(间隔可调,localStorage 记忆)、清空本地数据(分项勾选+二次确认)
-- 演示模式:`window.__DEMO__` 存在时直接用内嵌快照渲染,离线可看
-
-### 体验优化
-- 深色粉红主题(#ff9292 主色,主色图形上文字用 #2d1a1a),移动优先响应式(手机/平板/桌面)
-- 按钮分组布局;toast 提示统一顶部居中(深色卡片)
-- 前端文件实时读取(改前端免重启);no-store 防缓存;全接口 CORS
-
-### 架构
-- 两轮模块化重构:业务全部收敛到 `lib/` 共享层(11 个模块),CLI/GUI 入口为薄层
-- 消除重复:查询编排(CLI/GUI)、添加账号、渲染(markdown/MD/CSV)、摘要、常量集中
-
-### 修复
-- 刷新按钮无限转圈(双层超时兜底 + 按钮单点控制)
-- 手机号读取错页面(定位 workbuddy 页面)
-- 总剩余口径统一(体验版 + 赠送)
-- 历史快照乱序(时间升序)
-- 浏览器缓存旧 JS、演示页跨域被拦
-- 云同步下载后需手动刷新(改为自动刷新提示)
+- 【数据修复 2026-09-11】`day_summary` 中 2026-09-09 的 `used` 全部为迁移/污染遗留的错误值（workbuddy 各账号 3920/3837/1923/1000/400、trae 147.01/223.33），与当日快照净变化矛盾（当日仅签到 +100）。已按格式感知 `consumeByUsed` 重算修正为真实消耗（workbuddy 均 0、小陈 trae 74.94），备份见 `C:\Temp\backup_day_summary_2026-09-09.json`；校验 code 与 DB 全部一致。
+- 口径修正（今日到账按来源签到常量 100/150；消耗为正增量+格式感知）已通过测试回填真实快照验证，仪表盘运行实例已重启确认。
+- 一次性排查脚本（`C:\Temp\wb_restore`）不入库，已用 `tools/regression/derive-audit.mjs` + `readings-seq.mjs` 两个可移植参数化巡检脚本替代，可对任意机器/时间复跑。
+- 已知：本机环境 git 不在 PATH；`.gitignore` 生效依赖鉴扫测试守卫（`npm test`）与未来 CI。

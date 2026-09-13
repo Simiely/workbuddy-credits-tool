@@ -1,49 +1,28 @@
-# ===== 运行数据(含凭证,严禁上传) =====
-# 账号池(每账号 cookie 凭证)
-wb-accounts.json
-# WebDAV 配置(含密码)
-wb-sync.json
-# 消耗历史快照
-wb-history.json
-# 最近一次查询缓存
-wb-last-data.json
-# 管理员密码(明文,严禁上传)
-wb-admin.json
-# edge-daemon 随机 token(启动生成,鉴权用,勿提交)
-edge-daemon.token
-# SQLite 唯一真相源(含账号凭证 + 历史快照)
+# ===== 数据与运行时产物（绝不入库：含本机账号登录态/时序/镜像） =====
 credits.db
 credits.db-wal
 credits.db-shm
-*.db
-*.sqlite
-*.sqlite3
-*.sqlite3-journal
-*.sqlite3-wal
-*.sqlite3-shm
+*.db*
+
+# 登录态槽备份目录（含真实 token/登录态，绝不入库）
+backups/
+
+# 账号数据 / 时序镜像 / 最近一次缓存 / 同步临时文件
+trae-accounts.json
+trae-history.json
+trae-last-data.json
+trae-sync.json
+trae-admin.json
+wb-sync.json
+
+# 查询报告（含积分明细，仅本机）
+*_credits_report.txt
+
+# 临时探针脚本（调试用，不入库）
+_probe.mjs
+
+# ===== 日志 / 依赖 / 构建 =====
 *.log
-*.log.err
-
-# ===== 环境变量 / 密钥(含 GUI_ADMIN_PASS 等,严禁上传) =====
-.env
-.env.*
-*.local
-.env.local
-
-# ===== 旧文档(已被 README/DEVELOPMENT/docs 规范文档替代,仅本地留存) =====
-README-架构.md
-README-wb-credits.md
-
-# ===== 系统 =====
-.DS_Store
-Thumbs.db
 node_modules/
-# SEA 单文件 exe 构建产物(前端内嵌,勿提交)
-build/
-# 临时备份(如 wb-history.bak.json)
-wb-*.bak.json
-
-# 数据备份(串号/清洗修复前快照,勿提交)
-credits.db.bak*
-
-.tmp-platform-pack/
+__pycache__/
+*.pyc

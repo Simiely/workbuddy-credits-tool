@@ -6,11 +6,14 @@
 
 // 数据指纹:刷新时比较,未变则跳过卡片/hero 重绘(自动刷新不再整页闪屏/抖动)
 // 派生字段(expiring3d/todayUsed/alerts)也纳入指纹 → 仪表盘派生就绪后卡片会自动重绘
+// 整数版金额格式(仅账号小卡片用,去掉小数;hero 汇总卡仍用带 2 位小数的 fmt)
+const fmt0 = (n) => (n === "-" || n == null ? "-" : Math.round(Number(n) || 0).toLocaleString());
+
 function fpS() {
   const rs = (S && S.results) || [];
   return rs.map((r) => {
     const s = r.summary, d = r.derived || {};
-    return (r.account.id || "") + "|" + (s ? [s.baseRemain, s.giftRemain, s.baseUsed, s.giftUsed, s.giftCount].join(",") : "f") + "|"
+    return (r.account.id || "") + "|" + (s ? [s.giftRemain, s.giftUsed, s.giftCount].join(",") : "f") + "|"
       + "|d" + (d.todayAdded ?? 0) + "|" + (d.yesterdayRemain ?? 0) + "|" + (d.todayUsed || 0) + "|" + ((d.dailyUsed || []).length);
   }).join(";");
 }
@@ -48,22 +51,22 @@ function renderHero() {
     if (y) { yestUsed += y.used || 0; yestHas = true; }
   }
   let cls = "ok", sub = "✅ 一切正常";
-  if (!rs.length) { cls = ""; sub = "账号池为空,点「📥 导入账号信息」"; }
+  if (!rs.length) { cls = ""; sub = "账号池为空,先运行 trae-credits.bat scan 扫描本机登录态"; }
   else if (failN > 0) { cls = "warn"; sub = `${failN} 个账号查询失败`; }
   else sub = `✅ 一切正常 · ${okN}/${rs.length} 账号有效`;
   // 今日已用环比昨日(自然日):↑=今天比昨天用得多,↓=用得少
-  let trendHtml = totalUsed > 0 ? fmt(totalUsed) : "0";
+  let trendHtml = totalUsed > 0 ? fmt0(totalUsed) : "0";
   if (yestHas) {
     const delta = totalUsed - yestUsed;
     const arrow = delta > 0 ? "↑" : "↓";
     const c = delta > 0 ? "var(--bad)" : "var(--ok)";
-    trendHtml = `${fmt(totalUsed)} <span style="font-size:12px;color:${c}" title="较昨日${delta >= 0 ? "多" : "少"}用 ${fmt(Math.abs(delta))}">${arrow}${fmt(Math.abs(delta))}</span>`;
+    trendHtml = `${fmt0(totalUsed)} <span style="font-size:12px;color:${c}" title="较昨日${delta >= 0 ? "多" : "少"}用 ${fmt0(Math.abs(delta))}">${arrow}${fmt0(Math.abs(delta))}</span>`;
   }
   $("hero").innerHTML = `
-    <div class="hcard total ${cls}"><span class="h-ico">🏦</span><div class="n" id="heroTotal">${rs.length ? fmt(total) : "—"}</div><div class="l">总剩余积分</div><div class="s">${sub}</div></div>
-    <div class="hcard ${tAddHas ? "ok" : ""}"><span class="h-ico">📥</span><div style="display:flex;align-items:flex-end;gap:20px;margin-top:4px"><div><div class="n" id="heroYestRemain">${yRemainHas ? fmt(yestRemainAll) : "—"}</div><div class="l">昨日结余</div></div><div><div class="n" id="heroTodayAdd" style="color:var(--ok)">${tAddHas ? "+" + fmt(tAddAll) : "—"}</div><div class="l">今日到账</div></div></div></div>
+    <div class="hcard total ${cls}"><span class="h-ico">🏦</span><div class="n" id="heroTotal">${rs.length ? fmt0(total) : "—"}</div><div class="l">总剩余积分</div><div class="s">${sub}</div></div>
+    <div class="hcard ${tAddHas ? "ok" : ""}"><span class="h-ico">📥</span><div style="display:flex;align-items:flex-end;gap:20px;margin-top:4px"><div><div class="n" id="heroYestRemain">${yRemainHas ? fmt0(yestRemainAll) : "—"}</div><div class="l">昨日结余</div></div><div><div class="n" id="heroTodayAdd" style="color:var(--ok)">${tAddHas ? "+" + fmt0(tAddAll) : "—"}</div><div class="l">今日到账</div></div></div></div>
     <div class="hcard"><span class="h-ico">📉</span><div class="n" id="heroToday">${trendHtml}</div><div class="l">今日已用</div></div>
-    <div class="hcard"><span class="h-ico">🔥</span><div class="n">${fmt(used)}</div><div class="l">累计已用</div></div>`;
+    <div class="hcard"><span class="h-ico">🔥</span><div class="n">${fmt0(used)}</div><div class="l">累计已用</div></div>`;
 }
 
 // ---------- 过期统计（已收口到后端 derive.js 单派生源） ----------
@@ -74,8 +77,8 @@ function renderHero() {
 function renderCards() {
   const rs = (S && S.results) || [];
   if (!rs.length) {
-    $("grid").innerHTML = '<div class="empty"><div class="big">📭</div>账号池为空<br>点「📥 导入账号信息」(Edge 插件导出 wb-accounts.json)或命令行 wb-credits.bat import</div>';
-    $("foot").textContent = "v1.4.72 · 数据来自 WorkBuddy 网页版接口 · 暂无账号数据(可「导入账号信息」或从 WebDAV 下载)";
+    $("grid").innerHTML = '<div class="empty"><div class="big">📭</div>账号池为空<br>先运行 <b>trae-credits.bat scan</b> 扫描本机 TRAE 登录态建立账号池,或导入 trae-accounts.json 备份</div>';
+    $("foot").textContent = "v1.5.1 · 数据来自 TRAE 官方接口(api.trae.cn) · 暂无账号数据(先运行 trae-credits.bat scan 或从 WebDAV 下载)";
     return;
   }
   $("grid").innerHTML = rs.map((r, i) => {
@@ -85,34 +88,34 @@ function renderCards() {
     const acts = `<span class="acts" style="margin-left:auto"><button class="btn btn-d" onclick="event.stopPropagation();openRename('${a.id}')">改名</button>
       <button class="btn btn-d" onclick="event.stopPropagation();openDel('${a.id}')">删除</button></span>`;
     if (!s) {
-      return `<div class="acct" data-id="${a.id}" draggable="true" onclick="openDetail('${a.id}')"><div class="acct-top">
-        <div><div class="acct-name">${nm}</div><div class="acct-uin">Uin: ${a.uin || "?"}</div></div>
+      return `<div class="acct${a.appKey === "workbuddy" ? " wb" : ""}" data-id="${a.id}" draggable="true" onclick="openDetail('${a.id}')"><div class="acct-top">
+        <div><div class="acct-name"><span class="nm">${nm}</span></div></div>
         <span class="remain" style="color:var(--bad);border-color:currentColor;background:transparent">❌ 查询失败</span></div>
         <div class="acct-rows"><div class="arow act-row"><div class="l">${escAttr(r.error || "查询失败")}</div>${acts}</div></div></div>`;
     }
-    const bp = s.baseSize ? Math.min(100, (s.baseUsed / s.baseSize) * 100) : 0;
+    // TRAE 单积分池(无体验版 base):展示通用积分池已用/总量 + 剩余 + 有效积分包数
     const gp = s.giftSize ? Math.min(100, (s.giftUsed / s.giftSize) * 100) : 0;
-    const baseNote = s.baseCycleEnd ? `(至 ${s.baseCycleEnd.slice(5, 10)})` : "";
-    // 基础包状态(v1.4.71):用光=红(已用完) / 快用完=橙(警告) / 正常
-    const baseState = !s.baseSize ? "" : (bp >= 100 ? "bad" : (bp > 85 ? "warn" : ""));
-    const baseVal = s.baseSize && (s.baseRemain ?? 1) <= 0 ? "已用完" : `剩余 ${s.baseRemain ?? "-"}`;
-    // 签到标记（v1.4.44）：由后端 derive 检测今日首条 vs 最新快照的新增满额包推断，见 detectSignIn
-    const signed = (r.derived && r.derived.signedInToday)
+    const dv = r.derived || {};
+    // 签到标记：后端 derive 读今日快照 signedIn（checkin 接口固化，当天恒定）
+    const signed = dv.signedInToday
       ? `<span class="signed" title="今日已签到">✅ 已签到</span>`
       : `<span class="signed no" title="今日未签到">⏰ 未签到</span>`;
-    return `<div class="acct" data-id="${a.id}" data-uin="${a.uin}" draggable="true" onclick="openDetail('${a.id}')"><div class="acct-top">
-      <div><div class="acct-name">${nm}</div><div class="acct-uin">Uin: ${a.uin || "?"}</div></div>
-      <div class="remain"><span class="tt">💎 总剩余积分</span><span class="tn">${fmt(totalOf(s))}</span></div></div>
+    // 今日到账 = 今日新增签到奖励包容量（derive.todayAdded；无昨日基线则为 null → 不显示）
+    const added =
+      dv.todayAdded != null && dv.todayAdded > 0
+        ? `<span class="acct-added" title="今日签到/入账积分">📥 到账 +${fmt0(dv.todayAdded)}</span>`
+        : "";
+    return `<div class="acct${a.appKey === "workbuddy" ? " wb" : ""}" data-id="${a.id}" data-uin="${a.uin}" draggable="true" onclick="openDetail('${a.id}')"><div class="acct-top">
+      <div><div class="acct-name"><span class="nm">${nm}</span></div><div class="acct-chip"><span class="app-chip" title="软件来源">${escAttr(appLabel(a))}</span></div></div>
+      <div class="remain-side">${added}<div class="remain"><span class="tt">💎 总剩余积分</span><span class="tn">${fmt0(totalOf(s))}</span></div></div></div>
       <div class="acct-rows">
-        <div class="arow"><div class="l"><span>🎁 体验版基础用量 ${baseNote}</span><b class="${baseState ? "t-" + baseState : ""}">${baseVal}</b></div>
-          ${s.baseSize ? `<div class="meter ${baseState}"><i style="width:${bp}%"></i></div>` : ""}</div>
-        <div class="arow"><div class="l"><span>📦 有效赠送包(${s.giftCount} 个)</span><b>剩余 ${s.giftRemain}</b></div>
+        <div class="arow"><div class="l"><span>📦 积分包(${s.giftCount ?? 0} 个)</span><b>剩余 ${Number.isFinite(s.giftRemain) ? fmt0(s.giftRemain) : (s.giftRemain ?? "-")} / 总量 ${Number.isFinite(s.giftSize) ? fmt0(s.giftSize) : (s.giftSize ?? "-")}</b></div>
           <div class="meter ${gp > 85 ? "warn" : ""}"><i style="width:${gp}%"></i></div></div>
-        <div class="arow act-row"><div class="l t-brand"><div class="acct-today">今日消耗 ${fmt((r.derived && r.derived.todayUsed) || 0)}</div>${signed}</div>${acts}</div>
+        <div class="arow act-row"><div class="l t-brand"><div class="acct-today">今日消耗 ${fmt0(dv.todayUsed || 0)}</div>${signed}</div>${acts}</div>
       </div></div>`;
   }).join("");
   initDrag();
-  $("foot").textContent = "v1.4.72 · 数据来自 WorkBuddy 网页版接口 · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新导入账号信息更新凭证 · 卡片可拖动排序";
+  $("foot").textContent = "v1.5.1 · 数据来自 TRAE 官方接口(api.trae.cn) · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新运行 trae-credits.bat scan 更新登录态 · 卡片可拖动排序";
 }
 
 // ---- 卡片拖拽排序(顺序随账号池持久化,经 /api/reorder 保存) ----
@@ -181,13 +184,13 @@ function renderDashTable() {
         <span class="di">${i + 1}</span>
         <span class="dname">${escAttr(acctName(a))}</span>
       </div>
-      <div class="dremain"><div class="dr-v">${fmt(a.currentRemain ?? "-")}</div><div class="dr-l">💎 总剩余</div></div>
+      <div class="dremain"><div class="dr-v">${fmt0(a.currentRemain ?? "-")}</div><div class="dr-l">💎 总剩余</div></div>
       <div class="dgrid">
-        ${cell("今日消耗", fmt(tu), "", "plain", false)}
-        ${cell("累计已用", fmt(a.consumed ?? "-"), "", "plain", false)}
-        ${cell("近2天过期", fmt(e2), e2 > 0 ? "warn" : "", e2 > 0 ? "warn" : "ok", e2 > 0)}
-        ${cell("近3天过期", fmt(e3), e3 > 0 ? "warn" : "", e3 > 0 ? "warn" : "ok", e3 > 0)}
-        ${cell("近7天过期", fmt(e7), e7 > 0 ? "warn" : "", e7 > 0 ? "warn" : "ok", e7 > 0)}
+        ${cell("今日消耗", fmt0(tu), "", "plain", false)}
+        ${cell("累计已用", fmt0(a.consumed ?? "-"), "", "plain", false)}
+        ${cell("近2天过期", fmt0(e2), e2 > 0 ? "warn" : "", e2 > 0 ? "warn" : "ok", e2 > 0)}
+        ${cell("近3天过期", fmt0(e3), e3 > 0 ? "warn" : "", e3 > 0 ? "warn" : "ok", e3 > 0)}
+        ${cell("近7天过期", fmt0(e7), e7 > 0 ? "warn" : "", e7 > 0 ? "warn" : "ok", e7 > 0)}
       </div>
     </div>`;
   }).join("");
@@ -201,13 +204,13 @@ function renderDashTable() {
   const total = `<div class="dacct dtot">
     <div class="dhead"><div class="dname num-b">📊 合计</div></div>
     <div class="dgrid">
-      ${cell("今日消耗", fmt(sumTu), "", "plain", false)}
-      ${cell("累计已用", fmt(sum("consumed")), "", "plain", false)}
-      ${cell("近2天过期", fmt(sumExp2d), sumExp2d > 0 ? "warn" : "", sumExp2d > 0 ? "warn" : "ok", sumExp2d > 0)}
-      ${cell("近3天过期", fmt(sumExp3d), sumExp3d > 0 ? "warn" : "", sumExp3d > 0 ? "warn" : "ok", sumExp3d > 0)}
-      ${cell("近7天过期", fmt(sumExp7d), sumExp7d > 0 ? "warn" : "", sumExp7d > 0 ? "warn" : "ok", sumExp7d > 0)}
+      ${cell("今日消耗", fmt0(sumTu), "", "plain", false)}
+      ${cell("累计已用", fmt0(sum("consumed")), "", "plain", false)}
+      ${cell("近2天过期", fmt0(sumExp2d), sumExp2d > 0 ? "warn" : "", sumExp2d > 0 ? "warn" : "ok", sumExp2d > 0)}
+      ${cell("近3天过期", fmt0(sumExp3d), sumExp3d > 0 ? "warn" : "", sumExp3d > 0 ? "warn" : "ok", sumExp3d > 0)}
+      ${cell("近7天过期", fmt0(sumExp7d), sumExp7d > 0 ? "warn" : "", sumExp7d > 0 ? "warn" : "ok", sumExp7d > 0)}
     </div>
-    <div class="dremain" style="background:none;border:none;padding:6px 0 0"><div class="dr-v" style="font-size:22px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">${fmt(sum("currentRemain"))}</div><div class="dr-l">💎 总剩余</div></div>
+    <div class="dremain" style="background:none;border:none;padding:6px 0 0"><div class="dr-v" style="font-size:22px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">${fmt0(sum("currentRemain"))}</div><div class="dr-l">💎 总剩余</div></div>
   </div>`;
   $("dashCards").innerHTML = cards + total;
   // ===== 桌面表格版(手机隐藏) =====
@@ -215,16 +218,16 @@ function renderDashTable() {
     const e1 = a.expiring1d || 0, e2 = a.expiring2d || 0, e3 = a.expiring3d || 0, e7 = a.expiring7d || 0;
     return `<tr>
     <td class="num t-faint">${i + 1}</td><td>${escAttr(acctName(a))}</td>
-    <td class="num"><b>${a.currentRemain ?? "-"}</b></td><td class="num">${a.consumed ?? "-"}</td>
-    <td class="num">${a.todayUsed > 0 ? fmt(a.todayUsed) : "0"}</td>
-    <td class="num" style="color:var(--${e1 > 0 ? 'warn' : 'faint'})">${fmt(e1)}</td>
-    <td class="num" style="color:var(--${e2 > 0 ? 'warn' : 'faint'})${e2 > 0 ? ';font-weight:800' : ''}">${fmt(e2)}</td>
-    <td class="num" style="color:var(--${e3 > 0 ? 'warn' : 'faint'})">${fmt(e3)}</td>
-    <td class="num" style="color:var(--${e7 > 0 ? 'warn' : 'faint'})${e7 > 0 ? ';font-weight:800' : ''}">${fmt(e7)}</td></tr>`;
+    <td class="num"><b>${a.currentRemain == null ? "-" : fmt0(a.currentRemain)}</b></td><td class="num">${a.consumed == null ? "-" : fmt0(a.consumed)}</td>
+    <td class="num">${a.todayUsed > 0 ? fmt0(a.todayUsed) : "0"}</td>
+    <td class="num" style="color:var(--${e1 > 0 ? 'warn' : 'faint'})">${fmt0(e1)}</td>
+    <td class="num" style="color:var(--${e2 > 0 ? 'warn' : 'faint'})${e2 > 0 ? ';font-weight:800' : ''}">${fmt0(e2)}</td>
+    <td class="num" style="color:var(--${e3 > 0 ? 'warn' : 'faint'})">${fmt0(e3)}</td>
+    <td class="num" style="color:var(--${e7 > 0 ? 'warn' : 'faint'})${e7 > 0 ? ';font-weight:800' : ''}">${fmt0(e7)}</td></tr>`;
   }).join("");
   $("dashTbody").innerHTML = rows + `<tr class="row-total">
-    <td></td><td>合计</td><td class="num">${fmt(sum("currentRemain"))}</td><td class="num">${fmt(sum("consumed"))}</td>
-    <td class="num">${fmt(sumTu)}</td><td class="num">${fmt(sumExp1d)}</td><td class="num">${fmt(sumExp2d)}</td><td class="num">${fmt(sumExp3d)}</td><td class="num">${fmt(sumExp7d)}</td></tr>`;
+    <td></td><td>合计</td><td class="num">${fmt0(sum("currentRemain"))}</td><td class="num">${fmt0(sum("consumed"))}</td>
+    <td class="num">${fmt0(sumTu)}</td><td class="num">${fmt0(sumExp1d)}</td><td class="num">${fmt0(sumExp2d)}</td><td class="num">${fmt0(sumExp3d)}</td><td class="num">${fmt0(sumExp7d)}</td></tr>`;
 }
 // ===== 趋势图表（柱状图/每日窗口/图例交互/模式切换）已拆分到 wb-gui.chart.js =====
 
@@ -233,7 +236,7 @@ function renderGiftBuckets(buckets, e1, e3) {
   buckets = buckets || [];
   if (!buckets.length) return '<div class="sect"><div class="stitle">📅 积分到期明细 <span class="sub">从今天起</span></div><div class="ph ph-sm">无有效赠送包</div></div>';
   const max = Math.max(e1, e3, ...buckets.map((x) => x.total || 0), 1);
-  const bar = (label, val, cls, note) => `<div class="bar-col"><div class="bar-v ${cls}">${fmt(val)}</div>
+  const bar = (label, val, cls, note) => `<div class="bar-col"><div class="bar-v ${cls}">${fmt0(val)}</div>
     <div class="bar-track"><div class="bar-fill ${cls}" style="height:${Math.max(4, (val / max) * 100)}%"></div></div>
     <div class="bar-label">${label}</div><div class="bar-sub">${note}</div></div>`;
   const bars = [

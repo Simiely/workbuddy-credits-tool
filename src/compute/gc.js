@@ -15,8 +15,8 @@ import {
   deleteReadingsBefore,
   allSnapshotUins,
 } from "./history.js";
-import { consumeByPack, detectSignIn } from "./derive.js";
-import { dayOfOffset, TZ_MS } from "../time.js";
+import { consumeByUsed } from "./derive.js";
+import { TZ_MS } from "../time.js";
 
 /**
  * 固化 T-2 及更早（幂等：day_summary 已有该日即跳过）。
@@ -33,21 +33,25 @@ export function gcDaySummaries() {
     const existing = new Set(loadDaySummaries(uin).map((s) => s.day)); // 幂等键
     for (const day of oldDayKeys(uin, cutMs)) {
       if (existing.has(day)) continue; // 已固化，跳过
-      const rows = readingsForDay(uin, day);
+      const rows = readingsForDay(uin, day).map((r) => ({
+        ...r,
+        // 固化沿用与实时派生一致的格式感知：readingsForDay 返回的是裸列（无 unified），
+        // 不补上的话 consumeByUsed 会把 legacy/unified 混合帧当统一格式，把格式交界的
+        // 基准跳变误算为当日消耗并随 day_summary 幂等永久固化（历史旧日混合帧尤其易发）。
+        unified: (() => {
+          try {
+            return Object.prototype.hasOwnProperty.call(JSON.parse(r.raw || "{}"), "giftPackages");
+          } catch {
+            return false;
+          }
+        })(),
+      }));
       if (!rows.length) continue;
-      const v = consumeByPack(rows);
+      const v = consumeByUsed(rows); // TRAE 消耗 = 当日首末 giftUsed 差(usage_summary 权威)
       const first = rows[0];
       const last = rows[rows.length - 1];
-      // 当天签到状态：基线 = 前一天最后一条快照 vs 当日末条,「新增 + 到期日对日=当日+1月」= 当天已签到
-      // (基线修正 2026-08-06,与今日签到同因:当日首条可能已含签到包;取不到前一天则退化当日首条)
-      const packsOf = (r) => {
-        try { return (JSON.parse(r.raw || "{}").giftPackages) || []; } catch { return []; }
-      };
-      const prevRows = readingsForDay(uin, dayOfOffset(day, -1)); // 前一天快照(可能为空)
-      const basePacks = prevRows.length
-        ? packsOf(prevRows[prevRows.length - 1])
-        : packsOf(first);
-      const signedIn = detectSignIn(basePacks, packsOf(last), day) ? 1 : 0;
+      // TRAE 签到由实时 checkin 接口提供,固化不做元数据推断;历史签到置 0(留待接口化扩展)。
+      const signedIn = 0;
       saveDaySummary(
         uin,
         day,

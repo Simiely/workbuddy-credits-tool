@@ -1,20 +1,20 @@
-# WorkBuddy credits dashboard - one-click container startup
+# TRAE/WorkBuddy credits dashboard - one-click container startup
 #
 # Usage:
-#   docker compose up -d        -> open http://127.0.0.1:8080
+#   docker compose up -d        -> open http://127.0.0.1:8133
 #   docker compose logs -f      -> follow logs
 #   docker compose down         -> stop (data stays on host)
 #
-# Scheme: WB_COLLECTOR=file (WebDAV sync). The project dir is bind-mounted to /app,
-# so the container and the desktop (Edge) scheme share the SAME data set
-# (wb-accounts.json / wb-sync.json / credits.db) - no migration needed.
+# Scheme: WebDAV sync. The project dir is bind-mounted to /app,
+# so the container and the desktop share the SAME data set
+# (trae-accounts.json / wb-sync.json / credits.db) - no migration needed.
 services:
   credits:
     build: .
-    image: wb-credits:latest
-    container_name: wb-credits
+    image: trae-credits:latest
+    container_name: trae-credits
     ports:
-      - "8080:8080"
+      - "8133:8133"
     environment:
       WB_COLLECTOR: file
       TZ: Asia/Shanghai   # 容器默认 UTC;设置中国时区,配合 derive 固定 +8 口径,自然日不再错位

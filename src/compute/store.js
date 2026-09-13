@@ -4,12 +4,13 @@
 // addOrUpdateAccount / newAccountId / displayName / ACCOUNTS_FILE），
 // 仅内部改为读写 SQLite（credits.db）。上层（wb-gui / query / account-ops）无需改动。
 import fs from "node:fs";
-import path from "node:path";
-import { TOOLS_DIR } from "../config.js";
 import { getDb } from "../store/db.js";
+import { ACCOUNTS_FILE } from "../store/syncbridge.js";
 import { normalizeAccount, rowToAccount } from "../domain.js";
+import { scanLocalAuths, toAccountRec, scanWbAuths, toWbAccountRec } from "./discover.js";
+import { isWorkBuddy } from "./wb.js";
 
-export const ACCOUNTS_FILE = path.join(TOOLS_DIR, "wb-accounts.json"); // 仍保留：WebDAV 镜像 / 兼容清理
+export { ACCOUNTS_FILE }; // 保持外部导入兼容；文件清单真源已收敛到 syncbridge.js
 
 /** 读取全部账号（按 order_idx 顺序） */
 export function loadAccounts() {
@@ -31,8 +32,8 @@ export function saveAccounts(accounts) {
     db.prepare("DELETE FROM accounts").run();
     const ins = db.prepare(
       `INSERT OR REPLACE INTO accounts
-        (id,name,uin,cookieHeader,userAgent,sessionExpiresAt,displayName,lastStatus,source,addedAt,updatedAt,order_idx)
-       VALUES (@id,@name,@uin,@cookieHeader,@userAgent,@sessionExpiresAt,@displayName,@lastStatus,@source,@addedAt,@updatedAt,@order_idx)`
+        (id,name,uin,cookieHeader,userAgent,sessionExpiresAt,displayName,lastStatus,source,appKey,addedAt,updatedAt,order_idx)
+       VALUES (@id,@name,@uin,@cookieHeader,@userAgent,@sessionExpiresAt,@displayName,@lastStatus,@source,@appKey,@addedAt,@updatedAt,@order_idx)`
     );
     for (let i = 0; i < accounts.length; i++) {
       ins.run(normalizeAccount(accounts[i], i));
@@ -108,7 +109,7 @@ export function mergeAccounts(local, incoming) {
 
 // ---------- WebDAV 镜像桥接（SQLite <-> 遗留 JSON） ----------
 
-/** 把 SQLite 账号池导出为 wb-accounts.json 镜像（供 WebDAV 上传） */
+/** 把 SQLite 账号池导出为 trae-accounts.json 镜像（供 WebDAV 上传） */
 export function exportLegacy() {
   const accounts = loadAccounts();
   try {
@@ -120,7 +121,7 @@ export function exportLegacy() {
   } catch {}
 }
 
-/** 从 wb-accounts.json 镜像导入覆盖 SQLite（供 WebDAV 下载后调用） */
+/** 从 trae-accounts.json 镜像导入覆盖 SQLite（供 WebDAV 下载后调用） */
 export function importLegacy() {
   try {
     if (!fs.existsSync(ACCOUNTS_FILE)) return;
@@ -139,7 +140,7 @@ export function importLegacy() {
 
 // ---------- 墓碑（v1.4.46 同步删除传播） ----------
 // 墓碑解决「删除不跨设备」：设备 A 删账号 → tombstones 表记 (uin, deletedAt) →
-// 随 wb-accounts.json 备份传播 → 设备 B 同步合并时，远端账号 updatedAt ≤ deletedAt 则保持删除，
+// 随 trae-accounts.json 备份传播 → 设备 B 同步合并时，远端账号 updatedAt ≤ deletedAt 则保持删除，
 // 远端新数据 > deletedAt 则复活。TTL 30 天由 purgeOldTombstones 清理，避免无限膨胀。
 
 const TOMBSTONE_TTL_MS = 30 * 86400000; // 30 天
@@ -230,4 +231,72 @@ export function mergeAccountsSmart(local, incoming, tombstones = new Map()) {
   }
 
   return { added, updated, skipped, tombstoned, resurrected };
+}
+
+// ---------- 发现即入库：本地槽登录态自动对账（读取时 / 云同步后调用） ----------
+// 设计：登录态槽(backups/<app>/<槽>/)是账号的「真相源」；DB 账号池是带元数据(order/重命名/墓碑)的镜像缓存。
+// 每次读取前 / 云同步拉到新槽后，自动把「磁盘上可发现的登录态」并入账号池——新增槽即自动出现，无需手动 scan。
+// 仅新增/更新路径，绝不因「当前未发现」删除(保留导入型/内联账号)；墓碑账号不复活；用户自定义 displayName 不被覆盖。
+
+/**
+ * 把本地可发现的登录态(TRAE storage.json + WorkBuddy .info)并入给定账号数组（按 uin 去重）。
+ * 与 CLI `scan` 共用同一逻辑(单一真相)，直接修改传入数组，返回统计。
+ * @param {Array} local 账号池(原地修改)
+ * @returns {Promise<{added:number, updated:number, skipped:number}>}
+ */
+export async function mergeDiscovered(local) {
+  const found = await scanLocalAuths();
+  const wbFound = await scanWbAuths();
+  const valid = found.filter((s) => !s.error && s.userId);
+  const wbValid = wbFound.filter((s) => !s.error && s.wb);
+  let added = 0, updated = 0, skipped = 0;
+
+  // TRAE 来源：按 userId(uin) 去重；已存在则仅刷新凭证路径(内联凭证账号不覆盖)，不动 displayName。
+  for (const s of valid) {
+    const rec = toAccountRec(s);
+    const ex = local.find((a) => a.uin && String(a.uin) === String(s.userId));
+    if (ex) {
+      const inline = typeof ex.cookieHeader === "string" && (ex.cookieHeader.startsWith("{") || ex.cookieHeader.startsWith("["));
+      if (!inline) {
+        const old = ex.cookieHeader;
+        ex.cookieHeader = s.storage;
+        ex.updatedAt = new Date().toISOString();
+        if (old === s.storage) skipped++; else updated++;
+      } else skipped++;
+    } else {
+      local.push(rec);
+      added++;
+    }
+  }
+  // WorkBuddy 来源：appKey+uid 双键去重（与 TRAE 池并行，互不吞并）。
+  for (const s of wbValid) {
+    const rec = toWbAccountRec(s);
+    const key = `workbuddy|${s.wb.uid || ""}`;
+    const ex = local.find((a) => isWorkBuddy(a) && `workbuddy|${a.uin || ""}` === key);
+    if (ex) {
+      const inline = typeof ex.cookieHeader === "string" && (ex.cookieHeader.startsWith("{") || ex.cookieHeader.startsWith("["));
+      if (!inline) {
+        const old = ex.cookieHeader;
+        ex.cookieHeader = s.filePath;
+        ex.updatedAt = new Date().toISOString();
+        if (old === s.filePath) skipped++; else updated++;
+      } else skipped++;
+    } else {
+      local.push(rec);
+      added++;
+    }
+  }
+  return { added, updated, skipped };
+}
+
+/**
+ * 读取账号池并与本地可发现登录态对账(新增槽自动入库)。
+ * 仅在确有新增/路径更新时写回 DB,避免无谓全表重写。供 GUI 读取 / 云同步后调用。
+ * @returns {Promise<Array>}
+ */
+export async function reconcileFromDisk() {
+  const local = loadAccounts();
+  const { added, updated } = await mergeDiscovered(local);
+  if (added || updated) saveAccounts(local);
+  return local;
 }

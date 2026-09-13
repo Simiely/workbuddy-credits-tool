@@ -67,19 +67,22 @@ function openDetail(id) {
   const d = derivedOf(r) || {}; // 赠送包到期/汇总全部来自后端派生(dashPer),前端不再现算
   openMask("mask");
   $("mTitle").textContent = escAttr(acctName(r.account)) + " · 明细";
-  const baseNote = d.baseCycleEnd ? `(当月有效 · 至 ${String(d.baseCycleEnd).slice(5, 10)})` : "";
-  const baseRemain = d.baseRemain ?? "-";
+  // TRAE 单积分池:总额= giftSize,已用= giftUsed,剩余= giftRemain(=总剩余);明细见下方积分包列表
+  const giftSize = d.giftSize ?? 0;
+  const giftUsed = d.giftUsed ?? 0;
   const giftRemain = d.giftRemain ?? 0;
   const expC = d.expCount ?? 0;
-  const totalRemain = (d.baseRemain ?? 0) + (d.giftRemain ?? 0);
+  const totalRemain = giftRemain; // TRAE 无体验版 base,总剩余即积分池剩余
+  const packs = d.giftPacks || [];
   $("mBody").innerHTML = `
-    <div class="hint hint-mb">数据时间: ${(S && S.fetchedAt) || "-"} · 点「刷新全部」获取最新</div>
+    <div class="hint hint-mb">账号 Uin: ${escAttr(r.account.uin || "—")} · 数据时间: ${(S && S.fetchedAt) || "-"} · 点「刷新全部」获取最新</div>
     <div class="cards">
-      <div class="mcard"><div class="l">🎁 体验版剩余 ${baseNote}</div><div class="v">${baseRemain}</div></div>
-      <div class="mcard"><div class="l">📦 赠送包已用/总量</div><div class="v">${fmt(d.giftUsed ?? 0)} / ${d.giftSize ?? "-"}</div></div>
-      <div class="mcard"><div class="l">💝 赠送剩余</div><div class="v">${giftRemain}</div></div>
-      <div class="mcard"><div class="l">💎 剩余总积分</div><div class="v">${fmt(totalRemain)}</div><div class="s">体验版 ${baseRemain} + 赠送 ${giftRemain} · 过期 ${expC}</div></div>
+      <div class="mcard"><div class="l">📦 积分池总量</div><div class="v">${fmt0(giftSize)}</div></div>
+      <div class="mcard"><div class="l">📉 已用</div><div class="v">${fmt0(giftUsed)}</div></div>
+      <div class="mcard"><div class="l">💎 剩余(总积分)</div><div class="v">${fmt0(totalRemain)}</div></div>
+      <div class="mcard"><div class="l">📅 近30天过期</div><div class="v">${fmt0(expC)}</div></div>
     </div>
+    ${renderGiftPacks(packs)}
     ${renderGiftBuckets(d.giftBuckets, d.expiring1d || 0, d.expiring3d || 0)}
     <div class="sect"><div class="stitle">📈 消耗历史 <span class="sub">剩余总积分变化</span></div><div id="histBox"><div class="ph ph-sm">加载中…</div></div></div>`;
   loadHist(r.account.uin);
@@ -94,14 +97,32 @@ async function loadHist(uin) {
     if (!box) return;
     if (!days.length) { box.innerHTML = '<div class="ph ph-sm">暂无历史(每次成功刷新自动记录)</div>'; return; }
     const rows = days.map((x) => {
-      const diff = x.used > 0 ? `<span class="t-bad num-b">-${fmt(x.used)}</span>` : x.used === 0 ? "0" : `<span class="t-ok">+${fmt(Math.abs(x.used))}</span>`;
-      return `<tr><td class="num t-faint">${x.day}</td><td class="num">${fmt(x.startRemain)}</td><td class="num"><b>${fmt(x.endRemain)}</b></td><td>${diff}</td></tr>`;
+      const diff = x.used > 0 ? `<span class="t-bad num-b">-${fmt0(x.used)}</span>` : x.used === 0 ? "0" : `<span class="t-ok">+${fmt0(Math.abs(x.used))}</span>`;
+      return `<tr><td class="num t-faint">${x.day}</td><td class="num">${fmt0(x.startRemain)}</td><td class="num"><b>${fmt0(x.endRemain)}</b></td><td>${diff}</td></tr>`;
     }).join("");
     box.innerHTML = `<div class="tbl tbl-short"><table class="tbl-narrow"><thead><tr><th>日期</th><th>起</th><th>终</th><th>日消耗</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   } catch {
     const box = $("histBox");
     if (box) box.innerHTML = '<div class="ph ph-sm">历史加载失败</div>';
   }
+}
+
+// 积分包明细:giftPacks = [{packageName,desc,status(0=有效),capacityRemain,capacityUsed,capacitySize,cycleEndTime}]
+function renderGiftPacks(packs) {
+  packs = packs || [];
+  if (!packs.length) return '<div class="sect"><div class="stitle">🎁 积分包明细</div><div class="ph ph-sm">无有效积分包</div></div>';
+  const rows = packs.map((p) => {
+    const size = p.capacitySize ?? 0, used = p.capacityUsed ?? 0, rem = p.capacityRemain ?? 0;
+    const pct = size > 0 ? Math.min(100, (used / size) * 100) : 0;
+    const status = p.status === 0 ? "有效" : "失效";
+    return `<div class="bucket">
+      <div class="bh"><div><div class="br">${escAttr(p.packageName || "积分包")}</div><div class="bt">${escAttr(p.desc || "")}</div></div>
+        <div class="bs">剩余 <b>${fmt0(rem)}</b> / ${fmt0(size)}</div></div>
+      <div class="meter ${pct > 85 ? "warn" : ""}"><i style="width:${pct}%"></i></div>
+      <div class="bt" style="padding:8px 14px;font-size:11px">已用 ${fmt0(used)} · 到期 ${escAttr(p.cycleEndTime || "—")} · 状态 ${status}</div>
+    </div>`;
+  }).join("");
+  return `<div class="sect"><div class="stitle">🎁 积分包明细 <span class="sub">${packs.length} 个有效包</span></div>${rows}</div>`;
 }
 
 // ---- 改名 / 删除 ----
@@ -138,7 +159,9 @@ async function confirmSmall() {
 }
 
 // ---- 导入账号信息 / 导出 ----
-// 选择 Edge 插件导出的 wb-accounts.json,POST /api/import-json(smart 合并进 SQLite)
+// 选择文件导入,POST /api/import-json(smart 合并进账号池)。兼容两种格式:
+//   1) trae-accounts.json 账号池快照 {accounts,tombstones}
+//   2) MultiSwitch「🔑导出凭证」json {token,userId,account:{username},...}(v1.5.x)
 function importAccountsFromFile(input) {
   const f = input.files && input.files[0];
   if (!f) return;
@@ -151,7 +174,15 @@ function importAccountsFromFile(input) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      toast(`✅ 已导入账号信息:共 ${r.total} 个账号`);
+      const parts = [];
+      if (r._type === "multiSwitch-export") {
+        const who = r._who || "账号";
+        parts.push(`MultiSwitch 凭证「${who}」`);
+        parts.push(`新增${r.added || 0}/更新${r.updated || 0}`);
+      } else {
+        parts.push(`账号池快照(新增${r.added || 0}/更新${r.updated || 0})`);
+      }
+      toast(`✅ 已导入:${parts.join("，")}，账号池共 ${r.total} 个`);
       refreshAll(false);
     } catch (e) { toast("❌ " + e.message); }
     input.value = "";

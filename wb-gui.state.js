@@ -8,8 +8,12 @@ const __BASE__ = window.__BASE__ || "";
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => Math.round((n || 0) * 100) / 100;
 const acctName = (a) => (a && (a.displayName || "").trim()) || (a && a.name) || "账号";
-const totalOf = (s) => (s ? (s.baseRemain ?? 0) + s.giftRemain : 0);
+const totalOf = (s) => (s ? (s.giftRemain ?? 0) : 0); // TRAE 无体验版 base,总剩余即积分池剩余
 const LINE_COLORS = ["#ff9292", "#5ad8a6", "#f6bd16", "#e8684a", "#6dc8ec", "#9270ca", "#ff9d4d", "#269a99", "#ff99c3", "#8378ea"];
+
+// ---- 软件源(多软件积分)展示表：账号.appKey → 显示名。未来加软件在此追加即可，前端零硬编码 ----
+const APP_LABELS = { traework: "TRAE Work", workbuddy: "WorkBuddy" };
+const appLabel = (a) => APP_LABELS[(a && a.appKey) || "traework"] || (a && a.appKey) || "TRAE Work";
 
 // ---- 共享可变状态（所有模块读写同一批顶层 let）----
 let S = null;            // 账号列表(唯一真相源){results:[{account,summary,data,derived}], fetchedAt}

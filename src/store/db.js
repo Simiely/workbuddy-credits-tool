@@ -37,6 +37,7 @@ export function initSchema(db) {
       displayName TEXT,
       lastStatus TEXT,
       source TEXT,
+      appKey TEXT,
       addedAt TEXT,
       updatedAt TEXT,
       order_idx INTEGER
@@ -73,12 +74,20 @@ export function initSchema(db) {
   ensureColumns(db);
 }
 
-// 轻量列迁移：老库 day_summary 缺 signedIn 列时补上（CREATE IF NOT EXISTS 不会加列）
+// 轻量列迁移：老库缺列时补上（CREATE TABLE IF NOT EXISTS 不会加列）
 function ensureColumns(db) {
   try {
     const cols = db.prepare("PRAGMA table_info(day_summary)").all().map((c) => c.name);
     if (!cols.includes("signedIn")) {
       db.exec("ALTER TABLE day_summary ADD COLUMN signedIn INTEGER NOT NULL DEFAULT 0");
+    }
+  } catch {}
+  try {
+    const acols = db.prepare("PRAGMA table_info(accounts)").all().map((c) => c.name);
+    if (!acols.includes("appKey")) {
+      // 存量账号默认归为 traework（本工具当前唯一软件源）
+      db.exec("ALTER TABLE accounts ADD COLUMN appKey TEXT");
+      db.exec("UPDATE accounts SET appKey='traework' WHERE appKey IS NULL OR appKey=''");
     }
   } catch {}
 }
@@ -105,8 +114,8 @@ export function migrateFromLegacy(force = false) {
   if (legacyAcc && Array.isArray(legacyAcc.accounts)) {
     const ins = db.prepare(
       `INSERT OR REPLACE INTO accounts
-        (id,name,uin,cookieHeader,userAgent,sessionExpiresAt,displayName,lastStatus,source,addedAt,updatedAt,order_idx)
-       VALUES (@id,@name,@uin,@cookieHeader,@userAgent,@sessionExpiresAt,@displayName,@lastStatus,@source,@addedAt,@updatedAt,@order_idx)`
+        (id,name,uin,cookieHeader,userAgent,sessionExpiresAt,displayName,lastStatus,source,appKey,addedAt,updatedAt,order_idx)
+       VALUES (@id,@name,@uin,@cookieHeader,@userAgent,@sessionExpiresAt,@displayName,@lastStatus,@source,@appKey,@addedAt,@updatedAt,@order_idx)`
     );
     legacyAcc.accounts.forEach((a, i) => {
       ins.run({
@@ -119,6 +128,7 @@ export function migrateFromLegacy(force = false) {
         displayName: a.displayName || "",
         lastStatus: a.lastStatus || "ok",
         source: a.source || "legacy",
+        appKey: a.appKey || "traework",
         addedAt: a.addedAt || new Date().toISOString(),
         updatedAt: a.updatedAt || new Date().toISOString(),
         order_idx: i,

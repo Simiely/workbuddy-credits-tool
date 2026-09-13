@@ -150,20 +150,26 @@ select.inp{background:var(--card2);border:1px solid var(--line);border-radius:8p
 .acct.drag-over{border-color:var(--brand);box-shadow:0 0 0 2px rgba(255,146,146,.35)}
 .acct:hover{transform:translateY(-2px);border-color:rgba(255,146,146,.35)}
 .acct-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-.acct-name{font-size:15px;font-weight:800;word-break:break-all}
-.acct-uin{font-size:11px;color:var(--faint);margin-top:3px}
+.acct-name{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;min-width:0;white-space:nowrap}
+.acct-name .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
+/* 来源色方块：名字左侧，方形、高度对齐字高、与名字留间隔（取代旧的整行左侧竖条） */
+.acct-name::before{content:"";width:11px;height:11px;flex:0 0 auto;background:var(--appc)}
 .remain{background:rgba(255,146,146,.1);border:1px solid rgba(255,146,146,.22);color:var(--brand);border-radius:12px;padding:6px 12px;text-align:center;flex-shrink:0;min-width:76px}
 .remain .tt{display:block;font-size:9px;font-weight:700;opacity:.8;letter-spacing:.5px}
 .remain .tn{display:block;font-size:19px;font-weight:900;line-height:1.2}
+.remain-side{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.remain-side .acct-added{margin-left:0}
 .acct-rows{margin-top:14px;display:flex;flex-direction:column;gap:12px}
 .arow .l{font-size:11px;color:var(--sub);margin-bottom:4px;display:flex;justify-content:space-between}
 .arow .l b{color:var(--text)}
 .arow .l b.t-bad{color:var(--bad)}
 .arow .l b.t-warn{color:var(--warn)}
 /* 含改名/删除按钮的行:与左侧内容(今日消耗/错误信息)同一行,按钮靠右 */
-.arow.act-row{display:flex;align-items:center;gap:8px}
-.arow.act-row .l{flex:1;margin-bottom:0}
-.arow.act-row .acts{flex-shrink:0}
+.arow.act-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.arow.act-row .l{margin-bottom:0;display:flex;align-items:center;gap:8px;min-width:0;flex-shrink:1;flex-basis:auto}
+.arow.act-row .acts{flex-shrink:0;margin-left:auto}
+.acct-today{white-space:nowrap;flex-shrink:0}
+.signed,.acct-added{flex-shrink:0}
 .meter{height:7px;border-radius:999px;background:var(--chip);overflow:hidden}
 .meter i{display:block;height:100%;border-radius:999px;background:var(--grad);transition:width .5s}
 .meter.warn i{background:linear-gradient(90deg,var(--warn),#ffc08a)}
@@ -171,6 +177,13 @@ select.inp{background:var(--card2);border:1px solid var(--line);border-radius:8p
 .acts{display:flex;gap:6px}
 .signed{display:inline-flex;align-items:center;font-size:10px;font-weight:800;border-radius:999px;padding:1px 7px;margin-left:8px;white-space:nowrap;color:var(--ok);background:rgba(57,190,100,.12);border:1px solid rgba(57,190,100,.35)}
 .signed.no{color:var(--faint);background:rgba(255,255,255,.05);border-color:var(--line)}
+.acct-added{display:inline-flex;align-items:center;font-size:10px;font-weight:800;border-radius:999px;padding:1px 7px;margin-left:8px;white-space:nowrap;color:var(--brand);background:rgba(255,146,146,.1);border:1px solid rgba(255,146,146,.3)}
+.acct-added:empty{display:none}
+/* 来源色：TRAE Work 紫 / WorkBuddy 绿（appKey 驱动，.wb 由 render.js 按账号来源追加） */
+#grid .acct{--appc:#a78bfa;--appbo:rgba(167,139,250,.5);--appbg:rgba(167,139,250,.16)}
+#grid .acct.wb{--appc:#2fd476;--appbo:rgba(47,212,118,.4);--appbg:rgba(47,212,118,.14)}
+.acct-chip{margin-top:3px;min-width:0}
+.acct-chip .app-chip{display:inline-flex;align-items:center;font-size:9px;font-weight:800;letter-spacing:.3px;border-radius:4px;padding:0 5px;color:var(--appc);background:var(--appbg);border:1px solid var(--appbo)}
 .empty{text-align:center;color:var(--faint);padding:40px 12px}
 .empty .big{font-size:42px;margin-bottom:10px}
 footer{text-align:center;color:var(--faint);font-size:11px;margin-top:24px}
@@ -278,7 +291,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <body>
 <div class="wrap">
   <header class="top"><div class="top-in">
-    <div class="brand"><span class="logo">WB</span><div><h1>积分指挥中心</h1><span class="upd" id="updated">加载中…</span></div></div>
+    <div class="brand"><span class="logo">AI</span><div><h1>积分指挥中心</h1><span class="upd" id="updated">加载中…</span></div></div>
     <div class="top-acts">
       <button class="btn btn-g" id="btnAdmin" onclick="openAdmin()" title="点击设置管理密码(启用后写操作需密码)">🔒 设置密码</button>
       <button class="btn btn-p" id="btnRefresh" onclick="refreshAll(true)"><span class="spin" id="refreshSpin" hidden></span><span id="refreshTxt">刷新全部</span></button>
@@ -320,7 +333,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </section>
 
   <div class="ops">
-    <button class="btn btn-g" onclick="$('importFile').click()" id="btnImport" title="选择 Edge 插件导出的 wb-accounts.json,导入账号信息"><span class="em">📥</span><span class="txt">导入账号信息</span></button>
+    <button class="btn btn-g" onclick="$('importFile').click()" id="btnImport" title="导入账号:① 选择 MultiSwitch「🔑导出凭证」json(token)直接建立可查账号;② 亦可导入本工具导出的 trae-accounts.json 账号池快照;③ 或运行 CLI scan 扫本机登录态/槽"><span class="em">📥</span><span class="txt">导入凭证/账号</span></button>
     <input type="file" id="importFile" accept=".json,application/json" hidden>
     <button class="btn btn-g" onclick="sortByExpiring()"><span class="em">⏰</span><span class="txt">过期排序</span></button>
     <button class="btn btn-g" onclick="sortByTodayUsed()"><span class="em">📉</span><span class="txt">使用排序</span></button>
@@ -347,7 +360,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <div class="sheet">
     <div class="shead"><h2>☁️ 云同步(WebDAV)</h2><button onclick="closeSync()">✕</button></div>
     <div class="sbody">
-      <div class="tip">将账号池与统计数据备份到你的 WebDAV(坚果云 / Nextcloud 等)。换电脑时先「下载数据」再刷新即可恢复。<br>⚠️ 备份文件(wb-accounts.json)含登录凭证明文,请使用 <b>HTTPS</b> 的 WebDAV 并妥善保管账号与密码(密码仅存在本机,不会上传)。</div>
+      <div class="tip">将账号池与统计数据备份到你的 WebDAV(坚果云 / Nextcloud 等)。换电脑时先「下载数据」再刷新即可恢复。<br>⚠️ 备份文件(trae-accounts.json)含登录凭证明文,请使用 <b>HTTPS</b> 的 WebDAV 并妥善保管账号与密码(密码仅存在本机,不会上传)。</div>
       <label class="tip" style="display:block;margin-bottom:6px">WebDAV 地址(文件夹 URL,如 https://dav.jianguoyun.com/dav/)</label>
       <input class="finput" id="syncUrl" placeholder="https://dav.example.com/dav/" autocomplete="off">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
@@ -406,12 +419,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 <div class="toast" id="toast"></div>
 <script>window.__BASE__ = (location.pathname.match(/^\/tool\/[^/]+/) || [""])[0];</script>
-<script src="./wb-gui.state.js?v=v1.4.72"></script>
-<script src="./wb-gui.core.js?v=v1.4.72"></script>
-<script src="./wb-gui.render.js?v=v1.4.72"></script>
-<script src="./wb-gui.chart.js?v=v1.4.72"></script>
-<script src="./wb-gui.ops.js?v=v1.4.72"></script>
-<script src="./wb-gui.sync.js?v=v1.4.72"></script>
-<script src="./wb-gui.actions.js?v=v1.4.72"></script>
+<script src="./wb-gui.state.js?v=v1.5.1"></script>
+   <script src="./wb-gui.core.js?v=v1.5.1"></script>
+<script src="./wb-gui.render.js?v=v1.5.1"></script>
+<script src="./wb-gui.chart.js?v=v1.5.1"></script>
+<script src="./wb-gui.ops.js?v=v1.5.1"></script>
+<script src="./wb-gui.sync.js?v=v1.5.1"></script>
+<script src="./wb-gui.actions.js?v=v1.5.1"></script>
 </body>
 </html>

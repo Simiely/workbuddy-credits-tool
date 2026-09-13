@@ -20,7 +20,8 @@
  * @property {string|null} sessionExpiresAt
  * @property {string} [displayName]
  * @property {string} [lastStatus] ok | expired | error
- * @property {string} [source]     legacy | edge | file
+ * @property {string} [source]     legacy | edge | file（采集来源）
+ * @property {string} [appKey]     所属软件源（traework | 未来其它软件）；UI/读取按它路由
  * @property {string} [addedAt]
  * @property {string} [updatedAt]
  */
@@ -54,6 +55,7 @@ export function normalizeAccount(a, orderIdx = 0) {
     displayName: a.displayName || "",
     lastStatus: a.lastStatus || "ok",
     source: a.source || "legacy",
+    appKey: a.appKey || "traework",
     addedAt: a.addedAt || new Date().toISOString(),
     updatedAt: a.updatedAt || new Date().toISOString(),
     order_idx: orderIdx,
@@ -76,6 +78,7 @@ export function rowToAccount(row) {
     displayName: row.displayName,
     lastStatus: row.lastStatus,
     source: row.source,
+    appKey: row.appKey || "traework",
     addedAt: row.addedAt,
     updatedAt: row.updatedAt,
   };

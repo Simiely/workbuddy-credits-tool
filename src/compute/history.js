@@ -1,6 +1,6 @@
 // src/compute/history.js - 本地缓存 + 时序快照（SQLite readings 表，原 lib/history.js）
 //
-// 设计：每次成功查询产生一个「快照」，旧版把整个快照数组存进 wb-history.json；
+// 设计：每次成功查询产生一个「快照」，旧版把整个快照数组存进 trae-history.json；
 // 新版把快照里的每个账号拆成 readings 表里的一行（append-only），快照时间 ts 共享。
 // 这样「今日消耗 / 每日序列 / 趋势」都能直接用 SQL 按 uin+ts 聚合，且单一真相源。
 // 派生/仪表盘装配在 derive.js（v1.4.58 起本文件不再 import derive，依赖方向单向）。
@@ -9,9 +9,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { TOOLS_DIR } from "../config.js";
 import { getDb } from "../store/db.js";
+import { HISTORY_FILE } from "../store/syncbridge.js";
 import { dayKeyOf, TZ_MS } from "../time.js"; // v1.4.58 时区口径统一引用
 
-const LAST_FILE = path.join(TOOLS_DIR, "wb-last-data.json"); // 离线缓存（仍保留为镜像）
+const LAST_FILE = path.join(TOOLS_DIR, "trae-last-data.json"); // 离线缓存（仍保留为镜像）
 const DEDUP_MINUTES = 1;
 
 // ---------- 最近一次结果缓存（JSON 镜像，离线/明细可用） ----------
@@ -91,6 +92,9 @@ export function historyFor(uin) {
         ts: r.ts,
         baseRemain,
         baseUsed,
+        // 快照格式：当前工具统一结构含 giftPackages 键；旧结构(他源合并/老版本)无此键。
+        // 同一账号可能既有旧又有新格式快照，consumption 派生据此识别格式切换、避免把基准跳变当消耗。
+        unified: Object.prototype.hasOwnProperty.call(e, "giftPackages"),
         giftUsed: e.giftUsed,
         giftRemain: e.giftRemain,
         totalRemain: (e.giftRemain ?? 0) + baseRemain,
@@ -101,6 +105,8 @@ export function historyFor(uin) {
         giftSize: e.giftSize ?? null,
         baseSize: e.baseSize ?? null,
         baseCycleEnd: e.baseCycleEnd ?? null,
+        // TRAE 今日签到(实时接口固化在快照)
+        signedIn: e.signedIn ?? 0,
       };
     })
     .sort((a, b) => (a.ts < b.ts ? -1 : 1));
@@ -152,7 +158,7 @@ export function latestSnapshotEntries() {
 
 // ---------- WebDAV 镜像桥接（SQLite <-> 遗留 JSON） ----------
 
-/** 把 readings + day_summary 导出为 wb-history.json 镜像（固化后旧日只剩摘要，体积骤减） */
+/** 把 readings + day_summary 导出为 trae-history.json 镜像（固化后旧日只剩摘要，体积骤减） */
 export function exportLegacy() {
   try {
     const hist = loadHistory();
@@ -181,7 +187,7 @@ export function exportLegacy() {
       return { ...snap, entries };
     });
     fs.writeFileSync(
-      path.join(TOOLS_DIR, "wb-history.json"),
+      HISTORY_FILE,
       JSON.stringify(
         {
           updatedAt: new Date().toISOString(),
@@ -196,10 +202,10 @@ export function exportLegacy() {
   } catch {}
 }
 
-/** 从 wb-history.json 镜像合并导入 readings（不覆盖本地,保留今天的快照基线;按快照原始 ts 落盘,同分钟去重) */
+/** 从 trae-history.json 镜像合并导入 readings（不覆盖本地,保留今天的快照基线;按快照原始 ts 落盘,同分钟去重) */
 export function importLegacy() {
   try {
-    const p = path.join(TOOLS_DIR, "wb-history.json");
+    const p = HISTORY_FILE;
     if (!fs.existsSync(p)) return;
     const j = JSON.parse(fs.readFileSync(p, "utf8"));
     // 固化摘要先恢复（day_summary 幂等覆盖）
