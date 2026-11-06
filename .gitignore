@@ -1,28 +1,14 @@
-# ===== 数据与运行时产物（绝不入库：含本机账号登录态/时序/镜像） =====
-credits.db
-credits.db-wal
-credits.db-shm
-*.db*
 
-# 登录态槽备份目录（含真实 token/登录态，绝不入库）
+# ===== v1.12.12: 运行时数据 / 凭据，绝不入库 =====
 backups/
-
-# 账号数据 / 时序镜像 / 最近一次缓存 / 同步临时文件
+credits.db*
 trae-accounts.json
 trae-history.json
 trae-last-data.json
 trae-sync.json
 trae-admin.json
 wb-sync.json
-
-# 查询报告（含积分明细，仅本机）
-*_credits_report.txt
-
-# 临时探针脚本（调试用，不入库）
-_probe.mjs
-
-# ===== 日志 / 依赖 / 构建 =====
+checkin-state.json
+checkin-history.json
 *.log
-node_modules/
-__pycache__/
-*.pyc
+*.zip

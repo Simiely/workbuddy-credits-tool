@@ -9,7 +9,12 @@ function setSyncStatus(msg) {
   s.textContent = msg;
   s.style.color = /✅|已|成功|覆盖/.test(msg) ? "var(--ok)" : /❌|失败|错误/.test(msg) ? "var(--bad)" : "var(--sub)";
 }
-function showSyncQuick() { const a = $("syncQuick"); if (a) a.hidden = false; } // 操作条:云同步右侧的上传/下载快捷按钮
+// 操作条:云同步右侧的上传/下载快捷按钮。显隐会改变顶栏宽度 → 重算是否要收起(见 fitTopBar)
+function showSyncQuick(on = true) {   // 不传参 = 显示(老调用点兼容)
+  const a = $("syncQuick");
+  if (a) a.hidden = !on;
+  if (typeof scheduleFitTopBar === "function") scheduleFitTopBar();
+}
 async function openSync() {
   openMask("syncMask");
   setSyncStatus("加载配置…");
@@ -52,7 +57,7 @@ async function syncAct(action, silent) {
     const j = await api(__BASE__ + "/api/webdav/" + action, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}), ...(timeout ? { timeout } : {}) });
     if (action === "test" || action === "sync") { showSyncQuick(); } // 连通/同步成功 → 操作条出现 🔄 快捷同步
     if (action === "clear") {
-      const q = $("syncQuick"); if (q) q.hidden = true; closeSync();
+      showSyncQuick(false); closeSync();
       autoUpOn = false; localStorage.setItem(LS_UP_ON, "0"); applyAutoUp(); // 配置已清空,联动关闭自动同步
     }
     if (!silent) toast("✅ " + j.message);
@@ -62,6 +67,19 @@ async function syncAct(action, silent) {
     toast("❌ " + e.message); // 失败总是提示(silent 只静默成功;自动同步失败必须可见)
     setSyncStatus("❌ " + e.message);
   } finally { syncBusy = false; }
+}
+
+// v1.10.8:「同步」按钮常显 —— 未配置 WebDAV 时先引导去配置,而不是点下去直接报错
+async function quickSync() {
+  try {
+    const j = await api(__BASE__ + "/api/webdav/config");
+    if (!j.has) {
+      toast("尚未配置 WebDAV,先填写地址与账号");
+      openSync();
+      return;
+    }
+  } catch {}
+  await syncAct("sync");
 }
 
 // 若已配置过 WebDAV,操作条云同步右侧直接显示上传/下载

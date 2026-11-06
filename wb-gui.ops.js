@@ -29,36 +29,6 @@ async function moveCard(fromId, toId) {
   await saveOrder(ids, "卡片顺序已保存");
 }
 
-// ---- 一键排序:按指定指标从多到少(保存到账号池,与拖拽同机制) ----
-// 保存排序结果 + 渲染 + 提示(排序与保存共用)
-async function persistOrder(sorted, label) {
-  S.results = sorted;
-  renderCards();
-  const ids = S.results.map((r) => r.account.id);
-  await saveOrder(ids, `已按${label}从多到少排序并保存`);
-}
-async function sortByMetric(getV, label) {
-  const rs = (S && S.results) || [];
-  if (rs.length < 2) return toast("账号不足 2 个,无需排序");
-  const sorted = [...rs].sort((a, b) => (getV(b) || 0) - (getV(a) || 0)); // 无值(失败/过期)视为 0,自然排最后
-  await persistOrder(sorted, label);
-}
-function sortByTotal() { sortByMetric((r) => totalOf(r.summary), "总剩余"); }
-// 使用排序:按今日已用从多到少(读 r.derived.todayUsed,mergeDerived 后可用)
-function sortByTodayUsed() { sortByMetric((r) => ((r.derived || {}).todayUsed) || 0, "使用"); }
-// 过期排序:逐层紧迫度 —— 先排近1天有过期量的(量多优先);近1天没有的依次放宽到近2/近3…天,直到全部账号有序;无到期压力(>30天)按总剩余降序垫底
-async function sortByExpiring() {
-  const rs = (S && S.results) || [];
-  if (rs.length < 2) return toast("账号不足 2 个,无需排序");
-  const sorted = [...rs].sort((a, b) => {
-    const ta = expiryTier(a), tb = expiryTier(b);
-    if (ta.tier !== tb.tier) return ta.tier - tb.tier;       // 更紧迫的层在前
-    if (ta.tier === Infinity) return totalOf(b.summary) - totalOf(a.summary); // 都无到期压力:按总剩余降序
-    return tb.amount - ta.amount;                             // 同层按过期量从多到少
-  });
-  await persistOrder(sorted, "过期");
-}
-
 // ---- 明细弹窗 ----
 function openDetail(id) {
   if (suppressClick) return; // 拖拽后抑制误触点击
@@ -71,7 +41,7 @@ function openDetail(id) {
   const giftSize = d.giftSize ?? 0;
   const giftUsed = d.giftUsed ?? 0;
   const giftRemain = d.giftRemain ?? 0;
-  const expC = d.expCount ?? 0;
+  const expC = d.expCount ?? 0; // 已失效的包**个数**（≠ 金额）——只在积分包标题里显示，金额走 expiring30d
   const totalRemain = giftRemain; // TRAE 无体验版 base,总剩余即积分池剩余
   const packs = d.giftPacks || [];
   $("mBody").innerHTML = `
@@ -80,10 +50,9 @@ function openDetail(id) {
       <div class="mcard"><div class="l">📦 积分池总量</div><div class="v">${fmt0(giftSize)}</div></div>
       <div class="mcard"><div class="l">📉 已用</div><div class="v">${fmt0(giftUsed)}</div></div>
       <div class="mcard"><div class="l">💎 剩余(总积分)</div><div class="v">${fmt0(totalRemain)}</div></div>
-      <div class="mcard"><div class="l">📅 近30天过期</div><div class="v">${fmt0(expC)}</div></div>
+      <div class="mcard"><div class="l">📅 近30天过期</div><div class="v">${fmt0(d.expiring30d || 0)}</div></div>
     </div>
-    ${renderGiftPacks(packs)}
-    ${renderGiftBuckets(d.giftBuckets, d.expiring1d || 0, d.expiring3d || 0)}
+    ${renderGiftPacks(packs, expC)}
     <div class="sect"><div class="stitle">📈 消耗历史 <span class="sub">剩余总积分变化</span></div><div id="histBox"><div class="ph ph-sm">加载中…</div></div></div>`;
   loadHist(r.account.uin);
 }
@@ -108,13 +77,17 @@ async function loadHist(uin) {
 }
 
 // 积分包明细:giftPacks = [{packageName,desc,status(0=有效),capacityRemain,capacityUsed,capacitySize,cycleEndTime}]
-function renderGiftPacks(packs) {
+function renderGiftPacks(packs, expC = 0) {
   packs = packs || [];
-  if (!packs.length) return '<div class="sect"><div class="stitle">🎁 积分包明细</div><div class="ph ph-sm">无有效积分包</div></div>';
+  if (!packs.length) return '<div class="sect"><div class="stitle">🎁 积分包明细</div><div class="ph ph-sm">无积分包</div></div>';
+  // 状态文案直读后端 packStateOf 给出的 p.state —— UI 层不重算。
+  // ⚠️ 原先是 `p.status === 0 ? "有效" : "失效"`：落库时 status 已被归一化为 0（TRAE 的 status
+  // 不表示有效性，见 model.js），于是**恒显示"有效"**，用尽/作废的包也标成有效（2026-09-28 修）。
+  const STATUS_TEXT = { ok: "有效", used: "已用尽", stale: "已过期" };
   const rows = packs.map((p) => {
     const size = p.capacitySize ?? 0, used = p.capacityUsed ?? 0, rem = p.capacityRemain ?? 0;
     const pct = size > 0 ? Math.min(100, (used / size) * 100) : 0;
-    const status = p.status === 0 ? "有效" : "失效";
+    const status = STATUS_TEXT[p.state] || "有效";
     return `<div class="bucket">
       <div class="bh"><div><div class="br">${escAttr(p.packageName || "积分包")}</div><div class="bt">${escAttr(p.desc || "")}</div></div>
         <div class="bs">剩余 <b>${fmt0(rem)}</b> / ${fmt0(size)}</div></div>
@@ -122,7 +95,7 @@ function renderGiftPacks(packs) {
       <div class="bt" style="padding:8px 14px;font-size:11px">已用 ${fmt0(used)} · 到期 ${escAttr(p.cycleEndTime || "—")} · 状态 ${status}</div>
     </div>`;
   }).join("");
-  return `<div class="sect"><div class="stitle">🎁 积分包明细 <span class="sub">${packs.length} 个有效包</span></div>${rows}</div>`;
+  return `<div class="sect"><div class="stitle">🎁 积分包明细 <span class="sub">${packs.length} 个包${expC > 0 ? " · 其中已失效 " + expC + " 个" : ""}</span></div>${rows}</div>`;
 }
 
 // ---- 改名 / 删除 ----

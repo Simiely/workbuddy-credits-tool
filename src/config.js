@@ -16,12 +16,16 @@ export const FETCH_TIMEOUT_MS = 8000; // 单账号请求 TRAE 接口超时（毫
 export const GUI_PORT = 8080;        // GUI 服务端口
 
 // ---------- 各软件源「每日签到奖励」(积分) ----------
-// 口径来自各源快照实测（勿凭经验上浮）：
-//   workbuddy = 100  → 快照 'CodeBuddy…裂变包' capSize=100
-//   traework  = 150  → 快照 '签到奖励 N' capSize=150
-// 派生「今日到账」按账号 appKey 取常量；appKey 未知/缺省按 traework 计价。
-export const SIGNIN_CREDIT = { workbuddy: 100, traework: 150 };
-export const DEFAULT_SIGNIN_CREDIT = 150;
+// ⚠️ 这是**兜底常量**：优先从快照里「今天发的签到包」读实发容量（derive.todayAddedOf），
+//    读不到（旧快照缺 rid/当日包未生成）才落到这里。官方随时会调额度，别把常量当真理。
+// 口径来自官方公告与线上实测（勿凭经验上浮）：
+//   workbuddy = 100  → 快照 'CodeBuddy个人版国内运营裂变包' capSize=100（2026-10-27 实测仍 100）
+//   traework  = 100  → TRAE 已三次下调：200 → 150 → **100（2026-09-30 起）**。
+//                       证据：官方社区 09-30 公告「签到积分进行了调整」（forum.trae.cn/t/topic/182774）；
+//                       线上 6 账号 entitlement_id checkin_20260929 仍是 150、checkin_20260930 起全部 100
+//                       （2026-10-27 全量核对）。
+export const SIGNIN_CREDIT = { workbuddy: 100, traework: 100 };
+export const DEFAULT_SIGNIN_CREDIT = 100;
 
 // ---------- TRAE 桌面版登录态定位 ----------
 // CN 版目录名：TRAE SOLO CN / Trae CN；国际版：TRAE SOLO / Trae。
@@ -155,6 +159,16 @@ export const WB_EP_DAILY_CHECKIN = ["/v2/billing/meter/daily-checkin"];
 // 每个 Accounts[] 元素即一个积分资源包（Status 0=有效/3=结束, CapacitySize/Used/Remain, CycleStart/EndTime）。
 // 需带 User-Agent 头（缺则 403 code=10085）；分页不传即默认全量返回（现测 TotalCount=53 一次取全）。
 export const WB_EP_USAGE = ["/v2/billing/meter/get-user-resource"];
+
+// v1.9.3：WorkBuddy 专用读超时 —— get-user-resource 单账号返回**几十 KB**（6 账号累计数百 KB），
+// 2026-10-08 实测 NAS 侧网络抖动时 8s 不够用（同主机同路径 PROPFIND 0.1s 返回、
+// daily-checkin 小响应也正常，只有大响应接口卡住）。放宽到 20s，TRAE 仍用 8s。
+export const WB_FETCH_TIMEOUT_MS = 20000;
+
+// 网络抖动冷却（v1.9.3）：连续超时后对 WorkBuddy 采集退避，避免每 5 分钟硬撞同一个
+// 不响应的端点（把链路打得更糟）。节奏 = 2^n 分钟，封顶 30 分钟；任一账号成功即复位。
+export const WB_COOLDOWN_BASE_MS = 2 * 60000;   // 首次冷却 2 分钟
+export const WB_COOLDOWN_MAX_MS = 30 * 60000;   // 封顶 30 分钟
 
 // ---------- TRAE 云接口（无公开文档，客户端内部接口） ----------
 export const API_BASE = "https://api.trae.cn";

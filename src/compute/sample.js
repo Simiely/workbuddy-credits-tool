@@ -8,6 +8,7 @@
 import { fetchAllAccounts } from "./query.js";
 import { buildSnapshotEntry } from "./model.js";
 import { appendSnapshot } from "./history.js";
+import { publishSnapshot } from "./publish.js";
 
 /**
  * 执行一次完整采样并落盘快照：采集 fetchAllAccounts → buildSnapshotEntry → appendSnapshot。
@@ -23,6 +24,14 @@ export async function sampleAll({ onSampled = null } = {}) {
   const entries = raw.filter((r) => r.summary).map(buildSnapshotEntry);
   if (entries.length) {
     appendSnapshot(entries);
+    // v1.8.0：采样后**不再做任何"账号是否被重建"的判定**。原因见 ledger.js 顶部——
+    // 「服务端回收积分包」与「账号重建」在 cum 曲线上原理不可分，判错就会抛弃历史、
+    // 让累计跳水（这正是 v1.7.2/v1.7.3 补丁反复出问题的根源）。
+    // 现行累计口径 = 起点 base + 账本（剩余逐对差分，回收只进 recycled），与"猜"无关；
+    // 账本落账在 gc（每天固化 T-1/T-2）里完成，采样这条链路只管落快照。
+    // v1.6.0 附属能力：把本次结果推一份精简快照到 WebDAV，供 MultiSwitch 槽卡读取。
+    // 刻意 **不 await** —— 发布慢/失败都不得影响采样（函数内部已吞掉全部异常）。
+    publishSnapshot({ entries, raw });
     if (typeof onSampled === "function") onSampled(entries, raw);
   }
   return { raw, entries };

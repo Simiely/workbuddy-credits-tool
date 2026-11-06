@@ -17,6 +17,7 @@ import { summarize } from "./model.js";
 import { isWorkBuddy, readWbInfo, fetchWbDailyCheckin, fetchWbUsage, summarizeWbResources } from "./wb.js";
 import { CONCURRENCY, FETCH_TIMEOUT_MS } from "../config.js";
 import { autoPullSlotsIfMissing } from "./webdav.js";
+import { pickDeviceId, registeredDeviceIds } from "./device-pool.js"; // v1.12.12 签到设备号去重
 
 /**
  * WorkBuddy 账号采集：积分额度(get-user-resource) + 今日签到。幂等。
@@ -228,21 +229,46 @@ export async function fetchTraeCheckin(account) {
         msg: "",
       };
     }
-    const d = await claimWithRetry(token, deviceId, machineId, FETCH_TIMEOUT_MS);
+    // v1.12.12：checkin_credits/claim 按 x-device-id 做「每设备每日一次」校验。
+    // 从同一台机器导出的多个账号会共用同一个 icube-dc 设备号，第二个账号领取时
+    // 返回 code 9095「当前设备今日已经签到」。先按账号分配不冲突的真实设备号；
+    // 若仍撞 9095，再依次换用其它已登记的真实设备号重试。
+    // 伪造 / 空设备号会返回 9074 / 9004（v1.9.3 A/B 实测），故只用登录态里真实存在的 id。
+    const primary = pickDeviceId(account.uin, deviceId);
+    let d = await claimWithRetry(token, primary, machineId, FETCH_TIMEOUT_MS);
+    const tried = new Set([primary]);
+    while (d && d.code === 9095) {
+      const alt = registeredDeviceIds().find((id) => !tried.has(id));
+      if (!alt) break;
+      tried.add(alt);
+      d = await fetchCheckinClaim(token, alt, FETCH_TIMEOUT_MS, machineId);
+    }
     const code = d && typeof d === "object" ? d.code : null;
     if (code === 9074) {
       return { ok: false, already: false, credit: null, streak: null, msg: "签到高峰限流(9074)，请低峰期重试" };
     }
+    if (code === 9095) {
+      return { ok: false, already: false, credit: null, streak: null, msg: "当前设备今日已签到，且无可用备用设备号(9095)" };
+    }
+    // v1.12.12：只允许 code===0（或无 code 字段）算成功。旧实现把 9095 等业务错误
+    // 一律当成功，导致 checkin-history 出现假 added、页面却仍显示未签。
+    if (code !== null && code !== 0) {
+      const em = String((d && (d.message || d.msg)) || "").trim();
+      return { ok: false, already: false, credit: null, streak: null, msg: `签到失败(code ${code}): ${em}` };
+    }
+    if (d && (d.checked_in || d.today_checked_in)) {
+      return { ok: true, already: true, credit: null, streak: null, msg: "" };
+    }
     const credit =
-      typeof d.credits === "number"
+      d && typeof d.credits === "number"
         ? d.credits
-        : typeof d.credit === "number"
+        : d && typeof d.credit === "number"
           ? d.credit
-          : typeof d.points === "number"
+          : d && typeof d.points === "number"
             ? d.points
             : null;
-    const streak = typeof d.streak_days === "number" ? d.streak_days : null;
-    const msg = String(d.message || d.msg || "");
+    const streak = d && typeof d.streak_days === "number" ? d.streak_days : null;
+    const msg = String((d && (d.message || d.msg)) || "");
     return { ok: true, already: false, credit, streak, msg: msg.trim() };
   } catch (e) {
     return {

@@ -89,29 +89,180 @@ function setBusy(b) {
   }
 }
 
-// ---- 面板折叠:点击标题折叠/展开,状态存 localStorage(LS_FOLD 常量在 state.js 归位) ----
-function toggleFold(head, ev) {
-  if (ev && ev.target.closest && ev.target.closest("button,input,select,textarea,label,a")) return; // 标题内可交互元素(模式按钮/截止日期输入框等)不触发折叠
-  head.classList.toggle("folded");
-  try {
-    const st = JSON.parse(localStorage.getItem(LS_FOLD) || "{}");
-    st[head.dataset.fold] = head.classList.contains("folded");
-    localStorage.setItem(LS_FOLD, JSON.stringify(st));
-  } catch {}
+// ---- v1.10.17 锁滚动不位移 ----
+// 放大时 body 加 overflow:hidden,右侧滚动条消失 → 视口凭空宽出约 15px,整页内容右移,
+// 紧接着叠上磨砂模糊,观感就是"背景先跳一下再糊"。做法:改 overflow 之前先量出滚动条宽度,
+// 用它补 padding-right;解锁时还原。这样内容位置前后完全一致。
+function lockBodyScroll() {
+  const sw = window.innerWidth - document.documentElement.clientWidth; // 必须在改 overflow 之前量
+  const cur = parseFloat(getComputedStyle(document.body).paddingRight) || 0;
+  document.body.style.overflow = "hidden";
+  document.body.style.paddingRight = sw > 0 ? (cur + sw) + "px" : "";
 }
-function applyFold() { // 启动时恢复上次折叠状态(由 actions 启动段调用,副作用收敛)
+function unlockBodyScroll() {
+  document.body.style.overflow = "";
+  document.body.style.paddingRight = "";
+}
+
+// ---- v1.10.3 面板放大:点标题把该面板 .pbody 整块搬进近满屏层 ----
+// 为什么搬节点而不是克隆:总览/趋势的渲染函数都是 getElementById 定点写入,
+// 克隆会产生重复 id(渲染写到旧节点、屏幕上是副本)。搬运保证 id 唯一、事件与
+// 滚动位置语义连续,关闭时按原位置插回。
+// v1.10.12:搬运会让原面板只剩标题、看着像"被折叠了"。所以在原位补一份
+// **无 id 的静态替身**(ghost):原面板内容保持原样,放大层里是可交互的真身。
+// 替身必须剥掉 id 才不会有重复 id —— 否则 getElementById 先命中原位的替身,
+// 渲染全写到死节点上(和克隆方案踩的是同一个坑)。
+let _zoom = null;
+function statClone(node) {
+  const c = node.cloneNode(true);
+  c.querySelectorAll("[id]").forEach((n) => n.removeAttribute("id"));
+  // 替身只做样子:不接收指针/焦点事件,不进无障碍树
+  c.classList.add("zoom-ghost");
+  c.setAttribute("aria-hidden", "true");
+  c.style.pointerEvents = "none";
+  if ("inert" in c) c.inert = true;
+  // cloneNode 只复制 attribute,复制不到 JS 赋过的当前值 → 手工同步表单值
+  const from = node.querySelectorAll("input,select,textarea");
+  const to = c.querySelectorAll("input,select,textarea");
+  for (let i = 0; i < from.length && i < to.length; i++) {
+    if (from[i].tagName === "SELECT" || from[i].tagName === "TEXTAREA" || from[i].type !== "checkbox") {
+      to[i].value = from[i].value;
+    }
+    to[i].checked = from[i].checked;
+  }
+  return c;
+}
+function zoomPanel(head, ev) {
+  // 标题栏里的按钮/日期框是操作,不触发放大
+  if (ev && ev.target.closest && ev.target.closest("button,input,select,textarea,label,a")) return;
+  const panel = head && head.closest ? head.closest(".panel") : null;
+  // :not(.zoom-ghost) 兜底:万一替身没被清掉,也不能把替身当真身搬走
+  const body = panel && panel.querySelector(".pbody:not(.zoom-ghost)");
+  if (!body || _zoom) return;
+  const h2 = head.querySelector("h2");
+  // v1.12.2:标题栏右侧的操作(今日/每周/每月/全部 + 截止日)不在 .pbody 里,放大后会"消失"。
+  // 这里把整块 .phead-r 搬进放大层头部 —— 搬的是同一批节点,id 与 onclick 都不变,切模式照旧生效。
+  const headR = head.querySelector(".phead-r");
+  _zoom = {
+    body, parent: body.parentNode, next: body.nextSibling, id: panel.id, ghost: null,
+    tools: headR, toolsParent: headR ? headR.parentNode : null, toolsNext: headR ? headR.nextSibling : null,
+  };
+  const title = $("zoomTitle");
+  if (title) title.textContent = h2 ? h2.textContent.trim() : "";
+  if (headR) { const slot = $("zoomTools"); if (slot) slot.appendChild(headR); }
+  // 先在原位放替身(视觉上原面板不变),再把真身搬进放大层
   try {
-    const st = JSON.parse(localStorage.getItem(LS_FOLD) || "{}");
-    document.querySelectorAll(".phead.foldable").forEach((el) => {
-      if (st[el.dataset.fold]) el.classList.add("folded");
-    });
-  } catch {}
+    _zoom.ghost = statClone(body);
+    body.parentNode.insertBefore(_zoom.ghost, body);
+  } catch (e) { _zoom.ghost = null; }
+  $("zoomBody").appendChild(body);
+  $("zoomMask").classList.add("show");
+  lockBodyScroll();
+  // 趋势图按新容器宽度重绘(其余面板是静态 DOM,无需重绘)
+  if (panel.id === "trendPanel" && typeof renderLines === "function") requestAnimationFrame(() => renderLines());
+}
+function closeZoom() {
+  if (!_zoom) return;
+  const { body, parent, next, id, ghost, tools, toolsParent, toolsNext } = _zoom;
+  if (next && next.parentNode === parent) parent.insertBefore(body, next);
+  else parent.appendChild(body);
+  if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+  // 把标题栏操作搬回原位(顺序:先回正文,再回操作)
+  if (tools && toolsParent) {
+    if (toolsNext && toolsNext.parentNode === toolsParent) toolsParent.insertBefore(tools, toolsNext);
+    else toolsParent.appendChild(tools);
+  }
+  _zoom = null;
+  const mask = $("zoomMask");
+  if (mask) mask.classList.remove("show");
+  unlockBodyScroll();
+  if (id === "trendPanel" && typeof renderLines === "function") requestAnimationFrame(() => renderLines());
 }
 
 // ---- 遮罩/小弹窗/确认 ----
 const openMask = (id) => $(id).classList.add("show");
 const closeMask = (id) => $(id).classList.remove("show");
 function closeModal() { closeMask("mask"); }
+
+// ---- 顶栏:横排 / 收起 两态(v1.11.0 整块重写) ----
+// 收起时中间那排动作变成头下方的卡片,「刷新全部」始终留在最外面(它不在 .top-acts 里)。
+// 收不收由 fitTopBar() 实测:量「标题 + 间距 + 按钮组单行自然宽」,余量不足 TOPBAR_GAP_MIN 就收。
+// 触发:启动、resize(去抖)、字体加载完成、以及「自动同步」块显隐后(都会改变所需宽度)。
+const TOPBAR_GAP_MIN = 160;   // 横排至少要留出的空隙 ≈ 两个按钮宽
+let _manage = false;          // 卡片是否展开
+let _fitRaf = 0;
+
+function toggleManage(force) {
+  const box = $("topActs");
+  if (!box) return;
+  _manage = force === undefined ? !_manage : !!force;
+  box.classList.toggle("open", _manage);
+  const b = $("btnManage");
+  if (b) b.setAttribute("aria-expanded", _manage ? "true" : "false");
+}
+function closeManage() { if (_manage) toggleManage(false); }
+
+// 量「顶栏那一行需要多宽」:把在流里的子项(标题 / 同步动作 / 管理 / 刷新)宽度加起来。
+// .top-acts 是绝对定位的菜单,不占行宽,排除掉。measuring 态里谁都不许被压扁 → 量到的是自然宽。
+function topBarNeed() {
+  const top = document.querySelector(".top");
+  const bar = top && top.querySelector(".top-in");
+  const acts = $("topActs");
+  if (!top || !bar) return null;
+  top.classList.add("measuring");
+  try {
+    const gap = parseFloat(getComputedStyle(bar).columnGap) || 0;
+    const kids = Array.prototype.slice.call(bar.children)
+      .filter((c) => c !== acts && c.getBoundingClientRect().width > 0);
+    const need = kids.reduce((s2, c) => s2 + c.getBoundingClientRect().width, 0)
+      + gap * Math.max(0, kids.length - 1);
+    return { need, avail: bar.clientWidth };
+  } finally {
+    top.classList.remove("measuring");   // 无论如何都要还原,否则整页停在"量宽态"
+  }
+}
+
+function fitTopBar() {
+  const top = document.querySelector(".top");
+  if (!top) return;
+  top.classList.remove("compact");                  // 先按横排量
+  const m = topBarNeed();
+  if (!m) return;
+  const crowded = m.need + TOPBAR_GAP_MIN > m.avail;
+  if (crowded) top.classList.add("compact");
+  // 注意:这里**不要**去关「管理」菜单 —— 它是常驻浮层,与横排/收起无关。
+  // v1.11.0 曾在此处"不是收起态就 closeManage()",结果 fonts.ready 再拟合一次时
+  // 把用户刚点开的菜单关掉了(表现为"点了没反应")。
+}
+// 立即修正,但用 rAF 合并同一帧的多次事件。
+// 关键:不能用 setTimeout 去抖 —— 拖动窗口时浏览器会先按"换行"画一帧,去抖到期才收起,
+// 视觉上就是"先弹到第二排、再缩回去"。rAF 在绘制前执行,那一帧永远不会被画出来。
+function scheduleFitTopBar() {
+  if (_fitRaf) return;
+  _fitRaf = requestAnimationFrame(() => { _fitRaf = 0; fitTopBar(); });
+}
+
+let _topInit = false;
+function initTopBar() {
+  fitTopBar();                          // 每次都重算
+  if (_topInit) return;                 // 监听只接一次
+  _topInit = true;
+  window.addEventListener("resize", scheduleFitTopBar);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTopBar).catch(() => {});
+  // 收起卡片的三条关闭路径:点卡片里的动作按钮 / 点卡片外 / Esc(见 actions.js)
+  document.addEventListener("click", (e) => {
+    if (!_manage) return;
+    const t = e.target;
+    if (!t || !t.closest) return;
+    if (t.closest("#btnManage")) return;            // 开/关交给按钮自己
+    const box = $("topActs");
+    if (box && box.contains(t)) {
+      if (t.closest(".btn")) closeManage();         // 点动作按钮 → 收起
+      return;                                       // 点数字框/开关不收起
+    }
+    closeManage();                                  // 点卡片外 → 收起
+  });
+}
 
 let small = null;
 let smallCloseHook = null; // 小弹窗「✕/遮罩」关闭钩子：cfm 设为“取消”，普通弹窗(改名等)为 null 仅关闭

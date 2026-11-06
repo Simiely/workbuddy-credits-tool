@@ -13,6 +13,7 @@ import { latestSnapshotEntries, exportLegacy } from "./history.js";
 import { sampleAll } from "./sample.js";
 import { gcDaySummaries } from "./gc.js"; // v1.4.58 历史固化独立模块
 import { dayKeyOf } from "../time.js"; // v1.4.58 时区口径统一引用
+import { maybeDailyCheckin } from "./checkin.js"; // v1.7.0 每日自动签到（幂等，不碰 RT）
 
 const DEFAULT_MIN = 15;
 const CRITICAL_REMAIN = 1000; // 剩余低于此视为偏紧
@@ -107,6 +108,11 @@ function scheduleNext() {
           _gcDay = todayK;
         } catch (e) { console.error("[gc] 固化失败(当天将重试):", e.message); }
       }
+      // v1.7.0 每日自动签到：到点（默认 +8 墙钟 8 点后首个 tick）且当天未跑才执行；
+      // 幂等（已签账号跳过），失败不影响采样主流程，次日 tick 会补跑。
+      try {
+        await maybeDailyCheckin();
+      } catch (e) { console.error("[checkin] 每日签到失败(下次 tick 补试):", e.message); }
       await runOnce();
     } catch (e) {
       S.lastError = e.message || String(e);

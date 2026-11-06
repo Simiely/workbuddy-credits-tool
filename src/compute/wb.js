@@ -14,11 +14,17 @@ import {
   WB_EP_DAILY_CHECKIN,
   WB_EP_USAGE,
   FETCH_TIMEOUT_MS,
+  WB_FETCH_TIMEOUT_MS,
+  WB_COOLDOWN_BASE_MS,
+  WB_COOLDOWN_MAX_MS,
   UA,
   TOOLS_DIR,
   wbSlotRoots,
 } from "../config.js";
 import { httpsPostJson, CredentialExpiredError } from "./client.js";
+import { isWbEncrypted, decryptWbInfo, resolveAtRestKey } from "./wb-decrypt.js";
+// WB 积分包字段选取的唯一口径在 model.js（L2 纯计算；放这里会让 model→wb 成反向依赖）
+import { pickWbPackFields } from "./model.js";
 
 /** 判定账号是否 WorkBuddy 来源（appKey 路由） */
 export const isWorkBuddy = (a) => (a && a.appKey) === "workbuddy";
@@ -87,6 +93,7 @@ export function discoverWbInfoFiles() {
 /**
  * 读取单个 .info 文件 → 实时认证信息。
  * @param {string} filePath workbuddy-desktop.info 绝对路径
+ * @throws 凭证字段为 $wbEncrypted 且无法解密时抛错（指引配置 WB_ATREST_KEY）
  */
 export function readWbInfo(filePath) {
   const raw = fs.readFileSync(filePath, "utf8");
@@ -97,8 +104,17 @@ export function readWbInfo(filePath) {
     throw new Error(`.info 非合法 JSON: ${filePath}`);
   }
   const auth = j.auth || {};
+  let accessToken = auth.accessToken || "";
+  // 新版客户端：accessToken 是 $wbEncrypted 对象 → 现场解密后再解析（实验性，待验证）
+  if (isWbEncrypted(accessToken)) {
+    try {
+      j = decryptWbInfo(raw, resolveAtRestKey());
+    } catch (e) {
+      throw new Error(`.info 凭证已加密($wbEncrypted)且解密失败: ${e.message}`);
+    }
+    accessToken = ((j.auth || {}).accessToken) || "";
+  }
   const acct = j.account || {};
-  const accessToken = auth.accessToken || "";
   if (!accessToken) throw new Error(`.info 无 accessToken(未登录): ${filePath}`);
   return {
     accessToken,
@@ -222,6 +238,24 @@ const deEmbed = (k, j) =>
 
 // ---------- 积分/额度查询（get-user-resource） ----------
 
+// v1.9.3 网络抖动冷却：连续超时后对 WorkBuddy 采集退避（2^n 分钟，封顶 30 分钟），
+// 避免抖动期每 5 分钟 × 6 账号硬撞同一个不响应的端点（2026-10-08 实测 6 账号全超时）。
+// 任一账号查询成功即复位。冷却期内直接抛"冷却中"，采样照常记录错误，不阻塞其他来源。
+let _failStreak = 0;
+let _coolUntil = 0;
+
+/** v1.9.3 纯函数（便于单测）：第 streak 次连续超时应冷却多久。2,4,8,16,30 分钟封顶。 */
+export function wbNextCooldownMs(streak) {
+  return Math.min(WB_COOLDOWN_MAX_MS, WB_COOLDOWN_BASE_MS * 2 ** (Math.max(1, streak) - 1));
+}
+
+/** 当前是否处于冷却期（供测试/诊断），返回剩余毫秒数（<=0 表示不在冷却） */
+export function wbCooldownLeftMs(now = Date.now()) {
+  return Math.max(0, _coolUntil - now);
+}
+
+const _isTimeout = (e) => /ETIMEDOUT|ESOCKETTIMEDOUT/.test(String((e && e.code) || "") + String((e && e.message) || ""));
+
 const _num = (v) => {
   const n = typeof v === "string" ? parseFloat(v) : v;
   return typeof n === "number" && Number.isFinite(n) ? n : 0;
@@ -233,44 +267,84 @@ const _num = (v) => {
  *   { TotalCount, TotalDosage, Accounts:[{PackageName,Status,CapacityRemain/Used/Size,
  *     CycleStartTime,CycleEndTime,ExpiredTime,...}] }
  * 每个 Accounts[] 元素即一个积分资源包。需带 User-Agent（缺则 403 code=10085）。
+ * v1.9.3：读超时改用 WB_FETCH_TIMEOUT_MS（大响应需要更久），并在连续超时后进入冷却退避。
  */
-export async function fetchWbUsage(rec, timeoutMs = FETCH_TIMEOUT_MS) {
-  const j = await wbPost(rec, WB_EP_USAGE, timeoutMs);
+export async function fetchWbUsage(rec, timeoutMs = WB_FETCH_TIMEOUT_MS) {
+  const left = wbCooldownLeftMs();
+  if (left > 0) {
+    throw new Error(`WorkBuddy 采集冷却中(还剩 ${Math.ceil(left / 60000)} 分钟)——连续网络超时后的退避，本轮跳过`);
+  }
+  let j;
+  try {
+    j = await wbPost(rec, WB_EP_USAGE, timeoutMs);
+  } catch (e) {
+    if (_isTimeout(e)) {
+      _failStreak += 1;
+      _coolUntil = Date.now() + wbNextCooldownMs(_failStreak);
+    }
+    throw e;
+  }
+  _failStreak = 0;
+  _coolUntil = 0;
   const data = (j && typeof j === "object" && j.data) ? j.data : (j || {});
   const rd =
     data.Response && data.Response.Data ? data.Response.Data : data;
   return rd || {};
 }
 
+/**
+ * 单个 WB 积分包的字段选取 —— **声明式**，唯一的取值口径（2026-09-30 换根基）。
+ * 实现在 model.js（L2 纯计算，避免 L2→L1 反向依赖）；wb.js 与 model.js 的
+ * buildWbSnapshotEntry 共用本函数，字段口径只写这一份。
+ * 【为什么不能再用 `CapacityUsed != null ? CapacityUsed : CapacityUsedPrecise`】
+ *   ① 方向反了：整数版是**各自截断**的，三元组对不上账（爸爸体验版整数 500/357/142，
+ *      357+142=499≠500；Precise 500/353.47/146.53 严丝合缝）→ 必须永远 Precise 优先。
+ *   ② 周期额度包（CapacityType=4）的 Capacity* 是**冻结值**，真实用量只在 CycleCapacity*：
+ *      读冻结字段 → 今日消耗恒 0（2026-09-30 用户报障的根因）。
+ *      2026-09-30 对 192 个包全量核对：type 1/4 = 186/6，与"普通字段是否冻结"完全对应。
+ *   之前试过 max/min 钳位，那是止血；按类型声明取值才是治本 —— 不猜、不钳。
+ */
+
 /** 解析 get-user-resource 返回 → 统一模型（对齐 TRAE summarize 的 gift* 口径） */
 export function parseWbResources(D) {
   const rd = (D && D.Accounts) ? D : (D || {});
   const packs = Array.isArray(rd.Accounts) ? rd.Accounts : [];
-  const credits = packs.map((p) => ({
-    PackageCode: p.PackageCode || "",
-    PackageName: p.PackageName || "积分",
-    ProductName: p.ProductName || "",
-    SubProductName: p.SubProductName || "",
-    status: typeof p.Status === "number" ? p.Status : 0,
-    cycleStart: p.CycleStartTime || "",
-    cycleEnd: p.CycleEndTime || "",
-    expiredTime: p.ExpiredTime || "",
-    // 优先整数值，缺失时用 Precise 小数（同包口径一致）
-    size: p.CapacitySize != null ? _num(p.CapacitySize) : _num(p.CapacitySizePrecise),
-    used: p.CapacityUsed != null ? _num(p.CapacityUsed) : _num(p.CapacityUsedPrecise),
-    remain: p.CapacityRemain != null ? _num(p.CapacityRemain) : _num(p.CapacityRemainPrecise),
-    unit: p.CapacityUnit || "credits",
-    unlimited: !!p.Unlimited,
-    raw: p,
-  }));
+  const credits = packs.map((p) => {
+    const f = pickWbPackFields(p);
+    return {
+      PackageCode: p.PackageCode || "",
+      PackageName: p.PackageName || "积分",
+      ProductName: p.ProductName || "",
+      SubProductName: p.SubProductName || "",
+      status: typeof p.Status === "number" ? p.Status : 0,
+      cycleStart: p.CycleStartTime || "",
+      cycleEnd: p.CycleEndTime || "",
+      expiredTime: p.ExpiredTime || "",
+      // 按类型声明取值（见 pickWbPackFields）：周期额度包读 Cycle*，其余读 Capacity*；
+      // 两族都 Precise 优先。不再读冻结的 Capacity*（那是"今日消耗恒 0"的根因）。
+      size: f.size,
+      used: f.used,
+      remain: f.remain,
+      kind: f.kind,
+      rid: f.rid,
+      cycleId: f.cycleId,
+      startAt: f.startAt,
+      unit: p.CapacityUnit || "credits",
+      unlimited: !!p.Unlimited,
+      raw: p,
+    };
+  });
   // 有效包：Status=0 且周期未结束；否则视为已结束/过期
   const isEnded = (p) =>
     p.status !== 0 ||
     (p.cycleEnd && /^\d{4}-\d{2}-\d{2}/.test(p.cycleEnd) && new Date(p.cycleEnd + "Z").getTime() < Date.now());
   const active = credits.filter((p) => !isEnded(p));
   const expired = credits.filter(isEnded);
-  // 总剩余以服务端 TotalDosage 为权威；缺失则累加各包 remain
-  const totalRemain = _num(rd.TotalDosage) || credits.reduce((s, p) => s + p.remain, 0);
+  // 总剩余/总已用 = Σ各包（与 pickWbPackFields 同源，三元组自洽）。
+  // ⚠️ 不再拿 TotalDosage 当权威：它对周期额度包给的是**冻结的整包容量**（如体验版恒 500），
+  // 而真实余量在 CycleCapacityRemainPrecise 上（2026-09-30 实测；总剩余曾因此虚高）。
+  // 无包时才回退 TotalDosage（避免空列表时把剩余显示成 0）。
+  const totalRemain = credits.reduce((s, p) => s + p.remain, 0) || _num(rd.TotalDosage);
   const used = credits.reduce((s, p) => s + p.used, 0);
   const activeSize = active.reduce((s, p) => s + p.size, 0);
   const activeUsed = active.reduce((s, p) => s + p.used, 0);

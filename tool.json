@@ -2,9 +2,9 @@
   "id": "trae-credits",
   "name": "积分仪表盘",
   "desc": "TRAE Work / WorkBuddy 多账号积分监控（独立仓库，平台托管）",
-  "group": "监控",
+  "group": "工作台",
   "icon": "📉",
-  "version": "1.5.2",
+  "version": "1.12.12",
   "type": "app",
   "cmd": [
     "node",
@@ -22,5 +22,8 @@
     "trae-*.json",
     "wb-sync.json",
     "data/**"
-  ]
+  ],
+  "_envNote": "部署机需自行注入 WB_ATREST_KEY（本机运行时 at-rest 密钥），仓库内不含任何密钥。",
+  "_v193Note": "2026-10-08 v1.9.3 部署：deviceId 口径/attempts 复位/异步签到/WB 超时+冷却",
+  "_v194Note": "2026-10-25 v1.9.4 部署：账号总览不再显示「↺N 服务端回收」标记"
 }

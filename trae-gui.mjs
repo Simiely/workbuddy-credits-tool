@@ -59,10 +59,14 @@ import {
   historyFor,
   latestReadingTs,
   clearReadings,
+  latestReading,
+  logLifecycle,
+  loadLifecycle,
   exportLegacy as exportHistory,
   importLegacy as importHistory,
   LAST_FILE,
 } from "./src/compute/history.js";
+import { loadAllLedger, ledgerTotals } from "./src/compute/ledger.js"; // v1.8.0 账本口径
 import { deriveAll } from "./src/compute/derive.js";
 import {
   loadSyncConfig,
@@ -86,19 +90,38 @@ import {
   setNotifier as setSchedulerNotifier,
 } from "./src/compute/scheduler.js";
 import { gcDaySummaries } from "./src/compute/gc.js"; // v1.4.68 启动时先固化,陈旧镜像立即收缩
+import { getPublishStatus, SNAPSHOT_FILE } from "./src/compute/publish.js"; // v1.6.0 精简快照发布
+import { runDailyCheckin, startCheckinAsync, checkinInFlight, getCheckinStatus } from "./src/compute/checkin.js"; // v1.7.0 每日自动签到（v1.9.3 手动触发改异步）
+import { getDb } from "./src/store/db.js"; // v1.7.1 基线自检修复用
 
 // 前端文件内嵌(SEA 单文件 exe 用,由构建脚本生成 build/frontend-files.mjs);
 // 原生运行时若该文件缺失则静默回退磁盘读取。加载在文件末尾 listen 前完成(见底部)。
 let FRONTEND_FILES = {};
 
-/** 读取前端静态文件:内嵌内存优先,回退磁盘(缺失返回 fallback) */
+/** 读取前端静态文件:内嵌内存优先,回退磁盘(缺失返回 fallback)。
+ *  v1.9.3：返回前把 `__APP_VERSION__` 替换为 package.json 的 version ——
+ *  页脚的 "v1.9.x" 单一来源收敛到 package.json，发版不再要手改前端两处字面量。 */
 function staticFile(name, fallback = "// missing") {
   const embedded = FRONTEND_FILES && FRONTEND_FILES[name];
-  if (embedded !== undefined) return embedded;
-  return fs.existsSync(path.join(ROOT, name)) ? fs.readFileSync(path.join(ROOT, name), "utf8") : fallback;
+  let content = embedded !== undefined ? embedded
+    : (fs.existsSync(path.join(ROOT, name)) ? fs.readFileSync(path.join(ROOT, name), "utf8") : fallback);
+  return content.replaceAll("__APP_VERSION__", appVersion());
 }
 
 const HTML_FILE = path.join(ROOT, "wb-gui.html");
+
+// v1.9.3：前端版本号单一来源 = package.json（惰性读取 + 缓存）
+let _appVersion = null;
+function appVersion() {
+  if (_appVersion === null) {
+    try {
+      _appVersion = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version || "";
+    } catch {
+      _appVersion = "";      // 读不到就原样保留占位符，绝不因版本号挂掉服务
+    }
+  }
+  return _appVersion;
+}
 
 // dashboard/all 内存缓存 {key, payload}
 let dashCache = null;
@@ -388,6 +411,120 @@ const routes = [
   },
   {
     method: "GET",
+    path: "/api/checkin/status",
+    handler: (ctx) => {
+      ctx.json(200, { ok: true, inFlight: checkinInFlight(), ...getCheckinStatus() });
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/checkin/run",
+    admin: true,
+    // v1.9.3 手动触发改**异步**：一次签到最坏 = 6 个 TRAE 串行 × 内层 6 次退避（12s+抖动）
+    // ≈ 数分钟，而 tools-center 反代有 60s 上游超时 → 同步实现必然 502，且被中断的那次
+    // 在 checkin-history 里没有记录（2026-10-08 实测 502 / 60.014s）。
+    // 现在只负责"启动"，结果走 /api/checkin/status 轮询。dryRun（只查不领）很快，保持同步。
+    handler: async (ctx) => {
+      const dryRun = !!(ctx.bodyObj && ctx.bodyObj.dryRun);
+      // v1.12.12：补签按钮传 onlyMissing=true —— 只给今日未签到的账号领取，已签的直接跳过
+      const onlyMissing = !!(ctx.bodyObj && ctx.bodyObj.onlyMissing);
+      const log = (m) => console.log("[checkin]", m);
+      if (dryRun) {
+        const result = await runDailyCheckin({ dryRun: true, onlyMissing, log });
+        return ctx.json(200, { ok: true, result });
+      }
+      const r = startCheckinAsync(log, { onlyMissing });
+      if (!r.started) return ctx.json(409, { ok: false, error: "已有一轮签到在执行中，请稍后用 /api/checkin/status 查看", ...r });
+      return ctx.json(202, {
+        ok: true, started: true, onlyMissing,
+        hint: "签到已后台执行，请轮询 GET /api/checkin/status 查看 state.lastRunAt / lastResult",
+      });
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/baseline/repair-init-day",
+    admin: true,
+    // v1.7.1 基线自检校准（幂等）：修「基线初始化发生在当天中途」导致的蒸发——
+    //   基线 base=当时最大瞬时消耗、asOfDay=当天，只覆盖到初始化时刻；
+    //   当日剩余时段的消耗被 gc 的 day<=asOfDay 跳过条件拦住，随明细删除蒸发。
+    // 校准两步（全部只升不降）：
+    //   1) lift：asOfDay 当日 00:00 起最早存活快照的瞬时累计(giftUsed+baseUsed)
+    //      若 > base → base = 该值（包内 giftUsed 单调，即截至当时的真实累计）。
+    //      若 < base → 当日发生过包轮换/回收（旧包累计不在新快照里）→ 走 2。
+    //   2) rotate 补偿：base += day_summary(asOfDay).used（remain 口径日增量，
+    //      含过期计入的噪声，保守取它保证不少算），并把 asOfDay 推进到 T-1
+    //      （这样下一步 2 不会重复加；T-1 的用量已在快照 dailyUsed 里）。
+    //      之前推进过（asOfDay 已是 T-1/T）则跳过补偿，天然幂等。
+    handler: (ctx) => {
+      const db = getDb();
+      // 可选显式修正（一次性数据修复用）：corrections=[{uin, base}] 精确设值
+      const corrections = Array.isArray(ctx.bodyObj && ctx.bodyObj.corrections)
+        ? ctx.bodyObj.corrections.filter((c) => c && c.uin && typeof c.base === "number") : [];
+      for (const c of corrections) {
+        db.prepare("UPDATE consumed_baseline SET base=?, updatedAt=? WHERE uin=?").run(
+          c.base, new Date().toISOString(), c.uin);
+      }
+      const rows = db.prepare("SELECT uin, base, asOfDay, updatedAt FROM consumed_baseline").all();
+      const yesterdayKey = (() => {
+        const w = new Date(Date.now() + 8 * 3600e3);
+        w.setUTCDate(w.getUTCDate() - 1);
+        return w.toISOString().slice(0, 10);
+      })();
+      const fixed = [];
+      for (const row of rows) {
+        if (!row.asOfDay) continue;
+        const since = new Date(row.asOfDay + "T00:00:00Z").getTime() - 8 * 3600e3; // 中国当日 00:00 UTC
+        const r = db
+          .prepare("SELECT giftUsed, baseUsed FROM readings WHERE uin=? AND ts>=? ORDER BY ts LIMIT 1")
+          .get(row.uin, new Date(since).toISOString());
+        let base = row.base;
+        let action = "keep";
+        if (r) {
+          const cum = (r.giftUsed || 0) + (r.baseUsed || 0);
+          if (cum > base) { base = cum; action = "lift"; }
+        }
+        // 轮换/蒸发补偿：asOfDay 当日的用量还没进基线（步骤1未命中），且 asOfDay
+        // 尚未被推进过 → 用日摘要（remain 口径，不少于算）补上，并推进 asOfDay。
+        if (action === "keep" && row.asOfDay !== yesterdayKey) {
+          const ds = db
+            .prepare("SELECT used FROM day_summary WHERE uin=? AND day=?")
+            .get(row.uin, row.asOfDay);
+          if (ds && (ds.used || 0) > 0) {
+            base = base + (ds.used || 0);
+            action = "rotate+" + row.asOfDay;
+          }
+        }
+        if (base !== row.base || row.asOfDay !== yesterdayKey) {
+          db.prepare("UPDATE consumed_baseline SET base=?, asOfDay=?, updatedAt=? WHERE uin=?").run(
+            base, yesterdayKey, new Date().toISOString(), row.uin);
+          fixed.push({ uin: row.uin, from: row.base, to: base, action });
+        }
+      }
+      ctx.json(200, { ok: true, checked: rows.length, fixed, asOfDayAdvancedTo: yesterdayKey });
+    },
+  },
+  {
+    method: "GET",
+    path: "/api/ledger/status",
+    admin: true,
+    // v1.8.0 账本一览（取代 /api/epoch/* 的「世代」概念）。排查"累计数字不对劲"先看这里：
+    //   used     每日消耗合计（只增，进累计）
+    //   added    每日到手合计（签到/礼包/新包）
+    //   recycled 每日被服务端收回合计（**不进累计**，这是旧模型误判"账号重建"的元凶）
+    // 累计消耗 = 起点 base + used（不含今日）。base 是迁移前的历史常量，永不回退。
+    handler: (ctx) => {
+      const rows = loadAllLedger();
+      const uins = [...new Set(rows.map((r) => r.uin))];
+      ctx.json(200, {
+        accounts: uins.map((uin) => ({ uin, ...ledgerTotals(uin) })),
+        recent: loadLifecycle(30),
+        days: rows.length,
+      });
+    },
+  },
+  {
+    method: "GET",
     path: "/api/export.md",
     handler: async (ctx) => {
       const results = await fetchAllAccounts();
@@ -411,6 +548,12 @@ const routes = [
     method: "GET",
     path: "/api/scheduler/status",
     handler: (ctx) => ctx.json(200, { ok: true, scheduler: getSchedulerStatus() }),
+  },
+  {
+    // v1.6.0 精简快照发布状态（排查用：切器槽卡读的就是这个文件）
+    method: "GET",
+    path: "/api/publish/status",
+    handler: (ctx) => ctx.json(200, { ok: true, publish: getPublishStatus(), file: SNAPSHOT_FILE }),
   },
 
   // ---------- 写接口（admin:true，分发层统一鉴权） ----------
@@ -439,6 +582,16 @@ const routes = [
       const t = findAccount(accounts, key);
       if (!t) return ctx.json(404, { ok: false, error: "账号不存在" });
       tombstoneUins([t.uin]); // 删除写墓碑:同步时删除可跨设备传播,防旧备份复活(v1.4.46)
+      // v1.7.2 删除留痕：记下删前瞬时累计 + 总发放，供「重录时连续性判定」使用 ——
+      // 同 uin 重新入库后，若累计回落能被总发放的减少（积分包消失，等量同掉）解释，
+      // 或差值在容忍内 → 视为同一账号、继承历史；否则开新世代，累计从新起点算。
+      // 时序数据（readings/day_summary/锚点）刻意不删：保留可追溯，隔离由世代边界负责。
+      try {
+        const cur = latestReading(t.uin);
+        logLifecycle(t.uin, "removed", cur ? cur.cum : null, "api/del", cur ? cur.size : null);
+      } catch (e) {
+        console.error("[epoch] 删除留痕失败(不阻断删除):", e.message);
+      }
       accounts.splice(accounts.indexOf(t), 1);
       saveAccounts(accounts);
       ctx.json(200, { ok: true });

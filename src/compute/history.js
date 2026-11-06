@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { TOOLS_DIR } from "../config.js";
 import { getDb } from "../store/db.js";
+import { loadAllLedger, saveLedgerDay } from "./ledger.js"; // v1.8.0 账本（镜像同步用）
 import { HISTORY_FILE } from "../store/syncbridge.js";
 import { dayKeyOf, TZ_MS } from "../time.js"; // v1.4.58 时区口径统一引用
 
@@ -95,6 +96,9 @@ export function historyFor(uin) {
         // 快照格式：当前工具统一结构含 giftPackages 键；旧结构(他源合并/老版本)无此键。
         // 同一账号可能既有旧又有新格式快照，consumption 派生据此识别格式切换、避免把基准跳变当消耗。
         unified: Object.prototype.hasOwnProperty.call(e, "giftPackages"),
+        // used 语义版本（WB 2026-09-30 换读数字段：v1 整数 Capacity* → v2 按类型声明 +
+        // Precise 优先）。v1↔v2 的 used 基准整体不同，账本/趋势交界处必须断账一次。
+        usedScheme: e.scheme ?? 1,
         giftUsed: e.giftUsed,
         giftRemain: e.giftRemain,
         totalRemain: (e.giftRemain ?? 0) + baseRemain,
@@ -193,6 +197,11 @@ export function exportLegacy() {
           updatedAt: new Date().toISOString(),
           snapshots: slim,
           summaries: loadAllDaySummaries(),
+          // v1.8.0：累计口径的两块拼图必须一起同步，否则云恢复后累计会归零/错位 ——
+          //   baselines = 起点（迁移前的历史常量）
+          //   ledger    = 起点之后的每日账本（used 只增 + added/recycled 分类）
+          baselines: loadAllBaselines(),
+          ledger: loadAllLedger(),
         },
         null,
         1
@@ -208,6 +217,16 @@ export function importLegacy() {
     const p = HISTORY_FILE;
     if (!fs.existsSync(p)) return;
     const j = JSON.parse(fs.readFileSync(p, "utf8"));
+    // 累计口径的两块（v1.8.0）：起点 + 账本。先恢复，后面的快照导入不会再改它们。
+    // 幂等覆盖：与本地同键则用镜像值（镜像来自本工具导出，方向可信）。
+    if (Array.isArray(j.baselines) && j.baselines.length) {
+      for (const b of j.baselines) {
+        setBaseline(b.uin, b.base ?? 0, b.asOfDay ?? null, true);
+      }
+    }
+    if (Array.isArray(j.ledger) && j.ledger.length) {
+      for (const r of j.ledger) saveLedgerDay(r.uin, r.day, r);
+    }
     // 固化摘要先恢复（day_summary 幂等覆盖）
     if (Array.isArray(j.summaries) && j.summaries.length) {
       for (const s of j.summaries) {
@@ -262,6 +281,177 @@ export function clearDaySummaries() {
   const db = getDb();
   db.prepare("DELETE FROM day_summary").run();
 }
+
+/** 全部累计起点（镜像导出用；口径见 ledger.js —— base 只写一次，是迁移前的历史常量） */
+export function loadAllBaselines() {
+  return getDb().prepare("SELECT uin, base, asOfDay FROM consumed_baseline").all();
+}
+
+/**
+ * 读取累计消耗基准(base)：「截至最后一个已固化日结束」的累计消耗。无记录返回 null。
+ * 用途见 db.js 中 consumed_baseline 建表注释 —— 服务端 consumed_amount 会因包回收回落，
+ * 累计消耗必须靠 base + 每日正增量还原，base 是这条链路的锚。
+ */
+export function loadBaseline(uin) {
+  const r = loadBaselineRow(uin);
+  return r && typeof r.base === "number" ? r.base : null;
+}
+
+/** 读取整行（含 asOfDay），供需要判断"是否已并入"的调用方使用 */
+export function loadBaselineRow(uin) {
+  const db = getDb();
+  return db.prepare("SELECT base, asOfDay FROM consumed_baseline WHERE uin=?").get(uin) || null;
+}
+
+/** 该 uin 最新快照所处的中国自然日（基准日初始化用） */
+export function lastReadingDay(uin) {
+  const db = getDb();
+  const r = db.prepare("SELECT MAX(ts) AS t FROM readings WHERE uin=?").get(uin);
+  if (!r || !r.t) return null;
+  const d = new Date(r.t);
+  return isNaN(d.getTime()) ? null : new Date(d.getTime() + 8 * 3600e3).toISOString().slice(0, 10);
+}
+
+/**
+ * 把「当日正增量」并入基准（gc 固化某日时调用）。
+ * @param {number} delta 当日正增量
+ * @param {string} day   该日(YYYY-MM-DD)。
+ * @param {number|null} [dayMax] 该日快照里出现过的最大瞬时消耗(giftUsed+baseUsed)。
+ *   传入后解锁「初始化当日」的合并（v1.7.1 修复）：
+ *   基线初始化发生在当天**中途**（部署时刻 base=当时的最大瞬时消耗，asOfDay=当天），
+ *   只覆盖到初始化那一刻；该日剩余时段的消耗原被 `day <= asOfDay` 跳过，
+ *   随明细删除一起蒸发（实测坤坤WB -420 / 鲁妈妈WB -84）。
+ *   修复口径：day === asOfDay 时 base = max(base, dayMax) —— 包内 giftUsed 单调，
+ *   当日最大瞬时值即「截至当日结束」的累计；不与 delta 相加，避免重复计入初始化前部分。
+ *   day < asOfDay 仍跳过（初始化覆盖）；day > asOfDay 走 delta 累加（原语义）。
+ * @returns {number|null} 并入后的 base
+ */
+export function bumpBaseline(uin, delta, day, dayMax = null) {
+  const row = loadBaselineRow(uin);
+  const d = Number(delta) || 0;
+  const db = getDb();
+  const now = new Date().toISOString();
+  if (row && row.asOfDay && day && String(day) < String(row.asOfDay)) return row.base;
+  if (row && row.asOfDay && day && String(day) === String(row.asOfDay)) {
+    // 初始化当日：base 可能只覆盖到「初始化时刻」，用当日最大瞬时消耗校准。
+    if (typeof dayMax === "number" && dayMax > row.base) {
+      db.prepare("UPDATE consumed_baseline SET base=?, updatedAt=? WHERE uin=?").run(
+        dayMax, now, uin);
+      return dayMax;
+    }
+    return row.base;
+  }
+  if (d === 0 && typeof dayMax !== "number") return row ? row.base : null;
+  db.prepare(
+    `INSERT INTO consumed_baseline(uin, base, asOfDay, updatedAt) VALUES(?,?,?,?)
+     ON CONFLICT(uin) DO UPDATE SET base = base + excluded.base,
+                                    asOfDay = excluded.asOfDay,
+                                    updatedAt = excluded.updatedAt`
+  ).run(uin, d, day || null, now);
+  return loadBaseline(uin);
+}
+
+/**
+ * 该 uin 历史出现过的最大瞬时消耗（纯 SQL，不加载明细）。
+ * 用途：为「累计消耗基准」做首次初始化 —— base 从 0 起会漏掉"包回收后再消耗"的那段增量
+ * （只剩水位线托底），以历史最大值起步才能把后续增量正确累加。
+ */
+export function maxGiftUsed(uin) {
+  const db = getDb();
+  const r = db.prepare("SELECT MAX(giftUsed) AS m FROM readings WHERE uin=?").get(uin);
+  return r && typeof r.m === "number" ? r.m : 0;
+}
+
+/**
+ * 设定基准（初始化回填 / 迁移用）。
+ * @param {string|null} asOfDay 基准已涵盖到哪一天(含)；null 表示不设(后续仍会并入)
+ * @param {boolean} force false=仅在该 uin 尚无基准时写入（不覆盖已有水位）；true=强制覆盖
+ */
+export function setBaseline(uin, base, asOfDay = null, force = false) {
+  const db = getDb();
+  const v = Number(base) || 0;
+  db.prepare(
+    force
+      ? `INSERT INTO consumed_baseline(uin, base, asOfDay, updatedAt) VALUES(?,?,?,?)
+         ON CONFLICT(uin) DO UPDATE SET base = excluded.base,
+                                        asOfDay = excluded.asOfDay,
+                                        updatedAt = excluded.updatedAt`
+      : `INSERT INTO consumed_baseline(uin, base, asOfDay, updatedAt) VALUES(?,?,?,?)
+         ON CONFLICT(uin) DO NOTHING`
+  ).run(uin, v, asOfDay, new Date().toISOString());
+  return loadBaseline(uin);
+}
+
+// ---------- 世代起点：已于 v1.8.0 整体删除（保留 epoch_start 表仅供追溯） ----------
+// 「账号重建判定 + 逐日并入锚点 + 水位线托底」整套机制已废弃，理由是原理性的：
+//   「服务端回收积分包」与「账号被重建」在 cum 曲线上不可分（回收包里有用过的余额时同形），
+//   而回收是常态 → 每次累积到阈值就误判重建 → 抛弃锚点与全部日用量 → 累计跳水。
+//   现行口径见 src/compute/ledger.js（账本 = 剩余逐对差分，回收只进 recycled，永不抹掉消耗）。
+
+// ---------- 账号生命周期留痕（删除 / 世代重置） ----------
+
+/** 记一条生命周期事件。cum = 事件时刻该账号的瞬时累计；size = 当时总发放（v1.7.3，判定用）。 */
+export function logLifecycle(uin, event, cum = null, note = null, size = null) {
+  getDb()
+    .prepare("INSERT INTO account_lifecycle(uin, event, at, cum, size, note) VALUES(?,?,?,?,?,?)")
+    .run(
+      uin,
+      String(event),
+      new Date().toISOString(),
+      cum == null ? null : Number(cum),
+      size == null ? null : Number(size),
+      note
+    );
+}
+
+/**
+ * 最近一条生命周期事件。
+ * @param {string} uin
+ * @param {string|null} event 传 'removed' 则只看删除事件；null = 任意事件
+ */
+export function lastLifecycle(uin, event = null) {
+  const db = getDb();
+  const cols = "event, at, cum, size, note";
+  return event
+    ? db.prepare(`SELECT ${cols} FROM account_lifecycle WHERE uin=? AND event=? ORDER BY at DESC LIMIT 1`).get(uin, event) || null
+    : db.prepare(`SELECT ${cols} FROM account_lifecycle WHERE uin=? ORDER BY at DESC LIMIT 1`).get(uin) || null;
+}
+
+/** 全部生命周期事件（审计/排查用，最多 limit 条）。 */
+export function loadLifecycle(limit = 200) {
+  return getDb()
+    .prepare("SELECT uin, event, at, cum, size, note FROM account_lifecycle ORDER BY at DESC LIMIT ?")
+    .all(limit);
+}
+
+// ---------- 世代判定所需的读数（瞬时累计 / 总发放） ----------
+
+const cumOf = (r) => Number(r.giftUsed || 0) + Number(r.baseUsed || 0);
+const sizeOf = (r) => {
+  try {
+    const j = JSON.parse(r.raw || "{}");
+    return Number(j.giftSize || 0) + Number(j.baseSize || 0);
+  } catch {
+    return 0;
+  }
+};
+
+/**
+ * 某账号最新一条快照的 {ts, cum, size}。无快照返回 null。
+ * cum  = giftUsed + baseUsed（瞬时累计消耗）
+ * size = giftSize + baseSize（当前总发放）
+ * 用途（v1.8.0 起）：账号被删除时记一条留痕（trae-gui 的 /api/del），供事后审计。
+ */
+export function latestReading(uin) {
+  const r = getDb()
+    .prepare("SELECT ts, giftUsed, baseUsed, raw FROM readings WHERE uin=? ORDER BY ts DESC LIMIT 1")
+    .get(uin);
+  if (!r) return null;
+  return { ts: r.ts, cum: cumOf(r), size: sizeOf(r) };
+}
+
+// cumSeries / maxCumSince 已随世代判定一并删除（v1.8.0）—— 它们只服务于
+// 「拿 cum 猜账号重建」，而那套判别原理上不成立，详见 ledger.js 顶部。
 
 // ---------- 固化任务的数据访问（计算逻辑在 derive.js 的 gcDaySummaries，避免循环依赖） ----------
 

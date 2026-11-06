@@ -76,9 +76,15 @@ async function doRefresh(manual) {
 
 // 由 S.results 投影重建 dashPer(单一真相源的收口:派生在 r.derived,凭证状态在 r.account)。
 // 表格/折线只读 dashPer,因此投影后自然与卡片同序同源。doRefresh 与 saveOrder(拖拽/排序)都调用它。
+// v1.10.0:补 id/appKey/ok/err —— 总览表格需要 id 点行开明细、appKey 做来源筛选、
+// ok/err 做状态点与「需关注」口径（失败账号在 derived 里没有影子,必须从 results 层带过来）。
 function rebuildDash() {
   dashPer = (S.results || []).map((r) => ({
+    id: r.account.id,
     uin: r.account.uin,
+    appKey: r.account.appKey || "traework",
+    ok: !!r.summary,
+    err: r.error || "",
     displayName: r.account.displayName || "",
     name: r.account.name || r.account.uin || "",
     ...(r.derived || {}),
@@ -152,9 +158,10 @@ $("syncPass") && $("syncPass").addEventListener("keydown", (e) => { if (e.key ==
 $("adminPass") && $("adminPass").addEventListener("keydown", (e) => { if (e.key === "Enter") confirmAdmin(); if (e.key === "Escape") closeAdmin(); });
 
 // 流程:先本地缓存秒开 → 后台实时刷新 → 其余初始化并行
-applyFold(); // 恢复上次面板折叠状态(v1.4.34)
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeZoom(); closeModal(); closeSmall(); toggleManage(false); } }); // v1.10.3:放大层/弹窗统一 Esc 关闭;v1.10.16 加「管理」卡片
 initChartTip(); // 图表悬浮提示事件委托(v1.4.38 归位 chart.js,启动接线)
 initChartSolo(); // 点击柱子独显/点击空白恢复(v1.4.41)
+initTopBar(); // v1.11.0 顶栏:首次实测 + 挂 resize/字体监听 + 卡片点外部关闭
 // v1.4.60 截止日期默认 = 今天(每日/每月默认以今天/当月为终点;清空输入框恢复动态窗口/全量)
 trendEnd = todayStr();
 const teEl = $("trendEnd");

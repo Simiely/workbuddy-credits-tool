@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { WB_INFO_FILE, trailSlotRoot } from "../config.js";
-import { readAuthFromStorage } from "./trae-decrypt.js";
+import { readAuthFromStorage } from "./trae-storage.js";
 
 /** 槽名清洗：去掉占位名，返回可作目录名的字符串或 "" */
 function cleanSlot(v) {
@@ -140,7 +140,11 @@ function resolveTraeByUid(account) {
  *   - cookieHeader 已是存在路径 → 原样返回（本机 / 已在的槽，零改动）
  *   - cookieHeader 是内联 JSON 凭证 → 原样返回，交给上层解析
  *   - 失效路径 → 按槽内凭证的 uid 匹配账号 uin（切换程序槽目录常以手机号/字母命名，
- *     显示名与目录名不可靠，uid 才是两程序一致的稳定身份）；匹配不到再按槽名拼目录兜底。
+ *     显示名与目录名不可靠，uid 才是两程序一致的稳定身份）；匹配不到才按槽名拼目录兜底。
+ *   - **兜底前先做串号检查**：若同名槽内凭证能读出 uid 且与账号 uin **明确不符**，
+ *     说明那是**另一个账号的槽**（同名不同人），一律拒绝兜底返回空 —— 宁可让上层报
+ *     「未同步/缺登录态」，也绝不把 A 的凭证配给 B。只有「槽内 uid 读不出来」（文件缺失/
+ *     格式不可解析）时才允许按槽名兜底，否则换机场景会整体失效。
  * @param {object} account 账号池记录(cookieHeader/appKey/uin/slotName/displayName/name)
  * @returns {string} 可用凭证路径（含计算出的槽路径）；无法解析返回 ""
  */
@@ -155,7 +159,14 @@ export function resolveSlotPath(account) {
   if (byUid) return byUid;
   const slot = accountSlotName(account); // 槽名目录兜底（历史记录等）
   if (!slot) return "";
-  return credentialFile(wb, slot);
+  const candidate = credentialFile(wb, slot);
+  // 串号闸门：能读出槽内 uid 且与账号 uin 不符 → 这是别人的槽，不兜底
+  const uin = account && account.uin != null ? String(account.uin) : "";
+  if (uin) {
+    const slotUid = wb ? wbInfoUid(candidate) : traeUserId(candidate);
+    if (slotUid && slotUid !== uin) return "";
+  }
+  return candidate;
 }
 
 // ---- 一键同步时的批量重写（由 webdav.js 编排）：把失效路径确定性重指到本工具指定根 ----

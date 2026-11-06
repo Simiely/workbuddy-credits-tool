@@ -9,6 +9,22 @@
 // 整数版金额格式(仅账号小卡片用,去掉小数;hero 汇总卡仍用带 2 位小数的 fmt)
 const fmt0 = (n) => (n === "-" || n == null ? "-" : Math.round(Number(n) || 0).toLocaleString());
 
+// v1.8.3 回收标记（取代 v1.7.2 的世代标记 ↻MM-DD）：
+// 服务端回收/轮换积分包时，包里**已用掉的部分**会从"当前包的已用"里消失 —— 旧模型把这
+// 当成"账号被重建"，于是重置累计、数字跳水（详见 src/compute/ledger.js）。现在它只是账本里
+// 一笔可见的 recycled：累计消耗不受影响，标记只在名字后提示"这个号的包被收回过"，
+// 悬停看具体量。无回收时输出空串，零视觉影响。
+// v1.9.4（2026-10-25 用户要求）：**账号总览**（手机卡片 + 桌面表格）不再显示这个标记 ——
+// 表格里每行都挂一枚 ↺N 太吵；只保留在顶部账号卡片网格上（那里一个号一张卡，提示有意义）。
+// 取值兼容两种形状：仪表盘行（派生字段平铺）与账号对象（派生挂在 .derived 上）。
+const ledgerBadge = (a) => {
+  const d = (a && a.ledger) || (a && a.derived && a.derived.ledger) || null;
+  const recy = d ? Number(d.recycled) || 0 : 0;
+  return recy > 0
+    ? ` <span class="epb" title="服务端回收过积分包（已用计数消失 ${recy}）；累计消耗不受影响">↺${Math.round(recy)}</span>`
+    : "";
+};
+
 function fpS() {
   const rs = (S && S.results) || [];
   return rs.map((r) => {
@@ -29,25 +45,42 @@ function render() {
   renderDash(); // 表格/折线(读 dashPer,纯渲染)
 }
 
+// v1.10.0 KPI 数字条（取代 4 张 hero 大卡）:enriched KPI tile 口径 —— 每格 = 主数值 + 对比基线
+// （较昨日 delta）/ 状态副行，顶层 5 格在 Miller 7±2 内。第 5 格「需关注」= 例外计数,点击即筛
+// 表格到例外视图（Overview first → zoom & filter → details on demand）。
+// 「需关注」口径:查询失败 ∪ 今日未签到 —— **只收今天要行动的事**。
+//   实测教训(2026-10-28,12 账号真实数据):最初把「近7天有临期」也算进去,命中 10/12 ——
+//   签到包 30 天滚动过期、消耗跟不上,临期是这些账号的**常态**,把它当例外=天天狼来了
+//   (Few: 告警失去区分度就没人看了)。临期降级为视觉提示:行状态点只在近1天(今明作废)亮琥珀,
+//   完整到期压力看右栏周桶图与列头排序。signedInToday===false 才算未签:null(今日无快照)不算,
+//   避免采样前全员误报。
+function warnOf(a) {
+  return a.ok === false || a.signedInToday === false;
+}
+function statusOf(a) {
+  if (a.ok === false) return { c: "bad", t: "查询失败" + (a.err ? ":" + a.err : "") };
+  if (a.signedInToday === false) return { c: "bad", t: "今日未签到" };
+  if ((a.expiring1d || 0) > 0) return { c: "warn", t: "今明作废 " + fmt0(a.expiring1d) + " 分" };
+  return { c: "ok", t: "正常" };
+}
+
 function renderHero() {
   const rs = (S && S.results) || [];
   const okN = rs.filter((r) => r.summary).length;
   const failN = rs.length - okN;
   const total = rs.reduce((s, r) => s + (r.summary ? totalOf(r.summary) : 0), 0);
   const used = rs.reduce((s, r) => s + (((r.derived || {}).consumed) || 0), 0); // 累计已用=历史每日消耗之和(derived.consumed)
-  // 今日到账 / 今日已用：直接消费账号对象上的 derived（单一来源，不再 patch dashPer 到 hero）
   const tAddAll = rs.reduce((s, r) => { const v = (r.derived || {}).todayAdded; return s + (v == null ? 0 : v); }, 0);
   const tAddHas = rs.some((r) => (r.derived || {}).todayAdded != null);
   const yestRemainAll = rs.reduce((s, r) => { const v = (r.derived || {}).yesterdayRemain; return s + (v == null ? 0 : v); }, 0);
   const yRemainHas = rs.some((r) => (r.derived || {}).yesterdayRemain != null);
   const totalUsed = rs.reduce((s, r) => s + (((r.derived || {}).todayUsed) || 0), 0);
   // 昨日已用(自然日):从 dailyUsed 取昨天的消耗作对比基准;昨天无记录则只显示数值不显示箭头
-  const yest = new Date(); yest.setDate(yest.getDate() - 1);
-  const yestK = `${yest.getFullYear()}-${String(yest.getMonth() + 1).padStart(2, "0")}-${String(yest.getDate()).padStart(2, "0")}`;
+  // v1.12.5:必须用 +8 日键去匹配后端 dailyUsed[].day，否则非 +8 时区的浏览器拿"本地昨天"去比"北京昨天"，永远错配
+  const yestK = cnKey(Date.now() - 86400000);
   let yestUsed = 0, yestHas = false;
   for (const r of rs) {
-    const dl = ((r.derived || {}).dailyUsed) || [];
-    const y = dl.find((x) => x.day === yestK);
+    const y = (((r.derived || {}).dailyUsed) || []).find((x) => x.day === yestK);
     if (y) { yestUsed += y.used || 0; yestHas = true; }
   }
   let cls = "ok", sub = "✅ 一切正常";
@@ -62,9 +95,11 @@ function renderHero() {
     const c = delta > 0 ? "var(--bad)" : "var(--ok)";
     trendHtml = `${fmt0(totalUsed)} <span style="font-size:12px;color:${c}" title="较昨日${delta >= 0 ? "多" : "少"}用 ${fmt0(Math.abs(delta))}">${arrow}${fmt0(Math.abs(delta))}</span>`;
   }
+  // v1.10.13:整块回退到 v1.9.6 —— 用户"上面 4 个面板，是退回 v1.9.6 的版本，那个是对的"。
+  // 结构:图标挂右上角(.h-ico) → 大数字 → 标签在下;首卡带状态副行,第二卡"昨日结余|今日到账"双列。
   $("hero").innerHTML = `
-    <div class="hcard total ${cls}"><span class="h-ico">🏦</span><div class="n" id="heroTotal">${rs.length ? fmt0(total) : "—"}</div><div class="l">总剩余积分</div><div class="s">${sub}</div></div>
-    <div class="hcard ${tAddHas ? "ok" : ""}"><span class="h-ico">📥</span><div style="display:flex;align-items:flex-end;gap:20px;margin-top:4px"><div><div class="n" id="heroYestRemain">${yRemainHas ? fmt0(yestRemainAll) : "—"}</div><div class="l">昨日结余</div></div><div><div class="n" id="heroTodayAdd" style="color:var(--ok)">${tAddHas ? "+" + fmt0(tAddAll) : "—"}</div><div class="l">今日到账</div></div></div></div>
+    <div class="hcard total ${cls}"><span class="h-ico">🏦</span><div class="n" id="heroTotal">${rs.length ? fmt0(total) : "—"}</div><div class="l"><span>总剩余积分</span><span class="st">${sub}</span></div></div>
+    <div class="hcard ${tAddHas ? "ok" : ""}"><span class="h-ico">📥</span><div class="two"><div><div class="n" id="heroYestRemain">${yRemainHas ? fmt0(yestRemainAll) : "—"}</div><div class="l">昨日结余</div></div><div><div class="n" id="heroTodayAdd" style="color:var(--ok)">${tAddHas ? "+" + fmt0(tAddAll) : "—"}</div><div class="l">今日到账</div></div></div></div>
     <div class="hcard"><span class="h-ico">📉</span><div class="n" id="heroToday">${trendHtml}</div><div class="l">今日已用</div></div>
     <div class="hcard"><span class="h-ico">🔥</span><div class="n">${fmt0(used)}</div><div class="l">累计已用</div></div>`;
 }
@@ -78,44 +113,42 @@ function renderCards() {
   const rs = (S && S.results) || [];
   if (!rs.length) {
     $("grid").innerHTML = '<div class="empty"><div class="big">📭</div>账号池为空<br>先运行 <b>trae-credits.bat scan</b> 扫描本机 TRAE 登录态建立账号池,或导入 trae-accounts.json 备份</div>';
-    $("foot").textContent = "v1.5.2 · 数据来自 TRAE 官方接口(api.trae.cn) · 暂无账号数据(先运行 trae-credits.bat scan 或从 WebDAV 下载)";
+    $("foot").textContent = "v__APP_VERSION__ · 数据来自 TRAE 官方接口(api.trae.cn) · 暂无账号数据(先运行 trae-credits.bat scan 或从 WebDAV 下载)";
     return;
   }
   $("grid").innerHTML = rs.map((r, i) => {
     const a = r.account, s = r.summary;
-    const nm = escAttr(acctName(a)); // 显示名可自定义,必须转义后进 innerHTML(v1.4.50)
-    // 改名/删除:与「今日消耗」同一行,靠右
-    const acts = `<span class="acts" style="margin-left:auto"><button class="btn btn-d" onclick="event.stopPropagation();openRename('${a.id}')">改名</button>
+    const nm = escAttr(acctName(a)) + ledgerBadge(a); // 显示名可自定义,必须转义后进 innerHTML(v1.4.50)
+    // v1.10.18:改名/删除移到卡片底部那一行的右端(左端是「已签到」),今日消耗独占一行
+    const acts = `<span class="acts"><button class="btn btn-d" onclick="event.stopPropagation();openRename('${a.id}')">改名</button>
       <button class="btn btn-d" onclick="event.stopPropagation();openDel('${a.id}')">删除</button></span>`;
     if (!s) {
       return `<div class="acct${a.appKey === "workbuddy" ? " wb" : ""}" data-id="${a.id}" draggable="true" onclick="openDetail('${a.id}')"><div class="acct-top">
         <div><div class="acct-name"><span class="nm">${nm}</span></div></div>
         <span class="remain" style="color:var(--bad);border-color:currentColor;background:transparent">❌ 查询失败</span></div>
-        <div class="acct-rows"><div class="arow act-row"><div class="l">${escAttr(r.error || "查询失败")}</div>${acts}</div></div></div>`;
+        <div class="acct-rows"><div class="arow act-row"><div class="l">${escAttr(r.error || "查询失败")}</div></div>
+        <div class="acct-foot">${acts}</div></div></div>`;
     }
-    // TRAE 单积分池(无体验版 base):展示通用积分池已用/总量 + 剩余 + 有效积分包数
-    const gp = s.giftSize ? Math.min(100, (s.giftUsed / s.giftSize) * 100) : 0;
+    // v1.10.7 卡片瘦身:去掉中间的「积分包/进度条」行(剩余=右上的总剩余,总量与包明细在明细弹窗),
+    // 让 380px 侧栏能一行放两张卡
     const dv = r.derived || {};
     // 签到标记：后端 derive 读今日快照 signedIn（checkin 接口固化，当天恒定）
     const signed = dv.signedInToday
       ? `<span class="signed" title="今日已签到">✅ 已签到</span>`
       : `<span class="signed no" title="今日未签到">⏰ 未签到</span>`;
-    // 今日到账 = 今日新增签到奖励包容量（derive.todayAdded；无昨日基线则为 null → 不显示）
-    const added =
-      dv.todayAdded != null && dv.todayAdded > 0
-        ? `<span class="acct-added" title="今日签到/入账积分">📥 到账 +${fmt0(dv.todayAdded)}</span>`
-        : "";
-    return `<div class="acct${a.appKey === "workbuddy" ? " wb" : ""}" data-id="${a.id}" data-uin="${a.uin}" draggable="true" onclick="openDetail('${a.id}')"><div class="acct-top">
+    // v1.9.6（用户要求）：卡片不再显示「📥 到账 +N」—— 徽标把右侧「总剩余积分」挤到被
+    // 卡片边缘切割，且签到奖励额官方随时调（200→150→100），数字本身没有阅读价值；
+    // 汇总层面的到账仍看顶部 hero 卡。derive.todayAdded 照常计算，只摘展示。
+    return `<div class="acct${a.appKey === "workbuddy" ? " wb" : ""}" data-id="${a.id}" data-uin="${a.uin}" draggable="true" onclick="openDetail('${a.id}')" title="${escAttr(appLabel(a))} · 点击查看明细"><div class="acct-top">
       <div><div class="acct-name"><span class="nm">${nm}</span></div><div class="acct-chip"><span class="app-chip" title="软件来源">${escAttr(appLabel(a))}</span></div></div>
-      <div class="remain-side">${added}<div class="remain"><span class="tt">💎 总剩余积分</span><span class="tn">${fmt0(totalOf(s))}</span></div></div></div>
+      <div class="remain-side"><div class="remain"><span class="tt">💎 总剩余积分</span><span class="tn">${fmt0(totalOf(s))}</span></div></div></div>
       <div class="acct-rows">
-        <div class="arow"><div class="l"><span>📦 积分包(${s.giftCount ?? 0} 个)</span><b>剩余 ${Number.isFinite(s.giftRemain) ? fmt0(s.giftRemain) : (s.giftRemain ?? "-")} / 总量 ${Number.isFinite(s.giftSize) ? fmt0(s.giftSize) : (s.giftSize ?? "-")}</b></div>
-          <div class="meter ${gp > 85 ? "warn" : ""}"><i style="width:${gp}%"></i></div></div>
-        <div class="arow act-row"><div class="l t-brand"><div class="acct-today">今日消耗 ${fmt0(dv.todayUsed || 0)}</div>${signed}</div>${acts}</div>
+        <div class="arow act-row"><div class="l t-brand"><div class="acct-today">今日消耗 ${fmt0(dv.todayUsed || 0)}</div></div></div>
+        <div class="acct-foot">${signed}${acts}</div>
       </div></div>`;
   }).join("");
   initDrag();
-  $("foot").textContent = "v1.5.2 · 数据来自 TRAE 官方接口(api.trae.cn) · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新运行 trae-credits.bat scan 更新登录态 · 卡片可拖动排序";
+  $("foot").textContent = "v__APP_VERSION__ · 数据来自 TRAE 官方接口(api.trae.cn) · 页面自动刷新 " + autoMin + " 分钟 · 查询失败可重新运行 trae-credits.bat scan 更新登录态 · 卡片可拖动排序";
 }
 
 // ---- 卡片拖拽排序(顺序随账号池持久化,经 /api/reorder 保存) ----
@@ -156,6 +189,7 @@ function initDrag() {
 // renderDash 是纯渲染函数：只读 dashPer（S.results 的投影，已含凭证状态与派生指标），不发起网络请求。
 // 数据获取与 derived 合并统一在 actions.js 的 doRefresh/mergeDerived 完成，避免多源竞态。
 function renderDash() {
+  renderDashTools();
   renderDashTable();
   renderLines();
   if (dashPer.length) {
@@ -169,13 +203,18 @@ function renderDash() {
 function renderDashTable() {
   if (!dashPer.length) {
     $("dashCards").innerHTML = '<div class="ph ph-md">暂无账号</div>';
-    $("dashTbody").innerHTML = '<tr><td colspan="8" class="ph">暂无账号</td></tr>';
+    $("dashTbody").innerHTML = '<tr><td colspan="9" class="ph">暂无账号</td></tr>';
+    $("dashThead").innerHTML = "";
+    $("dashTfoot").innerHTML = "";
     $("dashMeta").textContent = "";
     return;
   }
   // 单元格工具(卡片版)
   const cell = (label, val, color, bg, big) => `<div class="dcell ${bg}" ${color ? `style="--dc:var(--${color})"` : ""}>${big ? `<div class="dc-l">${label}</div><div class="dc-v big">${val}</div>` : `<div class="dc-l">${label}</div><div class="dc-v">${val}</div>`}</div>`;
-  // 手机卡片版(桌面隐藏)
+  // 手机卡片版(桌面隐藏)。v1.9.6（用户要求）：总览不再显示「近30天过期」——
+  // TRAE 签到包 30 天有效、先到期的先被消耗，1~7 天内基本恒为 0，到期压力天然全落在
+  // 8~30 天这一档，该档数字常年巨大却从不催行动（真正急的近2/3/7天还在）；要看明细
+  // 弹窗里仍保留「📅 近30天过期」。expiring30d 派生照常计算，只摘总览展示。
   const cards = dashPer.map((a, i) => {
     const tu = a.todayUsed || 0;
     const e2 = a.expiring2d || 0, e3 = a.expiring3d || 0, e7 = a.expiring7d || 0;
@@ -213,37 +252,133 @@ function renderDashTable() {
     <div class="dremain" style="background:none;border:none;padding:6px 0 0"><div class="dr-v" style="font-size:22px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">${fmt0(sum("currentRemain"))}</div><div class="dr-l">💎 总剩余</div></div>
   </div>`;
   $("dashCards").innerHTML = cards + total;
-  // ===== 桌面表格版(手机隐藏) =====
-  const rows = dashPer.map((a, i) => {
+  // ===== 桌面表格版(手机隐藏)。v1.10.0:动态 thead(可排序) + 筛选/视图排序 + 状态点 + 吸底合计 =====
+  // 排序:W3C ARIA —— th 内 button、aria-sort 全表唯一、未排序列预留 ⇕ 槽位(点击不跳宽)
+  const th = (c) => {
+    // v1.12.9：近2/3/7 天不再可排序（用户：这几列的标题不需要排序）。近1天已带「全 0 降级」
+    // （见 expSortTier），相邻档位再各自可点只会制造"点哪列都差不多、但结果又不一样"的困惑。
+    if (c.sortable === false) return `<th class="c-${c.key}" style="text-align:right">${c.label}</th>`;
+    const s = viewSort && viewSort.key === c.key;
+    const ic = s ? (viewSort.dir === "desc" ? "▼" : "▲") : "⇕";
+    const aria = s ? ` aria-sort="${viewSort.dir === "desc" ? "descending" : "ascending"}"` : "";
+    return `<th class="c-${c.key}"${aria} style="text-align:right"><button class="th-btn" onclick="setViewSort('${c.key}')">${c.label} <span class="sort-ic${s ? " on" : ""}">${ic}</span></button></th>`;
+  };
+  $("dashThead").innerHTML = `<tr><th class="c-name" style="text-align:left">账号</th>${VIEW_SORTS.map(th).join("")}<th class="c-st" style="text-align:center">状态</th></tr>`;
+  // 筛选 + 视图排序(null=池序)。无数据(null/undefined)恒垫底,不冒充 0 参与比较
+  const sortBy = viewSort ? VIEW_SORTS.find((s) => s.key === viewSort.key) : null;
+  const rows0 = dashPer.filter((a) =>
+    viewFilter === "all" ? true :
+    viewFilter === "warn" ? warnOf(a) :
+    a.appKey === viewFilter
+  );
+  // v1.12.10：近1天排序 = **逐级比较**（字典序 tiebreak），不是"挑一档来排"。
+  // 用户：「近2天一样的时候，就看近3天，近3天一样，就看近7天 这样排序」。
+  // 即比较器按 近1天→近2天→近3天→近7天 依次比，上一档相等才看下一档；
+  // 「近1天全员 0」只是这条链的第一个"全相等"特例，天然被 tiebreak 吃掉，
+  // 不再需要先判定档位再单键排序（v1.12.9 的做法：同档平局会退回池序，正是用户看到的错）。
+  const sortChain = sortBy
+    ? (sortBy.cascade ? VIEW_SORTS.filter((s) => s.key.startsWith("exp")) : [sortBy])
+    : [];
+  const rows1 = sortBy
+    ? [...rows0].sort((x, y) => {
+        for (const s of sortChain) {
+          const vx = s.get(x), vy = s.get(y);
+          if (vx == null && vy == null) continue;
+          if (vx == null) return 1;   // 无数据恒垫底
+          if (vy == null) return -1;
+          if (vx === vy) continue;    // 本档平局 → 看下一档
+          return viewSort.dir === "desc" ? vy - vx : vx - vy;
+        }
+        return 0;                     // 四档全平 → 稳定排序保持池序
+      })
+    : rows0;
+  const dot = (c, t) => `<span class="dot dot-${c}" title="${escAttr(t)}"></span>`;
+  const rows = rows1.map((a) => {
     const e1 = a.expiring1d || 0, e2 = a.expiring2d || 0, e3 = a.expiring3d || 0, e7 = a.expiring7d || 0;
-    return `<tr>
-    <td class="num t-faint">${i + 1}</td><td>${escAttr(acctName(a))}</td>
-    <td class="num"><b>${a.currentRemain == null ? "-" : fmt0(a.currentRemain)}</b></td><td class="num">${a.consumed == null ? "-" : fmt0(a.consumed)}</td>
-    <td class="num">${a.todayUsed > 0 ? fmt0(a.todayUsed) : "0"}</td>
-    <td class="num" style="color:var(--${e1 > 0 ? 'warn' : 'faint'})">${fmt0(e1)}</td>
-    <td class="num" style="color:var(--${e2 > 0 ? 'warn' : 'faint'})${e2 > 0 ? ';font-weight:800' : ''}">${fmt0(e2)}</td>
-    <td class="num" style="color:var(--${e3 > 0 ? 'warn' : 'faint'})">${fmt0(e3)}</td>
-    <td class="num" style="color:var(--${e7 > 0 ? 'warn' : 'faint'})${e7 > 0 ? ';font-weight:800' : ''}">${fmt0(e7)}</td></tr>`;
+    const st = statusOf(a);
+    const exc = st.c !== "ok" ? ` style="box-shadow:inset 3px 0 0 var(--${st.c === "warn" ? "warn" : "bad"})"` : "";
+    return `<tr${exc} onclick="openDetail('${a.id}')" title="点击查看明细">
+    <td class="c-name">${escAttr(acctName(a))} <span class="src-tag">${a.appKey === "workbuddy" ? "WB" : "TRAE"}</span></td>
+    <td class="num c-remain"><b>${a.currentRemain == null ? "-" : fmt0(a.currentRemain)}</b></td>
+    <td class="num c-today">${a.todayUsed > 0 ? fmt0(a.todayUsed) : "0"}</td>
+    <td class="num c-consumed">${a.consumed == null ? "-" : fmt0(a.consumed)}</td>
+    <td class="num c-exp1" style="color:var(--${e1 > 0 ? 'warn' : 'faint'})">${fmt0(e1)}</td>
+    <td class="num c-exp2" style="color:var(--${e2 > 0 ? 'warn' : 'faint'})${e2 > 0 ? ';font-weight:800' : ''}">${fmt0(e2)}</td>
+    <td class="num c-exp3" style="color:var(--${e3 > 0 ? 'warn' : 'faint'})">${fmt0(e3)}</td>
+    <td class="num c-exp7" style="color:var(--${e7 > 0 ? 'warn' : 'faint'})${e7 > 0 ? ';font-weight:800' : ''}">${fmt0(e7)}</td>
+    <td class="c-st" style="text-align:center">${dot(st.c, st.t)}</td></tr>`;
   }).join("");
-  $("dashTbody").innerHTML = rows + `<tr class="row-total">
-    <td></td><td>合计</td><td class="num">${fmt0(sum("currentRemain"))}</td><td class="num">${fmt0(sum("consumed"))}</td>
-    <td class="num">${fmt0(sumTu)}</td><td class="num">${fmt0(sumExp1d)}</td><td class="num">${fmt0(sumExp2d)}</td><td class="num">${fmt0(sumExp3d)}</td><td class="num">${fmt0(sumExp7d)}</td></tr>`;
+  $("dashTbody").innerHTML = (rows || '<tr><td colspan="9" class="ph">该筛选下暂无账号</td></tr>');
+  // 合计 = 全部账号(不随筛选变,口径是"池"而不是"当前透镜"),吸底常显
+  const warnAll = dashPer.filter(warnOf).length;
+  $("dashTfoot").innerHTML = `<tr class="row-total">
+    <td class="c-name">合计</td><td class="num c-remain">${fmt0(sum("currentRemain"))}</td><td class="num c-today">${fmt0(sumTu)}</td><td class="num c-consumed">${fmt0(sum("consumed"))}</td>
+    <td class="num c-exp1">${fmt0(sumExp1d)}</td><td class="num c-exp2">${fmt0(sumExp2d)}</td><td class="num c-exp3">${fmt0(sumExp3d)}</td><td class="num c-exp7">${fmt0(sumExp7d)}</td>
+    <td class="c-st" style="text-align:center;color:var(--${warnAll ? "warn" : "faint"})">${warnAll || "—"}</td></tr>`;
 }
-// ===== 趋势图表（柱状图/每日窗口/图例交互/模式切换）已拆分到 wb-gui.chart.js =====
 
-// 纯渲染:到期柱图(1天/3天到期 + 周桶),数据来自后端 derive.giftBuckets(已含 start/end MM-DD)
-function renderGiftBuckets(buckets, e1, e3) {
-  buckets = buckets || [];
-  if (!buckets.length) return '<div class="sect"><div class="stitle">📅 积分到期明细 <span class="sub">从今天起</span></div><div class="ph ph-sm">无有效赠送包</div></div>';
-  const max = Math.max(e1, e3, ...buckets.map((x) => x.total || 0), 1);
-  const bar = (label, val, cls, note) => `<div class="bar-col"><div class="bar-v ${cls}">${fmt0(val)}</div>
-    <div class="bar-track"><div class="bar-fill ${cls}" style="height:${Math.max(4, (val / max) * 100)}%"></div></div>
-    <div class="bar-label">${label}</div><div class="bar-sub">${note}</div></div>`;
-  const bars = [
-    bar("1天到期", e1, "bad", "今+明"),
-    bar("3天到期", e3, "warn", "至3天后"),
-    ...buckets.map((b, i) => bar(`${b.start}~${b.end}`, b.total, i === 0 ? "warn" : "brand", `${b.count} 包`)),
-  ].join("");
-  return `<div class="sect"><div class="stitle">📅 积分到期明细 <span class="sub">从今天起</span></div>
-    <div class="bar-row">${bars}</div></div>`;
+// ---- v1.10.0 总览工具条:来源/例外筛选 chips + 视图排序状态(列头点击排序,只改视图不改池序) ----
+// 排序列定义:get 取值函数 null 视为无数据(排序恒垫底,不冒充 0)
+// v1.12.9:sortable:false = 表头不给按钮（近2/3/7 天仅供阅读）;cascade:true = 带「全 0 降级」
+const VIEW_SORTS = [
+  { key: "remain", label: "总剩余", get: (a) => a.currentRemain },
+  { key: "today", label: "今日消耗", get: (a) => (a.todayUsed || 0) },
+  { key: "consumed", label: "累计已用", get: (a) => a.consumed },
+  { key: "exp1", label: "近1天", get: (a) => (a.expiring1d || 0), cascade: true },
+  { key: "exp2", label: "近2天", get: (a) => (a.expiring2d || 0), sortable: false },
+  { key: "exp3", label: "近3天", get: (a) => (a.expiring3d || 0), sortable: false },
+  { key: "exp7", label: "近7天", get: (a) => (a.expiring7d || 0), sortable: false },
+];
+// v1.12.10：`expSortTier` 现在**只服务展示**（"第一档真正有区分度的是哪一档"），
+// 排序本身不再挑档 —— 比较器在 renderDashTable 里按 近1天→近2天→近3天→近7天 逐级比。
+// 返回值只用来决定工具条要不要写"近1天全为 0"这句说明。
+function expSortTier(rows) {
+  const chain = VIEW_SORTS.filter((s) => s.key.startsWith("exp"));
+  const hit = chain.find((s) => rows.some((a) => (s.get(a) || 0) > 0));
+  return (hit || chain[0] || { key: "exp1" }).key;
 }
+function setViewFilter(f) {
+  viewFilter = f;
+  renderHero(); // 同步 KPI 里「需关注」格的高亮态(它与筛选共用同一口径)
+  renderDash();
+}
+function setViewSort(key) {
+  // 三态循环(W3C 惯例):未排 → 降序 → 升序 → 回池序;同一时刻只有一列携带 aria-sort
+  if (!viewSort || viewSort.key !== key) viewSort = { key, dir: "desc" };
+  else if (viewSort.dir === "desc") viewSort = { key, dir: "asc" };
+  else viewSort = null;
+  renderDash();
+}
+// v1.12.8:✕（清除排序）专用 —— 之前它 onclick 的是 setViewSort(key)，等于又走一遍
+// 三态循环：从默认的「近1天 ↓」点一次变 ↑、点第二次才回池序，用户体感"要关两次"。
+function clearViewSort() {
+  viewSort = null;
+  renderDash();
+}
+function renderDashTools() {
+  const per = dashPer || [];
+  const cnt = {
+    all: per.length,
+    traework: per.filter((a) => a.appKey === "traework").length,
+    workbuddy: per.filter((a) => a.appKey === "workbuddy").length,
+    warn: per.filter(warnOf).length,
+  };
+  const chip = (f, label, warn) =>
+    `<button class="chip${viewFilter === f ? " active" : ""}${warn ? " chip-warn" : ""}" onclick="setViewFilter('${f}')">${label} ${cnt[f]}</button>`;
+  const sort = viewSort ? VIEW_SORTS.find((s) => s.key === viewSort.key) : null;
+  // v1.12.10：降级的真实语义是「逐级比较」，文案照实写；不写出来，用户只会觉得"点了近1天却像按近7天排"。
+  // 只有"近1天全员 0"这一种需要解释（否则近1天本档就有区分度，无需提示）。
+  let tierNote = "";
+  if (sort && sort.cascade && expSortTier(per) !== sort.key) {
+    tierNote = ` <span class="sort-note" title="近1天全为 0：同分时依次按近2天→近3天→近7天比较">· 近1天全为 0 → 按近2→3→7 天逐级</span>`;
+  }
+  const sortTxt = viewSort
+    ? `${sort ? sort.label : ""} ${viewSort.dir === "desc" ? "↓" : "↑"}${tierNote} <button class="chip-x" onclick="clearViewSort()" title="清除排序,恢复池序">✕</button>`
+    : "池序";
+  $("dtools").innerHTML = `
+    ${chip("all", "全部")}${chip("traework", "TRAE")}${chip("workbuddy", "WB")}
+    ${chip("warn", "⚠ 需关注", true)}
+    <span class="sort-state">排序：${sortTxt}</span>`;
+}
+
+// ===== 趋势图表（柱状图/每日窗口/图例交互/模式切换）已拆分到 wb-gui.chart.js =====
