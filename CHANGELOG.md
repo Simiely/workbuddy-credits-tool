@@ -14,6 +14,7 @@
 
 - 🔴 **多账号共用设备号 → 签到被拒且被误报成功**。TRAE `checkin_credits/claim` 按 `x-device-id` 做「每设备每日一次」校验；从同一台机器导出的多个账号共用同一个 `icube-dc`，第二个起返回 `code 9095 当前设备今日已经签到`。现在撞 9095 时依次换用其它**真实已登记**的设备号重试（伪造 / 空设备号会返回 9074 / 9004，见 v1.9.3 A/B 实测）。2026-11-06 实测：六月 / 闻斌trae 换号后立即 `code 0 success`，状态查询转为 `checked_in:true`。
 - 🔴 **业务错误被当成成功**：`fetchTraeCheckin` 原先只把 `code 9074` 判为失败，9095 等一律 `ok:true`，导致 `checkin-history` 出现假 `added`、页面仍显示未签。现在只有 `code===0`（或无 code 字段）才算成功，其余明确报错并列为 `failed`。
+- **补签按钮脚本 404**：`trae-gui.mjs` 的静态 JS 采用显式白名单（原先 7 个），新增的 `wb-gui.checkin.js` 未登记，浏览器请求返回 404、按钮点击无响应。白名单扩为 8 个并放行该文件；部署后 `/wb-gui.checkin.js?v=v1.12.12` 返回 200，实测 `POST /api/checkin/run {"onlyMissing":true}` → `skipped=15 / added=0 / failed=0`（全部已签账号被跳过，无重复领取）。
 
 ## [1.9.4] - 2026-10-25（账号总览不再显示「↺N 服务端回收」标记）
 

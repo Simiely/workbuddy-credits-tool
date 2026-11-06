@@ -218,8 +218,8 @@ const routes = [
         staticFile("wb-gui.html", "<h1>wb-gui.html 缺失</h1>")
       ),
   },
-  // 前端拆分为 7 个 classic <script>（共享全局词法作用域，按 state→core→render→chart→ops→sync→actions 顺序加载）
-  ...["wb-gui.state.js", "wb-gui.core.js", "wb-gui.render.js", "wb-gui.chart.js", "wb-gui.ops.js", "wb-gui.sync.js", "wb-gui.actions.js"].map((f) => ({
+  // 前端拆分为 8 个 classic <script>（共享全局词法作用域，按 state→core→render→chart→ops→sync→actions→checkin 顺序加载）
+  ...["wb-gui.state.js", "wb-gui.core.js", "wb-gui.render.js", "wb-gui.chart.js", "wb-gui.ops.js", "wb-gui.sync.js", "wb-gui.actions.js", "wb-gui.checkin.js"].map((f) => ({
     method: "GET",
     path: "/" + f,
     handler: (ctx) =>
